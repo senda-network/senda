@@ -10,7 +10,6 @@ type Settings = {
   defaultModel: string | null;
   backend: Backend;
   publicOrigins: string[];
-  inviteOnly: boolean;
   keepMeshRunningAfterQuit: boolean;
 };
 
@@ -227,23 +226,6 @@ export default function SettingsPage() {
                   </option>
                 ))}
             </select>
-          </Card>
-
-          <Card
-            eyebrow="Sharing"
-            title="Lock my mesh to invited machines only"
-            hint="When on, only people you've sent an invite to can join. Off means anyone on your network can offer to help (still subject to the runtime's auth)."
-          >
-            <div className="flex items-center justify-between gap-4">
-              <Toggle
-                checked={settings?.inviteOnly ?? false}
-                disabled={!settings}
-                onChange={(v) => update("inviteOnly", v)}
-              />
-              <span className="text-[12px] text-[var(--fg-muted)]">
-                {settings?.inviteOnly ? "Invite-only" : "Open to LAN"}
-              </span>
-            </div>
           </Card>
 
           <details className="group rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)]/60 p-5 open:bg-[var(--bg-elev)]">

@@ -28,7 +28,6 @@ export type ControllerSettings = {
   defaultModel: string | null;
   backend: Backend;
   publicOrigins: string[];
-  inviteOnly: boolean;
   /**
    * When true, quitting the desktop app leaves the runtime daemon running
    * in the background (still serving the public mesh). When false (the
@@ -44,7 +43,6 @@ const DEFAULTS: ControllerSettings = {
   defaultModel: null,
   backend: "auto",
   publicOrigins: ["https://closedmesh.com"],
-  inviteOnly: false,
   keepMeshRunningAfterQuit: false,
 };
 
@@ -73,10 +71,6 @@ async function readSettings(): Promise<ControllerSettings> {
             (o): o is string => typeof o === "string",
           )
         : DEFAULTS.publicOrigins,
-      inviteOnly:
-        typeof parsed.inviteOnly === "boolean"
-          ? parsed.inviteOnly
-          : DEFAULTS.inviteOnly,
       keepMeshRunningAfterQuit:
         typeof parsed.keepMeshRunningAfterQuit === "boolean"
           ? parsed.keepMeshRunningAfterQuit
@@ -142,10 +136,6 @@ export async function POST(req: Request) {
           .map((o) => (typeof o === "string" ? o.trim() : ""))
           .filter((o) => o.length > 0)
       : current.publicOrigins,
-    inviteOnly:
-      typeof patch.inviteOnly === "boolean"
-        ? patch.inviteOnly
-        : current.inviteOnly,
     keepMeshRunningAfterQuit:
       typeof patch.keepMeshRunningAfterQuit === "boolean"
         ? patch.keepMeshRunningAfterQuit
