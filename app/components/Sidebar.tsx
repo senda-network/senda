@@ -60,7 +60,7 @@ export function Sidebar() {
     <aside className="hidden w-[220px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-elev)] sm:flex">
       <Link
         href="/dashboard"
-        className="flex items-center gap-2.5 border-b border-[var(--border)] px-4 py-3.5"
+        className="flex h-14 items-center gap-2.5 border-b border-[var(--border)] px-4"
       >
         <Logo />
         <div className="leading-tight">

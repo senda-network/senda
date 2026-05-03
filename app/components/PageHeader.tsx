@@ -32,7 +32,7 @@ export function PageHeader({
             "radial-gradient(60% 100% at 50% 0%, rgba(255,122,69,0.10), transparent 70%)",
         }}
       />
-      <div className="relative flex items-center justify-between gap-4 px-6 py-3.5">
+      <div className="relative flex h-14 items-center justify-between gap-4 px-6">
         <div className="min-w-0">
           {eyebrow && (
             <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--accent)]">

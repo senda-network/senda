@@ -11,10 +11,18 @@ import { Sidebar } from "../components/Sidebar";
 export const dynamic = "force-dynamic";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  // The shell is pinned to the viewport — `h-dvh` + `overflow-hidden` on the
+  // outer flex row stops the document body from ever scrolling. The sidebar
+  // then naturally fills the full viewport height (default flex stretch),
+  // and the right pane is the lone scroll container so the page header on
+  // each route stays sticky to its own pane instead of disappearing off the
+  // top of the document with the sidebar in tow.
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex h-dvh overflow-hidden">
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        {children}
+      </div>
     </div>
   );
 }
