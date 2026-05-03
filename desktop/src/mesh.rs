@@ -246,6 +246,194 @@ pub fn fetch_status() -> MeshStatus {
 
 // ---------- Service control ---------------------------------------------
 
+/// File-name prefixes that the runtime spawns alongside `closedmesh` and
+/// that must therefore live in the same directory. The runtime's
+/// `resolve_binary_path` accepts both the generic name (`rpc-server`)
+/// and per-flavor variants (`rpc-server-metal`, `rpc-server-cuda`, …),
+/// so we accept anything starting with one of these prefixes.
+///
+/// If any helper from this list is missing the runtime fails on the
+/// first request with `<name> not found in <dir>`. Before 0.1.44 we
+/// only laid down `closedmesh` itself, which broke for users whose
+/// initial install came from `install.sh` (which only ships
+/// `closedmesh`) or from any path where the upgrade ran before the
+/// helpers ever made it onto disk.
+const RUNTIME_HELPER_PREFIXES: &[&str] = &[
+    "rpc-server",
+    "llama-server",
+    "llama-moe-analyze",
+    "llama-moe-split",
+];
+
+/// Returns true iff `dir` contains at least one binary whose name
+/// matches each prefix in [`RUNTIME_HELPER_PREFIXES`]. We require *one*
+/// flavor per prefix, not all of them — the tarball for a given
+/// platform only ships one flavor (e.g. `-metal` on darwin-aarch64),
+/// and the runtime will pick whichever one it finds.
+fn helpers_present(dir: &Path) -> bool {
+    let entries: Vec<String> = match std::fs::read_dir(dir) {
+        Ok(it) => it
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect(),
+        Err(_) => return false,
+    };
+    RUNTIME_HELPER_PREFIXES.iter().all(|prefix| {
+        entries.iter().any(|name| {
+            name == *prefix
+                || (name.starts_with(prefix)
+                    && name.as_bytes().get(prefix.len()) == Some(&b'-'))
+        })
+    })
+}
+
+/// Move every file in `stage_dir` whose name matches a helper prefix
+/// into `dest_dir`, replacing whatever was there. The `closedmesh`
+/// binary itself is handled separately by the caller (it has its own
+/// "stop service first" sequencing); this function only touches the
+/// llama.cpp helpers.
+///
+/// We use `rename` rather than copy so the swap is atomic — important
+/// on a slow disk where a half-replaced helper would crash the running
+/// runtime mid-request. `rename` requires same-filesystem; we keep
+/// `stage_dir` as a sibling of `dest_dir` to guarantee that.
+fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
+    let entries = match std::fs::read_dir(stage_dir) {
+        Ok(it) => it,
+        Err(e) => {
+            eprintln!(
+                "[closedmesh] helpers: read stage dir {} failed: {e}",
+                stage_dir.display()
+            );
+            return 0;
+        }
+    };
+    let mut moved = 0usize;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if !RUNTIME_HELPER_PREFIXES.iter().any(|prefix| {
+            name_str.as_ref() == *prefix
+                || (name_str.starts_with(prefix)
+                    && name_str.as_bytes().get(prefix.len()) == Some(&b'-'))
+        }) {
+            continue;
+        }
+        let src = entry.path();
+        let dst = dest_dir.join(&name);
+        if let Err(e) = std::fs::rename(&src, &dst) {
+            eprintln!(
+                "[closedmesh] helpers: rename {} -> {} failed: {e}",
+                src.display(),
+                dst.display()
+            );
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = std::fs::metadata(&dst) {
+                let mut perm = meta.permissions();
+                perm.set_mode(0o755);
+                let _ = std::fs::set_permissions(&dst, perm);
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = Command::new("xattr")
+                .args(["-d", "com.apple.quarantine"])
+                .arg(&dst)
+                .output();
+        }
+        moved += 1;
+        eprintln!("[closedmesh] helpers: installed {}", dst.display());
+    }
+    moved
+}
+
+/// Download the latest runtime tarball, extract just the helpers, and
+/// install them next to `bin`. Used to repair installs that have a
+/// `closedmesh` binary in place (from `install.sh` or a hand-fetched
+/// release) but are missing the llama.cpp helpers — without this they
+/// crash on the first inference request with `rpc-server not found`.
+///
+/// The closedmesh binary itself is left untouched: its version is the
+/// auto-upgrade thread's responsibility, and we don't want to bounce
+/// the service every launch just to refresh helpers.
+fn repair_missing_helpers(bin: &Path) {
+    let Some(parent) = bin.parent() else {
+        return;
+    };
+    if helpers_present(parent) {
+        return;
+    }
+    eprintln!(
+        "[closedmesh] helpers: missing in {}; fetching latest runtime bundle",
+        parent.display()
+    );
+    let Some(asset) = runtime_asset_name() else {
+        return;
+    };
+    let url = format!("{RUNTIME_RELEASE_BASE}/{asset}");
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(120))
+        .redirects(8)
+        .build();
+    let resp = match agent.get(&url).call() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[closedmesh] helpers: download {url} failed: {e}");
+            return;
+        }
+    };
+
+    let stage_dir = parent.join(".closedmesh.helpers-stage");
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    if let Err(e) = std::fs::create_dir_all(&stage_dir) {
+        eprintln!("[closedmesh] helpers: mkdir staging failed: {e}");
+        return;
+    }
+    let archive = stage_dir.join(asset);
+    let mut tmp_file = match std::fs::File::create(&archive) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!(
+                "[closedmesh] helpers: create archive {} failed: {e}",
+                archive.display()
+            );
+            let _ = std::fs::remove_dir_all(&stage_dir);
+            return;
+        }
+    };
+    if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
+        eprintln!("[closedmesh] helpers: stream failed: {e}");
+        let _ = std::fs::remove_dir_all(&stage_dir);
+        return;
+    }
+    drop(tmp_file);
+    let extracted_ok = if asset.ends_with(".tar.gz") {
+        extract_tar_gz(&archive, &stage_dir)
+    } else if asset.ends_with(".zip") {
+        extract_zip(&archive, &stage_dir)
+    } else {
+        eprintln!("[closedmesh] helpers: unknown archive type for {asset}");
+        false
+    };
+    if !extracted_ok {
+        let _ = std::fs::remove_dir_all(&stage_dir);
+        return;
+    }
+    let _ = std::fs::remove_file(&archive);
+
+    let moved = install_helpers_from_stage(&stage_dir, parent);
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    eprintln!(
+        "[closedmesh] helpers: repair complete, {moved} file(s) installed in {}",
+        parent.display()
+    );
+}
+
 /// Best-effort `closedmesh service start` on launch. Silently no-ops if
 /// the CLI isn't installed yet — the user just gets the offline empty
 /// state (handled by the chat UI) until they install it.
@@ -293,6 +481,16 @@ pub fn start_service_if_installed() {
     };
 
     if let Some(bin) = bin {
+        // Backfill llama.cpp helpers next to the binary if they're
+        // missing. Without `rpc-server-*` and `llama-server-*` the
+        // runtime joins the mesh successfully but blows up the moment
+        // it tries to host a model with `<name> not found in <dir>`.
+        // This handles users who installed via `install.sh` (which
+        // only ships the `closedmesh` binary, not the helpers) or
+        // whose previous auto-upgrade swapped `closedmesh` without
+        // touching the helpers (the bug shipped in 0.1.40-0.1.43).
+        repair_missing_helpers(&bin);
+
         // Start the runtime immediately with whatever plist exists.
         // We do NOT block here waiting for a token fetch — that can take
         // up to 40s on a cold network, during which the runtime isn't
@@ -680,11 +878,22 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed;
     }
 
+    // Refresh the llama.cpp helpers (`rpc-server-*`, `llama-server-*`,
+    // `llama-moe-*`) from the same tarball. Pre-0.1.44 we skipped this
+    // step and `remove_dir_all` below silently nuked the helpers — fine
+    // when the user already had compatible ones from a prior install,
+    // but a hard crash for fresh users who never had them on disk
+    // (their runtime would join the mesh and then fail on the first
+    // host attempt with "rpc-server not found"). Best-effort: a partial
+    // refresh leaves the runtime at least as functional as before.
+    let helpers_moved = install_helpers_from_stage(&stage_dir, parent);
+
     let _ = std::fs::remove_dir_all(&stage_dir);
     eprintln!(
-        "[closedmesh] runtime upgraded to {} at {}",
+        "[closedmesh] runtime upgraded to {} at {} ({} helper(s) refreshed)",
         fmt_version(&latest),
-        dest.display()
+        dest.display(),
+        helpers_moved,
     );
 
     // Bring the service back. On macOS we go straight through our own
