@@ -247,29 +247,34 @@ pub fn fetch_status() -> MeshStatus {
 // ---------- Service control ---------------------------------------------
 
 /// File-name prefixes that the runtime spawns alongside `closedmesh` and
-/// that must therefore live in the same directory. The runtime's
-/// `resolve_binary_path` accepts both the generic name (`rpc-server`)
-/// and per-flavor variants (`rpc-server-metal`, `rpc-server-cuda`, …),
-/// so we accept anything starting with one of these prefixes.
+/// that must therefore live in the same directory. `resolve_binary_path`
+/// in the runtime accepts both the generic name (`rpc-server`) and the
+/// per-flavor variants (`rpc-server-metal`, `rpc-server-cuda`, …), so
+/// any name that equals a prefix or starts with `<prefix>-` qualifies.
 ///
-/// If any helper from this list is missing the runtime fails on the
-/// first request with `<name> not found in <dir>`. Before 0.1.44 we
-/// only laid down `closedmesh` itself, which broke for users whose
-/// initial install came from `install.sh` (which only ships
-/// `closedmesh`) or from any path where the upgrade ran before the
-/// helpers ever made it onto disk.
-const RUNTIME_HELPER_PREFIXES: &[&str] = &[
+/// `MOVE_PREFIXES` includes the moe CLI helpers — we ship them in the
+/// tarball and want them re-installed during repairs/upgrades — but
+/// `REQUIRED_PREFIXES` only includes the two the runtime can't survive
+/// without. That asymmetry matters: if a future tarball stops shipping
+/// (say) `llama-moe-analyze`, requiring it for `helpers_present` would
+/// make every desktop launch re-download the full 42 MB bundle forever.
+const MOVE_PREFIXES: &[&str] = &[
     "rpc-server",
     "llama-server",
     "llama-moe-analyze",
     "llama-moe-split",
 ];
+const REQUIRED_PREFIXES: &[&str] = &["rpc-server", "llama-server"];
 
-/// Returns true iff `dir` contains at least one binary whose name
-/// matches each prefix in [`RUNTIME_HELPER_PREFIXES`]. We require *one*
-/// flavor per prefix, not all of them — the tarball for a given
-/// platform only ships one flavor (e.g. `-metal` on darwin-aarch64),
-/// and the runtime will pick whichever one it finds.
+fn name_matches_prefix(name: &str, prefix: &str) -> bool {
+    name == prefix
+        || (name.starts_with(prefix) && name.as_bytes().get(prefix.len()) == Some(&b'-'))
+}
+
+/// Returns true iff `dir` contains at least one binary matching every
+/// prefix in [`REQUIRED_PREFIXES`]. We require *one* flavor per prefix,
+/// not all of them — the tarball for a given platform only ships one
+/// flavor (e.g. `-metal` on darwin-aarch64).
 fn helpers_present(dir: &Path) -> bool {
     let entries: Vec<String> = match std::fs::read_dir(dir) {
         Ok(it) => it
@@ -278,13 +283,9 @@ fn helpers_present(dir: &Path) -> bool {
             .collect(),
         Err(_) => return false,
     };
-    RUNTIME_HELPER_PREFIXES.iter().all(|prefix| {
-        entries.iter().any(|name| {
-            name == *prefix
-                || (name.starts_with(prefix)
-                    && name.as_bytes().get(prefix.len()) == Some(&b'-'))
-        })
-    })
+    REQUIRED_PREFIXES
+        .iter()
+        .all(|prefix| entries.iter().any(|name| name_matches_prefix(name, prefix)))
 }
 
 /// Move every file in `stage_dir` whose name matches a helper prefix
@@ -312,11 +313,10 @@ fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if !RUNTIME_HELPER_PREFIXES.iter().any(|prefix| {
-            name_str.as_ref() == *prefix
-                || (name_str.starts_with(prefix)
-                    && name_str.as_bytes().get(prefix.len()) == Some(&b'-'))
-        }) {
+        if !MOVE_PREFIXES
+            .iter()
+            .any(|prefix| name_matches_prefix(&name_str, prefix))
+        {
             continue;
         }
         let src = entry.path();
@@ -360,19 +360,26 @@ fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
 /// The closedmesh binary itself is left untouched: its version is the
 /// auto-upgrade thread's responsibility, and we don't want to bounce
 /// the service every launch just to refresh helpers.
-fn repair_missing_helpers(bin: &Path) {
+///
+/// Returns `true` only when at least one helper was successfully laid
+/// down. The caller uses that signal to decide whether the launchd
+/// agent needs a hard bounce — a runtime that crashed earlier on
+/// `rpc-server not found` is being restart-throttled by launchd, and
+/// without a bootout/bootstrap cycle the user could be stuck waiting
+/// minutes for the next KeepAlive retry to kick in.
+fn repair_missing_helpers(bin: &Path) -> bool {
     let Some(parent) = bin.parent() else {
-        return;
+        return false;
     };
     if helpers_present(parent) {
-        return;
+        return false;
     }
     eprintln!(
         "[closedmesh] helpers: missing in {}; fetching latest runtime bundle",
         parent.display()
     );
     let Some(asset) = runtime_asset_name() else {
-        return;
+        return false;
     };
     let url = format!("{RUNTIME_RELEASE_BASE}/{asset}");
     let agent = ureq::AgentBuilder::new()
@@ -384,7 +391,7 @@ fn repair_missing_helpers(bin: &Path) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[closedmesh] helpers: download {url} failed: {e}");
-            return;
+            return false;
         }
     };
 
@@ -392,7 +399,7 @@ fn repair_missing_helpers(bin: &Path) {
     let _ = std::fs::remove_dir_all(&stage_dir);
     if let Err(e) = std::fs::create_dir_all(&stage_dir) {
         eprintln!("[closedmesh] helpers: mkdir staging failed: {e}");
-        return;
+        return false;
     }
     let archive = stage_dir.join(asset);
     let mut tmp_file = match std::fs::File::create(&archive) {
@@ -403,13 +410,13 @@ fn repair_missing_helpers(bin: &Path) {
                 archive.display()
             );
             let _ = std::fs::remove_dir_all(&stage_dir);
-            return;
+            return false;
         }
     };
     if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
         eprintln!("[closedmesh] helpers: stream failed: {e}");
         let _ = std::fs::remove_dir_all(&stage_dir);
-        return;
+        return false;
     }
     drop(tmp_file);
     let extracted_ok = if asset.ends_with(".tar.gz") {
@@ -422,7 +429,7 @@ fn repair_missing_helpers(bin: &Path) {
     };
     if !extracted_ok {
         let _ = std::fs::remove_dir_all(&stage_dir);
-        return;
+        return false;
     }
     let _ = std::fs::remove_file(&archive);
 
@@ -432,6 +439,7 @@ fn repair_missing_helpers(bin: &Path) {
         "[closedmesh] helpers: repair complete, {moved} file(s) installed in {}",
         parent.display()
     );
+    moved > 0
 }
 
 /// Best-effort `closedmesh service start` on launch. Silently no-ops if
@@ -489,7 +497,28 @@ pub fn start_service_if_installed() {
         // only ships the `closedmesh` binary, not the helpers) or
         // whose previous auto-upgrade swapped `closedmesh` without
         // touching the helpers (the bug shipped in 0.1.40-0.1.43).
-        repair_missing_helpers(&bin);
+        let helpers_repaired = repair_missing_helpers(&bin);
+
+        // If we just laid down helpers a previously-broken runtime is
+        // currently in launchd's restart-throttle window (it crashed
+        // on `start_rpc_server` → process exit → KeepAlive backoff).
+        // Force a clean bootout/bootstrap so the user recovers in a
+        // single second instead of waiting for launchd to relent.
+        // Skipped on first install: there's no service loaded yet, and
+        // `start_service` below boots it from scratch.
+        #[cfg(target_os = "macos")]
+        if helpers_repaired {
+            if let Some(plist_path) = launchd_plist_path() {
+                if plist_path.is_file() {
+                    eprintln!(
+                        "[closedmesh] helpers: bouncing launchd agent to clear KeepAlive throttle"
+                    );
+                    bounce_launchd_agent(&plist_path);
+                }
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = helpers_repaired;
 
         // Start the runtime immediately with whatever plist exists.
         // We do NOT block here waiting for a token fetch — that can take
