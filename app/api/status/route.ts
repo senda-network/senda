@@ -32,6 +32,31 @@ const runtimeHeaders: Record<string, string> = RUNTIME_TOKEN
   ? { Authorization: `Bearer ${RUNTIME_TOKEN}` }
   : {};
 
+// Public mesh entry node. Used to enrich the local runtime's view with peers
+// it isn't directly P2P-connected to. The desktop app's local closedmesh-llm
+// only lists peers it has a live iroh link to (typically just the entry node
+// itself), so a Mesh page that reads only the local runtime shows "1 machine"
+// even when the entry sees three peers connected through it. The entry's
+// `/api/status` and `/v1/models` are unauthenticated by the Caddyfile in
+// front of the Lightsail container, so no bearer token is required for the
+// enrichment.
+//
+// We skip the enrichment fetch when ADMIN_URL already points at the entry
+// node (i.e. the website itself, where the local response IS the mesh-wide
+// response). Override via env for staging / non-default entries.
+const MESH_DISCOVERY_BASE =
+  trimmedEnv("CLOSEDMESH_MESH_DISCOVERY_URL") ?? "https://mesh.closedmesh.com";
+
+function sameHost(a: string, b: string): boolean {
+  try {
+    return new URL(a).host === new URL(b).host;
+  } catch {
+    return a === b;
+  }
+}
+
+const ENRICH_FROM_ENTRY = !sameHost(MESH_DISCOVERY_BASE, ADMIN_URL);
+
 /** Per-node capability summary surfaced in the chat UI. */
 export type NodeCapabilitySummary = {
   /** "metal" | "cuda" | "rocm" | "vulkan" | "cpu" */
@@ -200,15 +225,103 @@ async function fetchRuntimeStatus(): Promise<RuntimeStatus | null> {
   }
 }
 
+/**
+ * Pull `/api/status` from the public mesh entry node so we can list peers the
+ * local runtime isn't directly P2P-connected to. Best-effort: any failure
+ * (offline, captive portal, entry down) returns null and we silently fall
+ * back to the local-only view — the user still sees their own machine.
+ *
+ * Skipped entirely when ADMIN_URL already points at the entry, both to avoid
+ * a redundant network round-trip on the public site and to keep the website's
+ * response shape unchanged.
+ */
+async function fetchEntryStatus(): Promise<RuntimeStatus | null> {
+  if (!ENRICH_FROM_ENTRY) return null;
+  try {
+    const res = await fetch(`${MESH_DISCOVERY_BASE}/api/status`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as RuntimeStatus;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Same idea for the entry's `/v1/models` — used to enrich the model list when
+ * the local runtime only knows about its own model. Returns [] on any error
+ * so the caller can fall through to the local-only set.
+ */
+async function fetchEntryModels(): Promise<string[]> {
+  if (!ENRICH_FROM_ENTRY) return [];
+  try {
+    const res = await fetch(`${MESH_DISCOVERY_BASE}/v1/models`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { data?: Array<{ id: string }> };
+    return (data.data ?? []).map((m) => m.id);
+  } catch {
+    return [];
+  }
+}
+
 function isEntryNode(hostname: string | null | undefined): boolean {
   return (hostname ?? "").startsWith("ip-");
 }
 
-function buildNodes(rt: RuntimeStatus): NodeSummary[] {
+function peerToNode(peer: RuntimePeer): NodeSummary {
+  return {
+    id: peer.id ?? "",
+    hostname: peer.hostname ?? null,
+    isSelf: false,
+    role: peer.role ?? "Worker",
+    state: peer.state ?? "standby",
+    vramGb: peer.vram_gb ?? 0,
+    servingModels: [
+      ...(peer.serving_models ?? []),
+      ...(peer.hosted_models ?? []),
+    ].filter((m, i, arr) => arr.indexOf(m) === i),
+    capability: summarizeCapability(peer.capability),
+    version: peer.version ?? null,
+  };
+}
+
+/**
+ * Build the unified node list shown on the Mesh page.
+ *
+ * - `rt`     is the local runtime's view (self + whatever peers it has a
+ *            direct iroh link to).
+ * - `entry`  is the public mesh entry node's view (every peer connected to
+ *            the entry, which is typically the union of all member machines).
+ *            Null when we couldn't reach the entry, or when ADMIN_URL is
+ *            already the entry (the website case — `rt` IS the mesh-wide
+ *            view there).
+ *
+ * The entry's peer list is the primary source of truth for who's in the
+ * mesh, but it doesn't tell us which node is "self" — that's a property of
+ * the local runtime. So we always seed self from `rt` and then walk both
+ * peer lists, deduping by id and short-id (the entry truncates ids to the
+ * first 10 hex chars in its peer entries).
+ */
+function buildNodes(
+  rt: RuntimeStatus,
+  entry: RuntimeStatus | null,
+): NodeSummary[] {
+  const selfId = rt.node_id ?? "local";
+  // Match against the truncated form the entry uses in `peers[].id`. The
+  // local /api/status returns the full id; entry peer entries return the
+  // first 10 hex chars (e.g. "179f8d10f4"). Normalize so the dedupe key
+  // matches across both sources.
+  const shortId = (id: string) => id.slice(0, 10);
+  const selfShort = shortId(selfId);
+
   const nodes: NodeSummary[] = [];
-  // Local node first — it's always present even on a one-node mesh.
+  const seen = new Set<string>([selfShort]);
+
   nodes.push({
-    id: rt.node_id ?? "local",
+    id: selfId,
     hostname: rt.my_hostname ?? null,
     isSelf: true,
     role: rt.is_host ? "Host" : rt.is_client ? "Client" : "Standby",
@@ -221,25 +334,26 @@ function buildNodes(rt: RuntimeStatus): NodeSummary[] {
     capability: summarizeCapability(inferLocalCapability(rt)),
     version: rt.version ?? null,
   });
-  for (const peer of rt.peers ?? []) {
-    // Entry nodes are always-on cloud gateways, not user machines — exclude
-    // them so counts and lists only reflect real member machines.
-    if (isEntryNode(peer.hostname)) continue;
-    nodes.push({
-      id: peer.id ?? "",
-      hostname: peer.hostname ?? null,
-      isSelf: false,
-      role: peer.role ?? "Worker",
-      state: peer.state ?? "standby",
-      vramGb: peer.vram_gb ?? 0,
-      servingModels: [
-        ...(peer.serving_models ?? []),
-        ...(peer.hosted_models ?? []),
-      ].filter((m, i, arr) => arr.indexOf(m) === i),
-      capability: summarizeCapability(peer.capability),
-      version: peer.version ?? null,
-    });
-  }
+
+  const addPeers = (peers: RuntimePeer[] | undefined) => {
+    for (const peer of peers ?? []) {
+      // Entry nodes are always-on cloud gateways, not user machines — exclude
+      // them so counts and lists only reflect real member machines.
+      if (isEntryNode(peer.hostname)) continue;
+      const id = peer.id ?? "";
+      if (!id) continue;
+      const key = shortId(id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      nodes.push(peerToNode(peer));
+    }
+  };
+
+  // Local peers first so any direct-link metadata (RTT, fresher state) wins
+  // over the entry's slightly-staler view. Entry fills in the gaps.
+  addPeers(rt.peers);
+  addPeers(entry?.peers);
+
   return nodes;
 }
 
@@ -299,12 +413,22 @@ function modelsFromRuntime(rt: RuntimeStatus | null, v1Models: string[]): string
 
 export async function GET(req: Request) {
   try {
-    const [v1Models, runtime] = await Promise.all([
+    // All four fetches are independent and best-effort. Entry-node fetches
+    // are no-ops when ADMIN_URL is the entry (website case), so this still
+    // costs the same one round-trip there.
+    const [v1Models, runtime, entry, entryModels] = await Promise.all([
       fetchModels(),
       fetchRuntimeStatus(),
+      fetchEntryStatus(),
+      fetchEntryModels(),
     ]);
-    const models = modelsFromRuntime(runtime, v1Models);
-    const nodes = runtime ? buildNodes(runtime) : [];
+    // Prefer whichever model list is more complete — the entry node sees
+    // every Host on the mesh and is the source of truth when the local
+    // runtime only knows about its own loaded model.
+    const localModels = modelsFromRuntime(runtime, v1Models);
+    const models =
+      entryModels.length > localModels.length ? entryModels : localModels;
+    const nodes = runtime ? buildNodes(runtime, entry) : [];
     const nodeCount = nodes.length || 1;
     const status: Status = { online: true, nodeCount, models, nodes };
     return applyCors(req, NextResponse.json(status));
