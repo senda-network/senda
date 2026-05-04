@@ -34,10 +34,15 @@ export const metadata: Metadata = {
  */
 export default function PublicHomePage() {
   return (
-    <div className="flex min-h-dvh flex-col bg-[var(--bg)] text-[var(--fg)]">
+    // `h-dvh` (not `min-h-dvh`) so the chat shell is exactly viewport height:
+    // header + scrolling messages region + composer. With `min-h-dvh` the
+    // wrapper would grow past the viewport once messages stack up and the
+    // *document* would scroll, leaving ChatExperience's auto-scroll-to-bottom
+    // effect trying to set `scrollTop` on an element that never overflows.
+    <div className="flex h-dvh flex-col bg-[var(--bg)] text-[var(--fg)]">
       <PublicHeader status={<MeshLiveStatus variant="header" />} />
 
-      <main className="flex flex-1 flex-col">
+      <main className="flex min-h-0 flex-1 flex-col">
         <HomepageChat />
       </main>
     </div>

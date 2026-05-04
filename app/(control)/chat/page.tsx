@@ -29,7 +29,10 @@ export default function ChatPage() {
   }, []);
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    // `h-dvh` (not `min-h-dvh`): see HomepageChat / ChatExperience for why.
+    // The messages list inside ChatExperience scrolls within itself, which
+    // requires every ancestor in the flex chain to have a bounded height.
+    <div className="flex h-dvh flex-col">
       <PageHeader
         title="Chat"
         subtitle="Answers come from your mesh. Nothing leaves it."

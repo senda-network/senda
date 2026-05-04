@@ -204,7 +204,12 @@ export function ChatExperience({
       <div
         ref={scrollerRef}
         className={
-          scrollerClassName ?? "flex-1 overflow-y-auto scrollbar-thin"
+          // `min-h-0` is essential here: without it, this flex child's default
+          // `min-height: auto` lets it grow to fit content, defeating
+          // `overflow-y-auto` and pushing the scroll up to the document. With
+          // it bounded, this div is the actual scroll viewport, which is what
+          // the auto-scroll-to-bottom effect below depends on.
+          scrollerClassName ?? "min-h-0 flex-1 overflow-y-auto scrollbar-thin"
         }
       >
         <div className={innerWrap}>
