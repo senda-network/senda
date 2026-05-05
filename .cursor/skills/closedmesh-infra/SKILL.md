@@ -92,33 +92,83 @@ The workflow's `prepare_release` job bumps all `Cargo.toml` versions, commits to
 
 GitHub Actions (`release.yml`) uploads assets named `closedmesh-{os}-{arch}.tar.gz` (stable alias, always points to latest) and `closedmesh-v{version}-{os}-{arch}.tar.gz` (versioned, pinned to that release).
 
-### Entry node Docker (Lightsail)
+### Entry node (Lightsail)
 
-SSH into Lightsail, then:
+The container is **owned by a systemd unit** on the host, not started by hand. The unit also bypasses the image's `entrypoint.sh` (`--entrypoint closedmesh`) and passes the closedmesh CLI args directly. **Editing the docker run by hand will get reverted within `RestartSec=10` seconds when systemd respawns it** — always edit the unit file.
+
+SSH:
 
 ```bash
-# Pull latest image
-docker pull ghcr.io/closedmesh/closedmesh-llm/mesh-entry:latest
-
-# Stop and remove old container
-docker stop mesh-entry && docker rm mesh-entry
-
-# Start new container with stable iroh port
-docker run -d \
-  --name mesh-entry \
-  --restart unless-stopped \
-  --network host \
-  -v /opt/closedmesh-data:/data \
-  -e APP_MODE=console \
-  -e MESH_AUTH_TOKEN=<token> \
-  -e INTERNAL_PORT=9337 \
-  -e CONSOLE_PORT=3131 \
-  -e MESH_BIND_PORT=42140 \
-  -e MESH_PUBLISH=true \
-  ghcr.io/closedmesh/closedmesh-llm/mesh-entry:latest
+ssh -i ~/.ssh/closedmesh-deploy_ed25519 ubuntu@3.210.30.58
 ```
 
-**Critical**: `MESH_BIND_PORT=42140` keeps iroh on a fixed UDP port. Lightsail firewall has 40000-45000 open. Random ports break P2P connections.
+(AWS Lightsail, region `us-east-1`, instance name `closedmesh-mesh-entry`. Find it any time with `aws lightsail get-instances --region us-east-1`.)
+
+To deploy a new image / change config:
+
+```bash
+# 1. (optional) Pull the new image so the next restart picks it up
+sudo docker pull ghcr.io/closedmesh/closedmesh-llm/mesh-entry:latest
+
+# 2. Edit the systemd unit if any flags need changing
+sudoedit /etc/systemd/system/closedmesh-entry.service
+
+# 3. Apply
+sudo systemctl daemon-reload
+sudo systemctl restart closedmesh-entry.service
+
+# 4. Tail logs / verify it came up
+journalctl -u closedmesh-entry -f
+docker logs mesh-entry 2>&1 | grep -E "Invite created|API ready|ERR"
+```
+
+The unit (current contents):
+
+```ini
+[Unit]
+Description=ClosedMesh Entry Node
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Restart=always
+RestartSec=10
+ExecStartPre=-/usr/bin/docker stop mesh-entry
+ExecStartPre=-/usr/bin/docker rm mesh-entry
+# DO NOT add --auto or --publish here. See "Privacy lockdown" below.
+ExecStart=/usr/bin/docker run \
+  --network=host \
+  --name mesh-entry \
+  --volume /opt/closedmesh-data:/root/.closedmesh \
+  --entrypoint closedmesh \
+  ghcr.io/closedmesh/closedmesh-llm/mesh-entry:latest \
+  client \
+    --port 9337 \
+    --console 3131 \
+    --listen-all \
+    --mesh-name closedmesh \
+    --bind-port 42140
+ExecStop=/usr/bin/docker stop mesh-entry
+
+Environment="MESH_AUTH_TOKEN=<bearer token; matches Vercel CLOSEDMESH_RUNTIME_TOKEN>"
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+A backup copy of the previous unit lives at `/etc/systemd/system/closedmesh-entry.service.bak.<unix-timestamp>` (created on every edit, so you can `diff` and roll back).
+
+**Privacy lockdown (May 5 2026 — read this before touching the unit)**
+
+The entry node previously ran with `--auto --publish --mesh-name closedmesh`. That advertised our existence on the global `mesh-llm` Nostr channel (the runtime's d-tag is still the literal `"mesh-llm"` — see Phase C below) and made our `--auto` mode try to merge into other meshes named `closedmesh`. The result: ~17 strangers from the upstream `Mesh-LLM/mesh-llm` community pool were continuously connected through us, visible on closedmesh.com/status, and routing chat traffic. Removing the two flags + a one-time iroh identity rotation (which the runtime does for free on any public→private transition) cleared them out. **Do not add `--auto` or `--publish` back until Phase C ships** (private d-tag + private kind in `closedmesh-llm`). Until then, real users find this entry exclusively via the embedded `FALLBACK_JOIN_TOKEN` in `desktop/src/mesh.rs` plus the live `--join-url https://mesh.closedmesh.com/api/status` path.
+
+**Critical infrastructure invariants**:
+
+- `MESH_BIND_PORT` (currently passed as `--bind-port 42140`) keeps iroh on a fixed UDP port. Lightsail firewall has 40000–45000 open; random ports break P2P.
+- `--volume /opt/closedmesh-data:/root/.closedmesh` mounts the persisted Nostr key (`nostr.nsec`) and the `was-public` flag. Wiping this directory will force an iroh identity rotation on next start, which invalidates `FALLBACK_JOIN_TOKEN`.
+- The container does **not** run Caddy. Caddy runs on the host (`systemctl status caddy`, config at `/etc/caddy/Caddyfile`) and reverse-proxies `:443 → 127.0.0.1:9337` (`/v1/*`) and `:443 → 127.0.0.1:3131` (`/api/*`), gating everything except `/v1/models` and `/api/status` on `Bearer {$MESH_AUTH_TOKEN}`. The Caddy env is set via `/etc/systemd/system/caddy.service.d/env.conf`.
 
 ---
 
@@ -170,8 +220,10 @@ docker run -d \
 
 - **Vercel does not auto-deploy.** Always run `vercel --prod` after pushing.
 - **Version bump requires two files**: `Cargo.toml` AND `tauri.conf.json` — they must match or the build fails.
-- **Entry node uses a fixed iroh port** (`MESH_BIND_PORT=42140`). If the container is recreated without this, iroh picks a random port that is likely blocked by the Lightsail firewall, breaking P2P connections and causing `3.210.30.58:0` in the join token.
-- **`FALLBACK_JOIN_TOKEN` in `mesh.rs`** must be updated whenever the entry node container is recreated from scratch (iroh generates a new identity unless `/opt/closedmesh-data` is mounted and preserved).
+- **Entry node container is owned by `closedmesh-entry.service`**, not by hand. `docker run`/`docker stop`/`docker rm` will be undone within ~10 s. Always edit the systemd unit and `systemctl restart`.
+- **Never put `--auto` or `--publish` back on the entry node** until the Nostr d-tag is privatized in `closedmesh-llm` (Phase C). Both flags caused the May 2026 incident where the entry silently joined the upstream `mesh-llm` community pool.
+- **Entry node uses a fixed iroh port** (`--bind-port 42140`). If the unit is edited without it, iroh picks a random port that is likely blocked by the Lightsail firewall, breaking P2P connections and causing `3.210.30.58:0` in the join token.
+- **`FALLBACK_JOIN_TOKEN` in `mesh.rs`** must be updated whenever the entry node container's iroh identity rotates. Triggers: wiping `/opt/closedmesh-data`, OR a public→private / private→public flip (the runtime auto-rotates in this case — see logs for `Previous run was public — rotating identity`).
 - **Vercel env vars must have no trailing newlines.** Remove and re-add if URLs look broken (`mesh.closedmesh.com\n` is invalid).
 - **Asset names are `closedmesh-{os}-{arch}.tar.gz`**, not `mesh-llm-*`. Desktop app `mesh.rs` expects exactly this pattern for auto-update.
 - **`closedmesh-llm` CI runs `xtask repo-consistency`** — if asset names, fixture JSON, `RELEASE.md`, or `install.sh` disagree, CI fails before building.

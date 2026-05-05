@@ -1053,24 +1053,27 @@ const ENTRY_STATUS_URL: &str = "https://mesh.closedmesh.com/api/status";
 /// Fallback join token baked in at build time.
 ///
 /// The canonical entry node (mesh.closedmesh.com) runs in Docker on AWS
-/// Lightsail. The container mounts `/opt/closedmesh-data` to persist the
-/// Nostr identity, but the Iroh identity is currently regenerated on every
-/// container restart — so this token goes stale whenever the service is
-/// bounced. We bake it here as a last-resort fallback for users who can't
-/// reach mesh.closedmesh.com (captive portal, restrictive firewall, DNS
-/// failure, offline cold start) and need `--join` injected.
+/// Lightsail. As of the May 5 2026 cleanup the entry no longer publishes
+/// itself on the upstream `mesh-llm` Nostr channel and no longer auto-joins
+/// other meshes (`--auto` and `--publish` removed from its systemd unit) —
+/// so the ONLY way for a fresh install to find us is via this token plus
+/// the live `--join-url` path. It is no longer optional infra; if it goes
+/// stale every new install is stranded on a one-node mesh.
+///
+/// The runtime auto-rotates the iroh identity whenever the entry transitions
+/// public→private (or vice-versa), so any future "make the entry public
+/// again" flip will also force a token refresh here.
 ///
 /// The live `--join-url https://mesh.closedmesh.com/api/status` path
 /// (added in closedmesh-llm v0.65.0) always re-fetches on restart, so this
-/// fallback only matters for users whose installed CLI is older than that.
+/// fallback also covers users whose installed CLI is older than that.
 ///
 /// Update this constant whenever the entry node container is restarted
-/// (e.g. image update, config change). Fetch the current value from
-/// `curl https://mesh.closedmesh.com/api/status | jq -r .token` on a host
-/// that has the bearer token, or by reading it locally on the Lightsail
-/// box via `curl http://localhost:3131/api/status | jq -r .token`.
+/// (e.g. image update, config change). Read it from the box with:
+///   ssh ubuntu@3.210.30.58 'docker logs mesh-entry 2>&1 | \
+///       grep -oE "Invite created.*: \S+" | tail -1 | awk "{print \$NF}"'
 #[cfg(target_os = "macos")]
-const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6Ijg3Y2Y3MmUzZmM1NmFjOWM4MmVkMGU4YTE0NzU5ZGZlYzk1NjIyMWQ4NmM4NDUyN2U4MDY3MzRkNTkxYjEwMWYiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjUyNjcxIn1dfQ";
+const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjY2ZmFkNDNhMmZhZWRmMzIwMGZjN2M3YjU4NTVjMzIwZWRjMmY4ZjA0OGU2OTM1ZDIyZjljODkwMjFkNmQwM2EiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjQ2OTMzIn1dfQ";
 
 /// Public Iroh relays we explicitly hand to the runtime via `--relay`.
 ///
