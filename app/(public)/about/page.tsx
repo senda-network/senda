@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "../../components/Logo";
+import { MeshLiveStats } from "../../components/MeshLiveStats";
 
 export const metadata: Metadata = {
   title: "How ClosedMesh works",
   description:
-    "Your private LLM, on hardware people own. A peer-to-peer mesh of contributed machines serving open-weight models. No third-party API in the middle.",
+    "One collective computer made of every machine that joins. A peer-to-peer mesh of contributed hardware running open-weight models — pool memory, run bigger models than any single box can hold, no third-party API in the middle.",
 };
 
 export default function AboutPage() {
@@ -51,25 +52,34 @@ export default function AboutPage() {
             </div>
             <div className="max-w-3xl">
               <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
-                Your private LLM.
+                One collective computer.
                 <span className="block text-[var(--fg-muted)]">
-                  On hardware people own.
+                  Made of every machine that joins.
                 </span>
               </h1>
               <p className="mt-5 max-w-2xl text-pretty text-base leading-relaxed text-[var(--fg-muted)] sm:text-lg">
-                A peer-to-peer mesh of contributed machines, running
-                open-weight models. Use the chat from anywhere —
-                closedmesh.com or the desktop app, no install required.
-                Run a node from any capable machine and add capacity to the
-                mesh. No third-party API in the middle.
+                ClosedMesh pools memory and compute from contributors&apos;
+                hardware to run open-weight models — including ones too big
+                for any single laptop or workstation. Chat from
+                closedmesh.com or the desktop app, no install required. Add
+                a node from any capable machine and unlock more capacity for
+                the swarm. No third-party AI provider in the middle.
               </p>
             </div>
+
+            {/* Live stats island — reading the entry node every 30s. The
+                swarm is the product, so the marketing surface should look
+                like a status page, not a brochure. */}
+            <div className="w-full max-w-3xl">
+              <MeshLiveStats />
+            </div>
+
             <div className="flex flex-wrap items-center gap-3 text-[12px]">
               <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                No third-party LLM API
+                Pool memory across boxes
               </span>
               <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                Peer-to-peer
+                Models bigger than any one machine
               </span>
               <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
                 OpenAI-compatible runtime

@@ -2,7 +2,15 @@
 
 import { PageHeader } from "../../components/PageHeader";
 import { RemoteInstall } from "../../components/RemoteInstall";
-import { useMeshStatus, type NodeSummary } from "../../lib/use-mesh-status";
+import { MeshComputer } from "../../components/MeshComputer";
+import { MeshTopology } from "../../components/MeshTopology";
+import {
+  useMeshStatus,
+  type NodeSummary,
+  type MeshModel,
+  type SplitRole,
+} from "../../lib/use-mesh-status";
+import { useMeshModels } from "../../lib/use-mesh-models";
 import { nodeDisplayState } from "../../lib/node-display-state";
 
 const BACKEND_LABEL: Record<string, string> = {
@@ -15,23 +23,34 @@ const BACKEND_LABEL: Record<string, string> = {
 
 export default function NodesPage() {
   const mesh = useMeshStatus();
+  const meshModels = useMeshModels();
 
   return (
     <div className="flex min-h-dvh flex-col">
       <PageHeader
         title="Mesh"
-        subtitle="Every machine sharing capacity with you."
+        subtitle="One collective computer made of every contributor."
       />
 
       <main className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-6">
+          {!mesh.loading && mesh.online && (
+            <MeshComputer nodes={mesh.nodes} models={meshModels.models} />
+          )}
+
           <RemoteInstall />
+
+          <MeshTopology models={meshModels.models} nodes={mesh.nodes} />
 
           <NodesTable
             nodes={mesh.nodes}
             loading={mesh.loading}
             online={mesh.online}
           />
+
+          {meshModels.models.length > 0 && (
+            <ModelsServedSection models={meshModels.models} />
+          )}
         </div>
       </main>
     </div>
@@ -108,20 +127,19 @@ function NodeRow({ node }: { node: NodeSummary }) {
               this Mac
             </span>
           )}
+          <SplitRoleBadge node={node} />
         </div>
         <div className="mt-0.5 text-[11px] text-[var(--fg-muted)]">
           {isEntry
             ? "mesh.closedmesh.com · always-on gateway"
             : `${backend} · ${vram ? `${vram.toFixed(1)} GB memory` : "memory unknown"}`}
-          {/* Runtime version — same rationale as on the public status
-              page. Knowing the version is the difference between "the
-              runtime is broken" and "this peer just needs to update". */}
           {node.version && (
             <span className="ml-2 font-mono text-[10px] tabular-nums">
               · v{node.version}
             </span>
           )}
         </div>
+        <SplitRoleDetail node={node} />
         {!isEntry && models.length > 0 && (
           <div className="mt-1 truncate font-mono text-[10px] text-[var(--fg-muted)]">
             {models.join(", ")}
@@ -138,4 +156,186 @@ function NodeRow({ node }: { node: NodeSummary }) {
       </span>
     </li>
   );
+}
+
+function SplitRoleBadge({ node }: { node: NodeSummary }) {
+  const role = node.splitRole;
+  if (!role) return null;
+  const cls = roleBadgeClasses(role);
+  return (
+    <span
+      className={
+        "rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-wider " +
+        cls
+      }
+    >
+      {roleBadgeLabel(role)}
+    </span>
+  );
+}
+
+function SplitRoleDetail({ node }: { node: NodeSummary }) {
+  const role = node.splitRole;
+  if (!role) return null;
+
+  if (role === "pipeline_host" && node.splitGroup) {
+    const peerCount = node.splitGroup.peerIds.length;
+    return (
+      <div className="mt-1 text-[11px] text-[var(--fg-muted)]">
+        Pipeline host of{" "}
+        <span className="font-mono text-[var(--fg)]">
+          {node.splitGroup.model}
+        </span>
+        {" — "}
+        coordinating {peerCount > 1 ? `${peerCount - 1} layer workers` : "the split"}{" "}
+        ({node.splitGroup.totalGroupVramGb.toFixed(1)} GB pooled)
+      </div>
+    );
+  }
+
+  if (role === "pipeline_worker" && node.splitGroup) {
+    return (
+      <div className="mt-1 text-[11px] text-[var(--fg-muted)]">
+        Layer worker for{" "}
+        <span className="font-mono text-[var(--fg)]">
+          {node.splitGroup.model}
+        </span>
+      </div>
+    );
+  }
+
+  if (role === "moe_shard" && node.moeShard) {
+    return (
+      <div className="mt-1 text-[11px] text-[var(--fg-muted)]">
+        MoE shard of{" "}
+        <span className="font-mono text-[var(--fg)]">{node.moeShard.model}</span>
+        {" — "}
+        {node.moeShard.totalShards > 1
+          ? `${node.moeShard.totalShards} shards across the mesh`
+          : "single shard"}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function roleBadgeLabel(role: NonNullable<SplitRole>): string {
+  switch (role) {
+    case "pipeline_host":
+      return "Pipeline host";
+    case "pipeline_worker":
+      return "Layer worker";
+    case "moe_shard":
+      return "MoE shard";
+  }
+}
+
+function roleBadgeClasses(role: NonNullable<SplitRole>): string {
+  switch (role) {
+    case "pipeline_host":
+      return "border-emerald-400/40 bg-emerald-400/10 text-emerald-300";
+    case "pipeline_worker":
+      return "border-sky-400/40 bg-sky-400/10 text-sky-300";
+    case "moe_shard":
+      return "border-fuchsia-400/40 bg-fuchsia-400/10 text-fuchsia-300";
+  }
+}
+
+function ModelsServedSection({ models }: { models: MeshModel[] }) {
+  // Show warm models prominently; cold/catalog models are covered on the
+  // Models page so we keep this section a tight "what's running right now"
+  // strip.
+  const warm = models.filter((m) => m.status === "warm");
+  if (warm.length === 0) return null;
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)]">
+      <div className="border-b border-[var(--border)] px-5 py-3">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--accent)]">
+          Models the mesh is serving right now
+        </div>
+        <div className="text-sm font-semibold tracking-tight text-[var(--fg)]">
+          {warm.length} {warm.length === 1 ? "model" : "models"} live
+        </div>
+      </div>
+      <ul className="divide-y divide-[var(--border)]">
+        {warm.map((m) => (
+          <li
+            key={m.name}
+            className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-mono text-[12px] text-[var(--fg)]">
+                {m.displayName || m.name}
+              </div>
+              <div className="mt-0.5 text-[11px] text-[var(--fg-muted)]">
+                {modelTopologyLine(m)}
+              </div>
+            </div>
+            <span
+              className={
+                "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium " +
+                splitKindBadgeClasses(m.splitKind)
+              }
+            >
+              {splitKindLabel(m.splitKind)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function modelTopologyLine(model: MeshModel): string {
+  const size = `${model.sizeGb.toFixed(1)} GB model`;
+  const pool = `${model.meshVramGb.toFixed(1)} GB pooled`;
+  if (model.splitKind === "solo") {
+    return `${size} · served solo by 1 node`;
+  }
+  if (model.splitKind === "pipeline") {
+    return `${size} · split across ${model.nodeCount} nodes (${pool})`;
+  }
+  if (model.splitKind === "moe") {
+    return `${size} · ${model.nodeCount} MoE shards${
+      model.expertCount ? ` · ${model.expertCount} experts` : ""
+    }`;
+  }
+  if (model.splitKind === "multi_host") {
+    return `${size} · ${model.nodeCount} redundant copies`;
+  }
+  return `${size} · ${model.nodeCount} ${
+    model.nodeCount === 1 ? "node" : "nodes"
+  }`;
+}
+
+function splitKindLabel(kind: MeshModel["splitKind"]): string {
+  switch (kind) {
+    case "solo":
+      return "Solo";
+    case "pipeline":
+      return "Pipeline";
+    case "moe":
+      return "MoE";
+    case "multi_host":
+      return "Multi-host";
+    case "cold":
+      return "Cold";
+  }
+}
+
+function splitKindBadgeClasses(kind: MeshModel["splitKind"]): string {
+  switch (kind) {
+    case "solo":
+      return "border-[var(--border)] bg-[var(--bg-elev-2)] text-[var(--fg-muted)]";
+    case "pipeline":
+      return "border-emerald-400/40 bg-emerald-400/10 text-emerald-300";
+    case "moe":
+      return "border-fuchsia-400/40 bg-fuchsia-400/10 text-fuchsia-300";
+    case "multi_host":
+      return "border-sky-400/40 bg-sky-400/10 text-sky-300";
+    case "cold":
+      return "border-[var(--border)] bg-[var(--bg-elev-2)] text-[var(--fg-muted)]";
+  }
 }

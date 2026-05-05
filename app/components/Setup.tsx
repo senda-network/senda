@@ -177,19 +177,22 @@ function Hero({
       </div>
 
       <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
-        Run a ClosedMesh node.
+        Join the swarm.
         <br />
-        Add your hardware to the mesh.
+        Unlock more capacity for everyone.
       </h1>
       <p className="mt-5 max-w-xl text-pretty text-[15px] leading-relaxed text-[var(--fg-muted)] sm:text-base">
-        Installing the runtime joins this machine to the open peer-to-peer
-        mesh. You&apos;ll be able to chat without internet, and your
-        hardware contributes compute to whoever else is using ClosedMesh.
+        Installing ClosedMesh adds your machine&apos;s memory and compute to a
+        collective peer-to-peer computer. The mesh runs open-weight models —
+        including ones too big for any single laptop or workstation — by
+        pooling VRAM across contributors. Your box helps unlock bigger
+        models, and you get to chat with them in return.
       </p>
 
       <div className="mt-7 flex flex-wrap justify-center gap-2 text-[11px]">
-        <Pill>No third-party LLM API</Pill>
-        <Pill>Open-weight models</Pill>
+        <Pill>Pool memory across boxes</Pill>
+        <Pill>Run models bigger than any one machine</Pill>
+        <Pill>No third-party AI provider</Pill>
         <Pill>Mac · Linux · Windows</Pill>
       </div>
 
@@ -198,7 +201,7 @@ function Hero({
           onClick={onInstall}
           className="w-full rounded-xl bg-[var(--accent)] px-6 py-4 text-base font-semibold text-black shadow-[0_10px_30px_-12px_rgba(255,122,69,0.8)] transition hover:brightness-110"
         >
-          Install ClosedMesh
+          Install and join the mesh
         </button>
         <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-[var(--fg-muted)]">
           <input
@@ -207,7 +210,7 @@ function Hero({
             onChange={(e) => onAutoStartChange(e.target.checked)}
             className="h-4 w-4 accent-[var(--accent)]"
           />
-          Start automatically when I log in
+          Stay in the mesh when I log in (recommended)
         </label>
       </div>
     </div>

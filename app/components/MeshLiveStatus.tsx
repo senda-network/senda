@@ -3,9 +3,17 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+type StatusNode = {
+  hostname?: string | null;
+  vramGb?: number;
+  capability?: { vramGb?: number };
+};
+
 type Status = {
   online: boolean;
   models: string[];
+  nodeCount?: number;
+  nodes?: StatusNode[];
 };
 
 type Phase = "loading" | "online" | "offline";
@@ -35,6 +43,8 @@ export function MeshLiveStatus({
 }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [models, setModels] = useState<string[]>([]);
+  const [contributorCount, setContributorCount] = useState(0);
+  const [pooledVramGb, setPooledVramGb] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,14 +59,30 @@ export function MeshLiveStatus({
         if (data.online) {
           setPhase("online");
           setModels(data.models ?? []);
+          // Pool VRAM only across non-entry nodes so the gateway's reported
+          // VRAM doesn't dilute the headline number on the homepage.
+          const contributors = (data.nodes ?? []).filter(
+            (n) => !(n.hostname ?? "").startsWith("ip-"),
+          );
+          setContributorCount(contributors.length);
+          setPooledVramGb(
+            contributors.reduce(
+              (acc, n) => acc + (n.capability?.vramGb ?? n.vramGb ?? 0),
+              0,
+            ),
+          );
         } else {
           setPhase("offline");
           setModels([]);
+          setContributorCount(0);
+          setPooledVramGb(0);
         }
       } catch {
         if (!cancelled) {
           setPhase("offline");
           setModels([]);
+          setContributorCount(0);
+          setPooledVramGb(0);
         }
       } finally {
         if (!cancelled) {
@@ -80,11 +106,19 @@ export function MeshLiveStatus({
         : phase === "loading"
           ? "bg-[var(--fg-muted)]"
           : "bg-red-400";
+    const poolLabel =
+      pooledVramGb > 0
+        ? ` · ${pooledVramGb >= 100 ? Math.round(pooledVramGb) : pooledVramGb.toFixed(0)} GB pooled`
+        : "";
+    const contribLabel =
+      contributorCount > 0
+        ? `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"}${poolLabel}`
+        : models.length > 0
+          ? `${models.length} model${models.length === 1 ? "" : "s"}`
+          : "Mesh online";
     const label =
       phase === "online"
-        ? models.length > 0
-          ? `Mesh online · ${models.length} model${models.length === 1 ? "" : "s"}`
-          : "Mesh online"
+        ? contribLabel
         : phase === "loading"
           ? "Checking mesh…"
           : "Mesh unreachable";
@@ -134,6 +168,14 @@ export function MeshLiveStatus({
   const head = models.slice(0, 3).map(prettyModelName);
   const rest = models.length - head.length;
   const tail = rest > 0 ? `, +${rest} more` : "";
+  // Compose a swarm-flavored sentence when contributor + VRAM data is
+  // available; fall back to model-only phrasing for legacy meshes.
+  const lead =
+    contributorCount > 0
+      ? `Right now ClosedMesh is a ${pooledVramGb >= 100 ? Math.round(pooledVramGb) : pooledVramGb.toFixed(0)} GB computer made of ${contributorCount} ${
+          contributorCount === 1 ? "contributor" : "contributors"
+        }, serving`
+      : "Right now the mesh is serving";
   return (
     <div className="inline-flex items-center gap-2 text-[12px] text-[var(--fg-muted)]">
       <span className="relative inline-flex h-2 w-2">
@@ -144,7 +186,7 @@ export function MeshLiveStatus({
         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
       </span>
       <span>
-        Right now the mesh is serving{" "}
+        {lead}{" "}
         <span className="text-[var(--fg)]">{head.join(", ")}</span>
         {tail}.
       </span>

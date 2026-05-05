@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
-import { useMeshStatus } from "../../lib/use-mesh-status";
+import { useMeshStatus, type MeshModel } from "../../lib/use-mesh-status";
+import { useMeshModels } from "../../lib/use-mesh-models";
 
 type LocalModel = { id: string; sizeBytes: number | null };
 type ListResp =
@@ -26,7 +27,11 @@ type DownloadState = {
   error?: string;
 };
 
-type StartupModel = { model: string; ctxSize?: number };
+type StartupModel = {
+  model: string;
+  ctxSize?: number;
+  forceSplit?: boolean;
+};
 type StartupResp =
   | {
       ok: true;
@@ -54,6 +59,7 @@ const FAMILY_TINT: Record<CatalogModel["family"], string> = {
 
 export default function ModelsPage() {
   const mesh = useMeshStatus();
+  const meshModels = useMeshModels();
   const [local, setLocal] = useState<LocalModel[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>(
@@ -99,21 +105,29 @@ export default function ModelsPage() {
   }, [refreshLocal, refreshStartup]);
 
   const setStartupModel = useCallback(
-    async (id: string) => {
+    async (
+      id: string,
+      opts: { forceSplit?: boolean } = {},
+    ) => {
       setStartupBusy(id);
       setStartupToast(null);
       try {
         const res = await fetch("/api/control/models/startup", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ model: id }),
+          body: JSON.stringify({
+            model: id,
+            forceSplit: opts.forceSplit === true ? true : undefined,
+          }),
         });
         const data = (await res.json()) as StartupResp;
         if (data.ok) {
           setStartup(data.models);
           setStartupToast(
             data.restart?.message ??
-              `Saved. Restarting the runtime so ${id} loads on boot.`,
+              (opts.forceSplit
+                ? `Saved. Restarting so ${id} runs across the mesh.`
+                : `Saved. Restarting the runtime so ${id} loads on boot.`),
           );
         } else {
           setStartupToast(data.message);
@@ -247,6 +261,20 @@ export default function ModelsPage() {
   const localVramGb = selfNode?.capability.vramGb ?? selfNode?.vramGb ?? null;
   const localBackend = selfNode?.capability.backend ?? null;
 
+  // Find a runtime-reported MeshModel for any catalog id by either name match
+  // (the typical case once the runtime warms up) or substring match (the
+  // runtime sometimes appends `-Q4_K_M` suffixes; we accept partial overlap).
+  const findMeshModel = (id: string): MeshModel | null => {
+    const exact = meshModels.models.find((m) => m.name === id);
+    if (exact) return exact;
+    return (
+      meshModels.models.find(
+        (m) => m.name.includes(id) || id.includes(m.name),
+      ) ?? null
+    );
+  };
+
+  const startupById = new Map(startup.map((s) => [s.model, s] as const));
   const startupIds = new Set(startup.map((s) => s.model));
 
   return (
@@ -308,11 +336,15 @@ export default function ModelsPage() {
                     download={downloads[m.id] ?? null}
                     localVramGb={localVramGb}
                     localBackend={localBackend}
+                    meshModel={findMeshModel(m.id)}
                     state="downloaded"
                     isStartup={startupIds.has(m.id)}
+                    startupForceSplit={
+                      startupById.get(m.id)?.forceSplit === true
+                    }
                     startupBusy={startupBusy === m.id}
                     onDownload={() => startDownload(m.id)}
-                    onSetStartup={() => setStartupModel(m.id)}
+                    onSetStartup={(opts) => setStartupModel(m.id, opts)}
                   />
                 ))}
                 {orphans.map((m) => (
@@ -355,7 +387,7 @@ export default function ModelsPage() {
 
           <Section
             title="Catalog"
-            hint="Hand-picked models that work well on ClosedMesh. Tap Download to pull one onto this machine."
+            hint="Hand-picked models that work well on ClosedMesh. Big ones run pooled across contributors — no single beefy box required."
           >
             <ul className="space-y-2">
               {remoteCatalog.map((m) => (
@@ -365,11 +397,15 @@ export default function ModelsPage() {
                   download={downloads[m.id] ?? null}
                   localVramGb={localVramGb}
                   localBackend={localBackend}
+                  meshModel={findMeshModel(m.id)}
                   state="catalog"
                   isStartup={startupIds.has(m.id)}
+                  startupForceSplit={
+                    startupById.get(m.id)?.forceSplit === true
+                  }
                   startupBusy={startupBusy === m.id}
                   onDownload={() => startDownload(m.id)}
-                  onSetStartup={() => setStartupModel(m.id)}
+                  onSetStartup={(opts) => setStartupModel(m.id, opts)}
                 />
               ))}
             </ul>
@@ -492,13 +528,91 @@ function StartupBanner({
   );
 }
 
+type MeshFitState =
+  | { kind: "unknown" }
+  | { kind: "solo"; localVramGb: number }
+  | {
+      kind: "pooled";
+      contributorCount: number;
+      pooledVramGb: number;
+      neededVramGb: number;
+    }
+  | {
+      kind: "needs_more";
+      pooledVramGb: number;
+      neededVramGb: number;
+      shortfallGb: number;
+      eligiblePeerCount: number;
+    };
+
+/**
+ * Three-state mesh-aware fit determination. Replaces the old "Won't fit on
+ * this Mac" badge with the swarm-aware "does the mesh fit this model right
+ * now" question.
+ *
+ * Source of truth, in order of preference:
+ *   1. The runtime's `MeshModel.meshFit` — pre-computed, RTT-aware, peer
+ *      VRAM-aware. This is the right answer when available.
+ *   2. Catalog `minVramGb` against local VRAM — fallback when the model
+ *      isn't yet warm/known to the runtime. The fallback intentionally
+ *      doesn't synthesize peer pooling since we'd need same-backend
+ *      filtering and RTT data the catalog doesn't have.
+ */
+function determineMeshFit(
+  catalog: CatalogModel,
+  meshModel: MeshModel | null,
+  localVramGb: number | null,
+  localBackend: string | null,
+): MeshFitState {
+  if (meshModel?.meshFit) {
+    const fit = meshModel.meshFit;
+    if (fit.fitsOnLargestNode) {
+      return {
+        kind: "solo",
+        localVramGb: localVramGb ?? meshModel.meshVramGb,
+      };
+    }
+    if (fit.fitsPooled) {
+      return {
+        kind: "pooled",
+        contributorCount: fit.eligiblePeerCount,
+        pooledVramGb: fit.pooledVramGb,
+        neededVramGb: fit.neededVramGb,
+      };
+    }
+    return {
+      kind: "needs_more",
+      pooledVramGb: fit.pooledVramGb,
+      neededVramGb: fit.neededVramGb,
+      shortfallGb: Math.max(0, fit.neededVramGb - fit.pooledVramGb),
+      eligiblePeerCount: fit.eligiblePeerCount,
+    };
+  }
+
+  // Fallback when the runtime doesn't yet know about this model.
+  if (localVramGb == null) return { kind: "unknown" };
+  const fitsLocal =
+    localVramGb >= catalog.minVramGb ||
+    (catalog.cpuOk && (localBackend === "cpu" || localVramGb < 1));
+  if (fitsLocal) return { kind: "solo", localVramGb };
+  return {
+    kind: "needs_more",
+    pooledVramGb: localVramGb,
+    neededVramGb: catalog.minVramGb,
+    shortfallGb: Math.max(0, catalog.minVramGb - localVramGb),
+    eligiblePeerCount: 1,
+  };
+}
+
 function CatalogRow({
   model,
   download,
   localVramGb,
   localBackend,
+  meshModel,
   state,
   isStartup,
+  startupForceSplit,
   startupBusy,
   onDownload,
   onSetStartup,
@@ -507,18 +621,15 @@ function CatalogRow({
   download: DownloadState | null;
   localVramGb: number | null;
   localBackend: string | null;
+  meshModel: MeshModel | null;
   state: "downloaded" | "catalog";
   isStartup: boolean;
+  startupForceSplit: boolean;
   startupBusy: boolean;
   onDownload: () => void;
-  onSetStartup: () => void;
+  onSetStartup: (opts?: { forceSplit?: boolean }) => void;
 }) {
-  const fits =
-    localVramGb == null
-      ? null
-      : localVramGb >= model.minVramGb ||
-        (model.cpuOk && (localBackend === "cpu" || localVramGb < 1));
-
+  const fit = determineMeshFit(model, meshModel, localVramGb, localBackend);
   const downloading = download?.phase === "running";
   const downloadFailed = download?.phase === "failed";
 
@@ -556,14 +667,7 @@ function CatalogRow({
                 Startup model
               </span>
             )}
-            {fits === false && state === "catalog" && (
-              <span
-                className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-300"
-                title={`This Mac has ${localVramGb?.toFixed(1)} GB; this model wants ${model.minVramGb} GB.`}
-              >
-                Won&apos;t fit on this Mac
-              </span>
-            )}
+            <MeshFitBadge fit={fit} />
             {model.cpuOk && (
               <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-2 py-0.5 text-[10px] font-medium text-[var(--fg-muted)]">
                 CPU-friendly
@@ -573,6 +677,7 @@ function CatalogRow({
           <div className="mt-1.5 max-w-2xl text-[13px] text-[var(--fg-muted)]">
             {model.description}
           </div>
+          <MeshFitDetail fit={fit} model={model} />
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--fg-muted)]">
             <span>
               <span className="text-[var(--fg)]">{model.sizeGb} GB</span> on
@@ -589,7 +694,7 @@ function CatalogRow({
         <div className="flex shrink-0 flex-col items-end gap-2">
           {state === "downloaded" ? (
             <button
-              onClick={onSetStartup}
+              onClick={() => onSetStartup()}
               disabled={startupBusy || isStartup}
               className={
                 "rounded-lg px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed " +
@@ -619,6 +724,18 @@ function CatalogRow({
           )}
         </div>
       </div>
+
+      {state === "downloaded" && isStartup && (
+        <RunOnMeshToggle
+          model={model}
+          meshModel={meshModel}
+          forceSplit={startupForceSplit}
+          busy={startupBusy}
+          onChange={(next) =>
+            onSetStartup({ forceSplit: next ? true : undefined })
+          }
+        />
+      )}
 
       {download && (
         <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2.5">
@@ -656,4 +773,169 @@ function formatBytes(n: number): string {
   if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
   if (n >= 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${n} B`;
+}
+
+/**
+ * Tiny pill describing how a model relates to current mesh capacity. Three
+ * faces: solo / pooled / needs more contributors. The previous "Won't fit
+ * on this Mac" badge was misleading because it ignored the swarm — this
+ * replaces it with the swarm-aware question.
+ */
+function MeshFitBadge({ fit }: { fit: MeshFitState }) {
+  if (fit.kind === "unknown") return null;
+
+  if (fit.kind === "solo") {
+    return (
+      <span
+        className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300"
+        title={`Fits on this Mac alone (${fit.localVramGb.toFixed(1)} GB).`}
+      >
+        Fits on this Mac
+      </span>
+    );
+  }
+
+  if (fit.kind === "pooled") {
+    return (
+      <span
+        className="rounded-full border border-sky-400/40 bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium text-sky-300"
+        title={`Pooled across ${fit.contributorCount} contributors (${fit.pooledVramGb.toFixed(1)} GB total, needs ${fit.neededVramGb.toFixed(1)} GB).`}
+      >
+        Fits on the mesh
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-300"
+      title={`Mesh has ${fit.pooledVramGb.toFixed(1)} GB so far; needs ${fit.neededVramGb.toFixed(1)} GB to load.`}
+    >
+      Needs more contributors
+    </span>
+  );
+}
+
+/** Long-form detail line under a catalog row, expanding the badge. */
+function MeshFitDetail({
+  fit,
+  model,
+}: {
+  fit: MeshFitState;
+  model: CatalogModel;
+}) {
+  if (fit.kind === "unknown") return null;
+
+  if (fit.kind === "solo") {
+    return (
+      <div className="mt-1.5 text-[11px] text-emerald-300/90">
+        Will run on this Mac alone — {model.minVramGb} GB headroom available.
+      </div>
+    );
+  }
+
+  if (fit.kind === "pooled") {
+    const contributors = fit.contributorCount;
+    return (
+      <div className="mt-1.5 text-[11px] text-sky-300/90">
+        Will run pooled across {contributors}{" "}
+        {contributors === 1 ? "contributor" : "contributors"} —{" "}
+        {fit.pooledVramGb.toFixed(1)} GB combined memory covers the{" "}
+        {fit.neededVramGb.toFixed(1)} GB required.
+      </div>
+    );
+  }
+
+  const ask =
+    fit.shortfallGb >= 1
+      ? `${Math.ceil(fit.shortfallGb)} GB`
+      : `${fit.shortfallGb.toFixed(1)} GB`;
+  return (
+    <div className="mt-1.5 text-[11px] text-amber-300/90">
+      Mesh has {fit.pooledVramGb.toFixed(1)} of {fit.neededVramGb.toFixed(1)} GB
+      so far — needs {ask} more to load. Invite a friend or spin up another
+      node to unlock this model.
+    </div>
+  );
+}
+
+/**
+ * "Run on the mesh" per-model toggle. Visible on the downloaded + startup
+ * row so the user can opt the model into pipeline-parallel mode (writes
+ * `force_split = true` to its `[[models]]` block).
+ *
+ * Gated to MoE models that would split below the viability floor described
+ * in `closedmesh-llm/closedmesh/docs/MoE_SPLIT_REPORT.md` — splitting MoEs
+ * with too few experts per shard produces garbage output, so we'd rather
+ * surface the constraint than let users foot-gun.
+ */
+function RunOnMeshToggle({
+  model,
+  meshModel,
+  forceSplit,
+  busy,
+  onChange,
+}: {
+  model: CatalogModel;
+  meshModel: MeshModel | null;
+  forceSplit: boolean;
+  busy: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  // Heuristic MoE viability floor: report says shards with fewer than ~64
+  // experts produce coherent output. We use the runtime's reported expert
+  // count when available (more accurate than the catalog), or skip the
+  // gate when we don't know the shape of the model yet.
+  const expertCount = meshModel?.expertCount ?? null;
+  const eligiblePeers = meshModel?.meshFit?.eligiblePeerCount ?? 1;
+  const proposedShards = Math.max(2, eligiblePeers);
+  const expertsPerShard =
+    expertCount && proposedShards > 0 ? expertCount / proposedShards : null;
+  const moeUnsafe =
+    meshModel?.moe === true &&
+    expertsPerShard !== null &&
+    expertsPerShard < 64;
+
+  const explainer = moeUnsafe
+    ? `MoE models need at least ~64 experts per shard for coherent output. With the current mesh (${proposedShards} shards × ${expertCount ?? "?"} experts) this would split into ${expertsPerShard?.toFixed(0) ?? "?"} experts per shard — too low.`
+    : forceSplit
+      ? "On: this model launches pipeline-parallel even when one box could fit it solo."
+      : "Off: the runtime decides per-launch (solo when possible, split when required).";
+
+  const disabled = busy || moeUnsafe;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)]/60 px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="text-[12px] font-medium text-[var(--fg)]">
+          Run on the mesh
+        </div>
+        <div className="mt-0.5 max-w-md text-[11px] text-[var(--fg-muted)]">
+          {explainer}
+        </div>
+        <div className="mt-1 text-[10px] text-[var(--fg-muted)]/80">
+          Touches{" "}
+          <span className="font-mono">force_split = true</span> in{" "}
+          <span className="font-mono">~/.closedmesh/config.toml</span> for
+          this model.
+        </div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={forceSplit}
+        aria-label={`Run ${model.name} on the mesh`}
+        disabled={disabled}
+        onClick={() => onChange(!forceSplit)}
+        className={
+          "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 " +
+          (forceSplit
+            ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+            : "border-[var(--border)] bg-[var(--bg-elev)] text-[var(--fg-muted)] hover:border-[var(--accent)]/40 hover:text-[var(--fg)]")
+        }
+      >
+        {busy ? "Saving…" : forceSplit ? "On" : "Off"}
+      </button>
+    </div>
+  );
 }

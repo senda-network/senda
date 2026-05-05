@@ -69,6 +69,39 @@ export type NodeCapabilitySummary = {
   loadedModels: string[];
 };
 
+/**
+ * Coarse classification of a node's role inside an active distributed
+ * inference. Mirrors `closedmesh-llm/closedmesh/src/api/status.rs`'s
+ * `PeerPayload.split_role`. The Mesh page reads this to render role badges
+ * so the user understands when their box is contributing layers to a
+ * collective serve vs running solo.
+ *
+ * `null` means "no split role to surface" — the node is standby, solo, or
+ * the runtime is too old to report this field.
+ */
+export type SplitRole =
+  | "pipeline_host"
+  | "pipeline_worker"
+  | "moe_shard"
+  | null;
+
+/**
+ * Pipeline-parallel split group membership for a node. `null` when the node
+ * is not currently in a multi-node serving group.
+ */
+export type SplitGroup = {
+  model: string;
+  hostId: string;
+  peerIds: string[];
+  totalGroupVramGb: number;
+};
+
+/** MoE expert-shard membership for a node. */
+export type MoeShard = {
+  model: string;
+  totalShards: number;
+};
+
 export type NodeSummary = {
   id: string;
   hostname: string | null;
@@ -87,6 +120,23 @@ export type NodeSummary = {
    * versions, but the local-node synth path may not have it).
    */
   version: string | null;
+  /**
+   * How this node is currently participating in inference for one of the
+   * mesh's active models. Drives the role badges on the Mesh page.
+   * Always null for standby/solo nodes or when the runtime is older than
+   * the schema (treat missing as "unknown, render legacy view").
+   */
+  splitRole: SplitRole;
+  /**
+   * When present, the pipeline-parallel split group this node belongs to.
+   * The Mesh page draws a small topology diagram per active split using
+   * this data plus per-model `MeshModel.pipelineGroup`.
+   */
+  splitGroup: SplitGroup | null;
+  /**
+   * When present, the MoE expert-shard membership for this node.
+   */
+  moeShard: MoeShard | null;
 };
 
 type Status = {
@@ -105,6 +155,18 @@ type RuntimeCapability = {
   loaded_models?: string[];
 };
 
+type RuntimeSplitGroup = {
+  model: string;
+  host_id: string;
+  peer_ids: string[];
+  total_group_vram_gb: number;
+};
+
+type RuntimeMoeShard = {
+  model: string;
+  total_shards: number;
+};
+
 type RuntimePeer = {
   id?: string;
   role?: string;
@@ -115,6 +177,13 @@ type RuntimePeer = {
   hosted_models?: string[];
   capability?: RuntimeCapability;
   version?: string;
+  /**
+   * Phase A schema additions — older runtimes (<0.66) won't emit these.
+   * Treated as optional; null/missing means "no split role to surface".
+   */
+  split_role?: string | null;
+  split_group?: RuntimeSplitGroup | null;
+  moe_shard?: RuntimeMoeShard | null;
 };
 
 type RuntimeGpu = {
@@ -138,7 +207,43 @@ type RuntimeStatus = {
   peers?: RuntimePeer[];
   /** Runtime version of THIS node (the one serving the /api/status). */
   version?: string;
+  /**
+   * Phase A self-fields — present on >=0.66 runtimes only. Used by the
+   * dashboard's "you're holding layers X-Y of model Z" card.
+   */
+  my_split_role?: string | null;
+  my_split_group?: RuntimeSplitGroup | null;
+  my_moe_shard?: RuntimeMoeShard | null;
 };
+
+function normalizeSplitRole(raw: string | null | undefined): SplitRole {
+  if (raw === "pipeline_host" || raw === "pipeline_worker" || raw === "moe_shard") {
+    return raw;
+  }
+  return null;
+}
+
+function normalizeSplitGroup(
+  raw: RuntimeSplitGroup | null | undefined,
+): SplitGroup | null {
+  if (!raw) return null;
+  return {
+    model: raw.model,
+    hostId: raw.host_id,
+    peerIds: raw.peer_ids ?? [],
+    totalGroupVramGb: raw.total_group_vram_gb ?? 0,
+  };
+}
+
+function normalizeMoeShard(
+  raw: RuntimeMoeShard | null | undefined,
+): MoeShard | null {
+  if (!raw) return null;
+  return {
+    model: raw.model,
+    totalShards: raw.total_shards ?? 0,
+  };
+}
 
 function summarizeCapability(cap: RuntimeCapability | undefined): NodeCapabilitySummary {
   return {
@@ -285,6 +390,9 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     ].filter((m, i, arr) => arr.indexOf(m) === i),
     capability: summarizeCapability(peer.capability),
     version: peer.version ?? null,
+    splitRole: normalizeSplitRole(peer.split_role),
+    splitGroup: normalizeSplitGroup(peer.split_group),
+    moeShard: normalizeMoeShard(peer.moe_shard),
   };
 }
 
@@ -333,6 +441,9 @@ function buildNodes(
     ].filter((m, i, arr) => arr.indexOf(m) === i),
     capability: summarizeCapability(inferLocalCapability(rt)),
     version: rt.version ?? null,
+    splitRole: normalizeSplitRole(rt.my_split_role),
+    splitGroup: normalizeSplitGroup(rt.my_split_group),
+    moeShard: normalizeMoeShard(rt.my_moe_shard),
   });
 
   const addPeers = (peers: RuntimePeer[] | undefined) => {

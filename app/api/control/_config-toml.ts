@@ -28,6 +28,20 @@ export type StartupModel = {
   model: string;
   /** Optional context size override. */
   ctxSize?: number;
+  /**
+   * Per-model "Run on the mesh" toggle. When true, the runtime forces this
+   * model to launch in pipeline-parallel mode — workers are pulled from the
+   * mesh even if a single host could fit the model alone. Maps 1:1 to the
+   * runtime's `force_split` field on `ModelConfigEntry` (see
+   * `closedmesh-llm/closedmesh/src/plugin/config.rs`).
+   *
+   * Omitted (undefined) means "leave the runtime default" — equivalent to
+   * `force_split = false`. We keep the optional/undefined distinction so
+   * the config writer can leave the key out entirely when a user hasn't
+   * opted in, instead of writing a noisy `force_split = false` to every
+   * `[[models]]` block.
+   */
+  forceSplit?: boolean;
 };
 
 /**
@@ -40,7 +54,11 @@ export function readStartupModels(content: string): StartupModel[] {
 
   const flush = () => {
     if (current && current.model) {
-      out.push({ model: current.model, ctxSize: current.ctxSize });
+      out.push({
+        model: current.model,
+        ctxSize: current.ctxSize,
+        forceSplit: current.forceSplit,
+      });
     }
     current = null;
   };
@@ -71,6 +89,10 @@ export function readStartupModels(content: string): StartupModel[] {
     } else if (key === "ctx_size") {
       const n = Number(valueRaw);
       if (Number.isFinite(n)) current.ctxSize = n;
+    } else if (key === "force_split") {
+      const v = valueRaw.trim().toLowerCase();
+      if (v === "true") current.forceSplit = true;
+      else if (v === "false") current.forceSplit = false;
     }
   }
   flush();
@@ -119,6 +141,13 @@ export function writeStartupModels(
     blocks.push(`model = "${escapeString(m.model)}"`);
     if (typeof m.ctxSize === "number" && Number.isFinite(m.ctxSize)) {
       blocks.push(`ctx_size = ${Math.floor(m.ctxSize)}`);
+    }
+    // Only emit `force_split` when the user has explicitly opted in; we
+    // never write `force_split = false` because that would clutter the
+    // config with redundant defaults and force-merge with hand-edited
+    // files for users who never touched the toggle.
+    if (m.forceSplit === true) {
+      blocks.push(`force_split = true`);
     }
     blocks.push("");
   }

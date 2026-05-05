@@ -627,9 +627,11 @@ export default function DashboardPage() {
             />
           )}
 
+          {selfNode && <ContributionCard self={selfNode} />}
+
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <SummaryStat
-              label="Online machines"
+              label="Contributors"
               value={mesh.online ? String(mesh.nodeCount) : "0"}
               hint={
                 peers.length > 0
@@ -641,7 +643,7 @@ export default function DashboardPage() {
             <SummaryStat
               label="Pooled memory"
               value={totalVram > 0 ? `${totalVram.toFixed(1)} GB` : "—"}
-              hint="across every online machine"
+              hint="combined across every contributor"
               href="/nodes"
             />
             <SummaryStat
@@ -1438,6 +1440,95 @@ function Stat({
         {value}
       </div>
     </div>
+  );
+}
+
+/**
+ * "What you're holding right now" card. Shown when the local node is
+ * actively contributing to a multi-node serve — pipeline-host, layer
+ * worker, or MoE shard. Reads `splitRole` / `splitGroup` / `moeShard`
+ * from the runtime's self-fields (`my_split_role` etc.) so the dashboard
+ * can name the contribution concretely instead of saying "your machine
+ * is connected to the mesh".
+ *
+ * Renders `null` when the self-node has no split role: that includes
+ * solo serves, standby states, and older runtimes that don't emit the
+ * fields. Better to show nothing than to muddy the dashboard with a
+ * "contributing layers ?-? of model ?" placeholder.
+ */
+function ContributionCard({ self }: { self: NodeSummary }) {
+  if (!self.splitRole) return null;
+
+  let title: string;
+  let body: string;
+  let model: string;
+
+  if (self.splitRole === "pipeline_host" && self.splitGroup) {
+    const peerCount = Math.max(0, self.splitGroup.peerIds.length - 1);
+    model = self.splitGroup.model;
+    title = "You're hosting a pipeline split";
+    body = peerCount > 0
+      ? `Your machine coordinates the elected host for ${model}, with ${peerCount} layer worker${peerCount === 1 ? "" : "s"} pooling ${self.splitGroup.totalGroupVramGb.toFixed(1)} GB of memory across the mesh.`
+      : `Your machine is the elected host for ${model}, ready to fan layers out as workers join (${self.splitGroup.totalGroupVramGb.toFixed(1)} GB pooled so far).`;
+  } else if (self.splitRole === "pipeline_worker" && self.splitGroup) {
+    model = self.splitGroup.model;
+    title = "You're holding part of the model";
+    body = `Your machine is running a slice of ${model} as a layer worker — the elected host pulls forward passes from your VRAM as part of a ${self.splitGroup.totalGroupVramGb.toFixed(1)} GB pooled split.`;
+  } else if (self.splitRole === "moe_shard" && self.moeShard) {
+    model = self.moeShard.model;
+    title = "You're running an expert shard";
+    body = self.moeShard.totalShards > 1
+      ? `Your machine holds one of ${self.moeShard.totalShards} MoE shards for ${model}. Each contributor handles a subset of the experts; your VRAM is unlocking experts the swarm couldn't otherwise serve.`
+      : `Your machine is running ${model} as an expert shard, ready to pair with peers as they join.`;
+  } else {
+    return null;
+  }
+
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-emerald-400/40 bg-emerald-400/5 p-5">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(60% 100% at 100% 0%, rgba(52,211,153,0.10), transparent 70%)",
+        }}
+      />
+      <div className="relative flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 max-w-2xl items-start gap-3">
+          <span
+            aria-hidden
+            className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.7)]"
+          />
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-300">
+              Your contribution
+            </div>
+            <div className="mt-0.5 text-base font-semibold tracking-tight text-[var(--fg)]">
+              {title}
+            </div>
+            <div className="mt-1 max-w-xl text-[12px] leading-relaxed text-[var(--fg-muted)]">
+              {body}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[var(--fg-muted)]">
+              <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-emerald-200">
+                {model}
+              </span>
+              <span aria-hidden>·</span>
+              <span className="font-mono uppercase tracking-wider">
+                {self.splitRole.replace("_", " ")}
+              </span>
+            </div>
+          </div>
+        </div>
+        <Link
+          href="/nodes"
+          className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2 text-[11px] font-medium text-[var(--fg-muted)] transition hover:text-[var(--fg)]"
+        >
+          See the topology →
+        </Link>
+      </div>
+    </section>
   );
 }
 

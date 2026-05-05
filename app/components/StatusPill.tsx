@@ -83,13 +83,29 @@ function NodeRow({ node }: { node: NodeSummary }) {
   );
 }
 
+/** Drop entry-node-shaped peers; same rationale as on the Mesh page. */
+function isContributor(n: NodeSummary): boolean {
+  return !(n.hostname ?? "").startsWith("ip-");
+}
+
 export function StatusPill() {
   const status = useMeshStatus();
   const [hover, setHover] = useState(false);
+  const contributors = status.nodes.filter(isContributor);
+  const contributorCount = contributors.length || status.nodeCount;
+  const pooledVramGb = contributors.reduce(
+    (acc, n) => acc + (n.capability.vramGb || n.vramGb || 0),
+    0,
+  );
   const dotColor = status.online ? "bg-emerald-400" : "bg-zinc-500";
-  const label = status.online
-    ? `${status.nodeCount} ${status.nodeCount === 1 ? "machine" : "machines"} online`
-    : "Not running";
+  // Lead with "contributors" (the swarm framing) instead of "machines".
+  // Pooled VRAM is the second number people care about — it answers
+  // "how big a model can the mesh run?" at a glance.
+  const label = !status.online
+    ? "Not running"
+    : pooledVramGb > 0
+      ? `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"} · ${pooledVramGb >= 100 ? Math.round(pooledVramGb) : pooledVramGb.toFixed(1)} GB pooled`
+      : `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"}`;
   const model = status.models[0];
   const showPanel = hover && status.online && status.nodes.length > 0;
 
@@ -123,7 +139,7 @@ export function StatusPill() {
           className="absolute right-0 top-full z-50 mt-2 w-72 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3 text-[11px] shadow-xl"
         >
           <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-wider text-[var(--fg-muted)]">
-            <span>Machines</span>
+            <span>Contributors</span>
             <span>{status.nodes.length}</span>
           </div>
           {status.nodes.map((n) => (

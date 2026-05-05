@@ -32,6 +32,13 @@ export const dynamic = "force-dynamic";
 type StartupModelInput = {
   model?: string;
   ctxSize?: number;
+  /**
+   * Per-model "Run on the mesh" toggle. When true, writes `force_split = true`
+   * to the `[[models]]` block; runtime then launches this model in
+   * pipeline-parallel mode regardless of whether one host could fit it
+   * solo. Omitted/false leaves the runtime default (no force).
+   */
+  forceSplit?: boolean;
 };
 
 type StartupResponse =
@@ -97,7 +104,9 @@ export async function POST(req: Request) {
       ? Math.max(1, Math.floor(body.ctxSize))
       : undefined;
 
-  const next: StartupModel = { model, ctxSize };
+  const forceSplit = body.forceSplit === true ? true : undefined;
+
+  const next: StartupModel = { model, ctxSize, forceSplit };
 
   let updated: string;
   try {
