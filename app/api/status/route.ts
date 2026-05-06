@@ -57,6 +57,45 @@ function sameHost(a: string, b: string): boolean {
 
 const ENRICH_FROM_ENTRY = !sameHost(MESH_DISCOVERY_BASE, ADMIN_URL);
 
+/**
+ * Hard cap on the entry-node enrichment fetches.
+ *
+ * Without a timeout, `Promise.all([…, fetchEntryStatus, fetchEntryModels])`
+ * inside the desktop app blocks the entire `/api/status` response on a
+ * round-trip to `mesh.closedmesh.com`. On a healthy connection that's
+ * 100–400 ms (fine), but on a flaky/slow network the OS TCP timeout can
+ * push it to multiple seconds — during which the Models page renders
+ * with `mesh.nodes = []` and the fit pill stays blank. That's the
+ * "warning appears after some seconds" UX issue.
+ *
+ * 1500 ms is generous enough that a healthy network virtually always
+ * makes it, and short enough that worst-case the user just sees the
+ * local-only view for one tick before the next 8 s poll picks up the
+ * enrichment. Local-runtime data is still ready in a few ms either way.
+ */
+const ENRICH_TIMEOUT_MS = 1500;
+
+/**
+ * Race a fetch against a hard deadline. Aborts the underlying request on
+ * timeout so we don't leak sockets, and resolves to a caller-supplied
+ * fallback so the rest of the pipeline can keep going.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit & { timeoutMs: number },
+): Promise<Response | null> {
+  const { timeoutMs, ...rest } = init;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...rest, signal: ctrl.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Per-node capability summary surfaced in the chat UI. */
 export type NodeCapabilitySummary = {
   /** "metal" | "cuda" | "rocm" | "vulkan" | "cpu" */
@@ -344,11 +383,12 @@ async function fetchRuntimeStatus(): Promise<RuntimeStatus | null> {
  */
 async function fetchEntryStatus(): Promise<RuntimeStatus | null> {
   if (!ENRICH_FROM_ENTRY) return null;
+  const res = await fetchWithTimeout(`${MESH_DISCOVERY_BASE}/api/status`, {
+    cache: "no-store",
+    timeoutMs: ENRICH_TIMEOUT_MS,
+  });
+  if (!res || !res.ok) return null;
   try {
-    const res = await fetch(`${MESH_DISCOVERY_BASE}/api/status`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
     return (await res.json()) as RuntimeStatus;
   } catch {
     return null;
@@ -362,11 +402,12 @@ async function fetchEntryStatus(): Promise<RuntimeStatus | null> {
  */
 async function fetchEntryModels(): Promise<string[]> {
   if (!ENRICH_FROM_ENTRY) return [];
+  const res = await fetchWithTimeout(`${MESH_DISCOVERY_BASE}/v1/models`, {
+    cache: "no-store",
+    timeoutMs: ENRICH_TIMEOUT_MS,
+  });
+  if (!res || !res.ok) return [];
   try {
-    const res = await fetch(`${MESH_DISCOVERY_BASE}/v1/models`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
     const data = (await res.json()) as { data?: Array<{ id: string }> };
     return (data.data ?? []).map((m) => m.id);
   } catch {
