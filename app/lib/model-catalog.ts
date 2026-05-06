@@ -123,13 +123,58 @@ export const MODEL_CATALOG: CatalogModel[] = [
       "Largest dense Qwen 3. Strong reasoning with thinking-mode, fits on a single 24 GB card or pools nicely across two mid-range contributors.",
   },
   {
+    id: "Qwen2.5-Coder-32B-Instruct-Q4_K_M",
+    name: "Qwen 2.5 Coder · 32B Instruct",
+    family: "qwen",
+    sizeGb: 20,
+    minVramGb: 24,
+    description:
+      "Top-tier open coding model — comparable to GPT-4o on code benchmarks. The natural upgrade from the 7B coder when you have a 24 GB card or two mid-range contributors.",
+  },
+  {
     id: "Llama-3.3-70B-Instruct-Q4_K_M",
     name: "Llama 3.3 · 70B Instruct",
     family: "llama",
     sizeGb: 40,
     minVramGb: 48,
     description:
-      "Meta's frontier dense 70B. Broad tool ecosystem support. Needs a 48 GB box or a few mesh contributors.",
+      "Meta's frontier dense 70B. Broad tool ecosystem support. Needs a 48 GB box or two ~24 GB contributors pooling.",
+  },
+  {
+    id: "DeepSeek-R1-Distill-70B-Q4_K_M",
+    name: "DeepSeek R1 Distill · 70B",
+    family: "deepseek",
+    sizeGb: 43,
+    minVramGb: 48,
+    description:
+      "Same 70B footprint as Llama 3.3, swapped for a thinking-mode reasoner distilled from DeepSeek-R1. Trades latency for stronger math and step-by-step problem solving.",
+  },
+  {
+    id: "Qwen2.5-72B-Instruct-Q4_K_M",
+    name: "Qwen 2.5 · 72B Instruct",
+    family: "qwen",
+    sizeGb: 47,
+    minVramGb: 56,
+    description:
+      "Qwen's flagship dense in this size class — the real frontier Qwen at 72B. Comfortable across two ~32 GB contributors and a great showcase for tensor-split inference.",
+  },
+  {
+    id: "Qwen3-Coder-Next-Q4_K_M",
+    name: "Qwen 3 · Coder Next (~85B)",
+    family: "qwen",
+    sizeGb: 48,
+    minVramGb: 56,
+    description:
+      "Frontier open-source coding model — ~85B dense, beats Qwen 2.5 Coder 32B by a real margin on agentic and tool-use benchmarks. Multi-part GGUF that splits cleanly across two beefy contributors.",
+  },
+  {
+    id: "Mixtral-8x22B-Instruct-Q4_K_M",
+    name: "Mixtral · 8x22B Instruct",
+    family: "mistral",
+    sizeGb: 86,
+    minVramGb: 96,
+    description:
+      "Mistral's larger mixture-of-experts: 141B params, ~39B active per token. The realistic 'a few people pooling capacity' showcase — three or four contributors and you're running it.",
   },
   {
     id: "Qwen3-235B-A22B-Q4_K_M",
