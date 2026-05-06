@@ -6,8 +6,10 @@ import { PageHeader } from "../../components/PageHeader";
 import { Setup } from "../../components/Setup";
 import { type CatalogModel } from "../../lib/model-catalog";
 import { useCatalog } from "../../lib/use-catalog";
-import { useMeshStatus, type NodeSummary } from "../../lib/use-mesh-status";
+import { useMeshStatus, type MeshModel, type NodeSummary } from "../../lib/use-mesh-status";
+import { useMeshModels } from "../../lib/use-mesh-models";
 import { nodeDisplayState } from "../../lib/node-display-state";
+import { LiveLaunchState } from "../../components/LiveLaunchState";
 
 type ServiceState =
   | { state: "running"; pid: number | null }
@@ -112,6 +114,7 @@ const BACKEND_LABEL: Record<string, string> = {
 
 export default function DashboardPage() {
   const mesh = useMeshStatus();
+  const meshModels = useMeshModels();
   const { catalog } = useCatalog();
   const [control, setControl] = useState<ControlStatus | null>(null);
   const [busy, setBusy] = useState<
@@ -606,6 +609,8 @@ export default function DashboardPage() {
             stopped={stopped}
             startupConfigured={startupConfigured}
             busy={busy}
+            meshModels={meshModels.models}
+            startupIds={new Set((startup ?? []).map((s) => s.model))}
             onStart={() => act("start")}
             onStop={() => act("stop")}
           />
@@ -631,6 +636,12 @@ export default function DashboardPage() {
                     loadingStartedAt.current = Date.now();
                   return loadingStartedAt.current;
                 })()}
+                meshModel={
+                  meshModels.models.find(
+                    (m) => m.name === (startup?.[0]?.model ?? ""),
+                  ) ?? null
+                }
+                selfHostname={selfNode?.hostname ?? null}
               />
             )}
 
@@ -820,6 +831,8 @@ function ThisNodeCard({
   stopped,
   startupConfigured,
   busy,
+  meshModels,
+  startupIds,
   onStart,
   onStop,
 }: {
@@ -834,6 +847,8 @@ function ThisNodeCard({
     | "quickstart"
     | "update"
     | null;
+  meshModels: MeshModel[];
+  startupIds: Set<string>;
   onStart: () => void;
   onStop: () => void;
 }) {
@@ -841,6 +856,19 @@ function ThisNodeCard({
   const backend = cap ? BACKEND_LABEL[cap.backend] ?? cap.backend : null;
   const vram = cap?.vramGb ?? self?.vramGb ?? 0;
   const loaded = cap?.loadedModels ?? [];
+
+  // Look up the live planner snapshot for each loaded model so we can
+  // render solo/split/moe/mmap-fallback under the model name. The runtime
+  // sometimes reports a model with a `-Q4_K_M` suffix variation across
+  // /api/models vs /v1/models, so accept partial overlap.
+  const findMeshModel = (id: string): MeshModel | null => {
+    const exact = meshModels.find((m) => m.name === id);
+    if (exact) return exact;
+    return (
+      meshModels.find((m) => m.name.includes(id) || id.includes(m.name)) ??
+      null
+    );
+  };
 
   // Status text and dot color come from the shared node-display-state helper
   // so this card, the /nodes mesh table, and the public status page can never
@@ -927,16 +955,24 @@ function ThisNodeCard({
           <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
             Currently loaded
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <ul className="mt-1.5 space-y-1.5">
             {loaded.map((m) => (
-              <span
+              <li
                 key={m}
-                className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-2 py-0.5 font-mono text-[11px] text-[var(--accent)]"
+                className="flex flex-wrap items-center gap-x-2 gap-y-1"
               >
-                {m}
-              </span>
+                <span className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-2 py-0.5 font-mono text-[11px] text-[var(--accent)]">
+                  {m}
+                </span>
+                <LiveLaunchState
+                  meshModel={findMeshModel(m)}
+                  isLoaded
+                  isConfigured={startupIds.has(m)}
+                  selfHostname={self?.hostname ?? null}
+                />
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
     </section>
@@ -1151,9 +1187,17 @@ function QuickStartCard({
 function ModelLoadingCard({
   startupModelId,
   startedAt,
+  meshModel,
+  selfHostname,
 }: {
   startupModelId: string;
   startedAt: number;
+  /** Live planner snapshot. When the runtime is in `WaitingForCapacity`
+   * the time-based phase text below is a lie — nothing's actually loading,
+   * the planner is parked waiting for peers. We override the phase copy
+   * with the real reason in that case. */
+  meshModel: MeshModel | null;
+  selfHostname: string | null;
 }) {
   const [elapsed, setElapsed] = useState(() =>
     Math.floor((Date.now() - startedAt) / 1000),
@@ -1165,9 +1209,32 @@ function ModelLoadingCard({
     return () => clearInterval(id);
   }, [startedAt]);
 
+  // The runtime publishes per-model `mesh_fit` even before the model
+  // actually loads. If the pool can't fit it (`fitsOnLargestNode` and
+  // `fitsPooled` both false) the planner is in WaitingForCapacity and
+  // will never make progress on its own — surface that instead of the
+  // "loading…" lie. We give the runtime ~10 s to publish the fit data
+  // before trusting it (a fresh /api/models call after a bounce can come
+  // back with stale or empty data on the first poll).
+  const fit = meshModel?.meshFit ?? null;
+  const planner =
+    elapsed >= 5 && fit && !fit.fitsOnLargestNode && !fit.fitsPooled
+      ? "waiting_for_capacity"
+      : meshModel && (meshModel.splitKind === "pipeline" || meshModel.splitKind === "moe")
+        ? "loading_split"
+        : "loading_solo";
+
   let phaseLabel: string;
   let hint: string;
-  if (elapsed < 8) {
+  if (planner === "waiting_for_capacity" && fit) {
+    const shortfall = Math.max(0, fit.neededVramGb - fit.pooledVramGb);
+    const here = selfHostname ?? "this machine";
+    phaseLabel = `Waiting for capacity — need ${shortfall.toFixed(0)} GB more pooled VRAM`;
+    hint =
+      fit.eligiblePeerCount <= 1
+        ? `Pooled ${fit.pooledVramGb.toFixed(1)} of ${fit.neededVramGb.toFixed(1)} GB so far (only ${here} contributing). Invite a friend or spin up another machine on this mesh — the runtime will load the model the moment pooled capacity crosses the threshold.`
+        : `Pooled ${fit.pooledVramGb.toFixed(1)} of ${fit.neededVramGb.toFixed(1)} GB across ${fit.eligiblePeerCount} peers. Add another contributor to cross the threshold.`;
+  } else if (elapsed < 8) {
     phaseLabel = "Restarting the runtime…";
     hint = "Bouncing the launchd unit so it picks up the new config.";
   } else if (elapsed < 30) {
@@ -1185,7 +1252,10 @@ function ModelLoadingCard({
       "Something might be wrong. Open Activity for the runtime log, or stop & try a smaller model.";
   }
 
-  const stuck = elapsed >= 150;
+  // "Stuck" styling when we genuinely look stuck (>2.5min) OR when the
+  // planner is parked waiting for capacity — both cases need the user to
+  // take action rather than just wait.
+  const stuck = elapsed >= 150 || planner === "waiting_for_capacity";
 
   return (
     <section

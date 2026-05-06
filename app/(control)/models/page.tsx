@@ -6,6 +6,7 @@ import { type CatalogModel } from "../../lib/model-catalog";
 import { useCatalog } from "../../lib/use-catalog";
 import { useMeshStatus, type MeshModel } from "../../lib/use-mesh-status";
 import { useMeshModels } from "../../lib/use-mesh-models";
+import { LiveLaunchState } from "../../components/LiveLaunchState";
 
 type LocalModel = { id: string; sizeBytes: number | null };
 type ListResp =
@@ -318,6 +319,7 @@ export default function ModelsPage() {
   const selfNode = mesh.nodes.find((n) => n.isSelf);
   const localVramGb = selfNode?.capability.vramGb ?? selfNode?.vramGb ?? null;
   const localBackend = selfNode?.capability.backend ?? null;
+  const selfHostname = selfNode?.hostname ?? null;
 
   // Find a runtime-reported MeshModel for any catalog id by either name match
   // (the typical case once the runtime warms up) or substring match (the
@@ -358,28 +360,76 @@ export default function ModelsPage() {
             onClear={clearStartupModels}
           />
 
-          {mesh.models.length > 0 && (
-            <Section
-              title="Currently loaded"
-              hint="In memory and ready to answer chat requests."
-            >
-              <ul className="divide-y divide-[var(--border)]">
-                {mesh.models.map((m) => (
-                  <li
-                    key={m}
-                    className="flex items-center justify-between py-3"
-                  >
-                    <span className="font-mono text-sm text-[var(--fg)]">
-                      {m}
-                    </span>
-                    <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                      Loaded
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          )}
+          {(() => {
+            // A startup-configured model that the runtime hasn't yet
+            // brought up gets surfaced as "waiting to load" with the
+            // live planner reason (capacity short, still mmap'ing, …).
+            // This is the case where the user clicks "Set as startup" on
+            // a 70 B model, the bounce succeeds, but no llama-server
+            // comes up because pooled VRAM is short — without this
+            // section there's no UI signal at all and the dashboard just
+            // looks idle.
+            const loadedSet = new Set(mesh.models);
+            const waiting = startup
+              .map((s) => s.model)
+              .filter((id) => !loadedSet.has(id));
+            if (mesh.models.length === 0 && waiting.length === 0) return null;
+            return (
+              <Section
+                title="Currently loaded"
+                hint="What the runtime is actually doing right now."
+              >
+                <ul className="divide-y divide-[var(--border)]">
+                  {mesh.models.map((m) => (
+                    <li
+                      key={m}
+                      className="flex flex-wrap items-center justify-between gap-2 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-sm text-[var(--fg)]">
+                          {m}
+                        </div>
+                        <div className="mt-1">
+                          <LiveLaunchState
+                            meshModel={findMeshModel(m)}
+                            isLoaded
+                            isConfigured={startupIds.has(m)}
+                            selfHostname={selfHostname}
+                          />
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                        Loaded
+                      </span>
+                    </li>
+                  ))}
+                  {waiting.map((m) => (
+                    <li
+                      key={`waiting-${m}`}
+                      className="flex flex-wrap items-center justify-between gap-2 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-sm text-[var(--fg)]">
+                          {m}
+                        </div>
+                        <div className="mt-1">
+                          <LiveLaunchState
+                            meshModel={findMeshModel(m)}
+                            isLoaded={false}
+                            isConfigured
+                            selfHostname={selfHostname}
+                          />
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                        Waiting
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            );
+          })()}
 
           {(localCatalog.length > 0 || orphans.length > 0) && (
             <Section
