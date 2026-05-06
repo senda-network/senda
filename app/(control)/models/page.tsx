@@ -72,6 +72,8 @@ export default function ModelsPage() {
   const [startup, setStartup] = useState<StartupModel[]>([]);
   const [startupBusy, setStartupBusy] = useState<string | null>(null);
   const [startupToast, setStartupToast] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState<string | null>(null);
+  const [deleteToast, setDeleteToast] = useState<string | null>(null);
 
   const refreshLocal = useCallback(async () => {
     try {
@@ -167,6 +169,43 @@ export default function ModelsPage() {
       setStartupBusy(null);
     }
   }, []);
+
+  const deleteModel = useCallback(
+    async (id: string) => {
+      setDeleteBusy(id);
+      setDeleteToast(null);
+      try {
+        const res = await fetch("/api/control/models/delete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const data = (await res.json()) as {
+          ok: boolean;
+          message?: string;
+          reclaimedHuman?: string;
+          deletedPaths?: string[];
+        };
+        if (data.ok) {
+          const reclaimed = data.reclaimedHuman ?? "—";
+          const fileCount = data.deletedPaths?.length ?? 0;
+          setDeleteToast(
+            `Deleted ${id} (reclaimed ${reclaimed}${fileCount > 1 ? `, ${fileCount} files` : ""}).`,
+          );
+          // Local list polls every 8s; refresh immediately so the row
+          // disappears without waiting for the next tick.
+          await refreshLocal();
+        } else {
+          setDeleteToast(data.message ?? "Delete failed.");
+        }
+      } catch (e) {
+        setDeleteToast(e instanceof Error ? e.message : "request failed");
+      } finally {
+        setDeleteBusy(null);
+      }
+    },
+    [refreshLocal],
+  );
 
   const startDownload = useCallback(
     async (id: string) => {
@@ -345,8 +384,13 @@ export default function ModelsPage() {
           {(localCatalog.length > 0 || orphans.length > 0) && (
             <Section
               title="On your mesh"
-              hint="Already downloaded — pick one to load on boot."
+              hint="Already downloaded — pick one to load on boot, or free up disk by deleting one."
             >
+              {deleteToast && (
+                <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2 text-xs text-[var(--fg-muted)]">
+                  {deleteToast}
+                </div>
+              )}
               <ul className="space-y-2">
                 {localCatalog.map((m) => (
                   <CatalogRow
@@ -362,8 +406,13 @@ export default function ModelsPage() {
                       startupById.get(m.id)?.forceSplit === true
                     }
                     startupBusy={startupBusy === m.id}
+                    deleteBusy={deleteBusy === m.id}
+                    sizeBytes={
+                      local?.find((lm) => lm.id === m.id)?.sizeBytes ?? null
+                    }
                     onDownload={() => startDownload(m.id)}
                     onSetStartup={(opts) => setStartupModel(m.id, opts)}
+                    onDelete={() => deleteModel(m.id)}
                   />
                 ))}
                 {orphans.map((m) => (
@@ -397,6 +446,17 @@ export default function ModelsPage() {
                             ? "Setting…"
                             : "Set as startup"}
                       </button>
+                      <DeleteButton
+                        busy={deleteBusy === m.id}
+                        disabled={startupIds.has(m.id) || deleteBusy !== null}
+                        disabledReason={
+                          startupIds.has(m.id)
+                            ? "Currently set as the startup model — clear startup first."
+                            : null
+                        }
+                        sizeBytes={m.sizeBytes}
+                        onConfirm={() => deleteModel(m.id)}
+                      />
                     </div>
                   </li>
                 ))}
@@ -633,8 +693,11 @@ function CatalogRow({
   isStartup,
   startupForceSplit,
   startupBusy,
+  deleteBusy = false,
+  sizeBytes = null,
   onDownload,
   onSetStartup,
+  onDelete,
 }: {
   model: CatalogModel;
   download: DownloadState | null;
@@ -645,8 +708,11 @@ function CatalogRow({
   isStartup: boolean;
   startupForceSplit: boolean;
   startupBusy: boolean;
+  deleteBusy?: boolean;
+  sizeBytes?: number | null;
   onDownload: () => void;
   onSetStartup: (opts?: { forceSplit?: boolean }) => void;
+  onDelete?: () => void;
 }) {
   const fit = determineMeshFit(model, meshModel, localVramGb, localBackend);
   const downloading = download?.phase === "running";
@@ -712,22 +778,37 @@ function CatalogRow({
 
         <div className="flex shrink-0 flex-col items-end gap-2">
           {state === "downloaded" ? (
-            <button
-              onClick={() => onSetStartup()}
-              disabled={startupBusy || isStartup}
-              className={
-                "rounded-lg px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed " +
-                (isStartup
-                  ? "border border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-                  : "bg-[var(--accent)] text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] hover:brightness-110 disabled:opacity-40 disabled:shadow-none")
-              }
-            >
-              {isStartup
-                ? "Startup model"
-                : startupBusy
-                  ? "Setting…"
-                  : "Set as startup"}
-            </button>
+            <>
+              <button
+                onClick={() => onSetStartup()}
+                disabled={startupBusy || isStartup}
+                className={
+                  "rounded-lg px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed " +
+                  (isStartup
+                    ? "border border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                    : "bg-[var(--accent)] text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] hover:brightness-110 disabled:opacity-40 disabled:shadow-none")
+                }
+              >
+                {isStartup
+                  ? "Startup model"
+                  : startupBusy
+                    ? "Setting…"
+                    : "Set as startup"}
+              </button>
+              {onDelete && (
+                <DeleteButton
+                  busy={deleteBusy}
+                  disabled={isStartup || startupBusy}
+                  disabledReason={
+                    isStartup
+                      ? "This is the startup model — clear it from the banner above first."
+                      : null
+                  }
+                  sizeBytes={sizeBytes}
+                  onConfirm={onDelete}
+                />
+              )}
+            </>
           ) : (
             <button
               onClick={onDownload}
@@ -792,6 +873,83 @@ function formatBytes(n: number): string {
   if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
   if (n >= 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${n} B`;
+}
+
+/**
+ * Two-click destructive action for deleting a downloaded model.
+ *
+ * Why a two-click pattern instead of `window.confirm()`: the native
+ * dialog is jarring inside a Tauri webview (steals focus, looks
+ * different on each OS) and gives no visual hint of what's about to
+ * happen. The expand-then-confirm pattern keeps everything inline,
+ * shows the size that'll be reclaimed, and auto-cancels after a few
+ * seconds if the user wanders off so the row doesn't sit in a
+ * pre-armed state forever.
+ */
+function DeleteButton({
+  busy,
+  disabled,
+  disabledReason,
+  sizeBytes,
+  onConfirm,
+}: {
+  busy: boolean;
+  disabled: boolean;
+  disabledReason: string | null;
+  sizeBytes: number | null;
+  onConfirm: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [armed]);
+
+  if (busy) {
+    return (
+      <span className="rounded-md border border-[var(--border)] bg-[var(--bg-elev)] px-2.5 py-1 text-[11px] font-medium text-[var(--fg-muted)]">
+        Deleting…
+      </span>
+    );
+  }
+
+  if (armed) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-red-400/40 bg-red-500/10 p-0.5 text-[11px] font-medium">
+        <button
+          type="button"
+          onClick={() => {
+            setArmed(false);
+            onConfirm();
+          }}
+          className="rounded px-2 py-0.5 text-red-200 transition hover:bg-red-500/20"
+        >
+          Confirm{sizeBytes ? ` · free ${formatBytes(sizeBytes)}` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => setArmed(false)}
+          className="rounded px-2 py-0.5 text-[var(--fg-muted)] transition hover:text-[var(--fg)]"
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setArmed(true)}
+      disabled={disabled}
+      title={disabledReason ?? "Delete this model from disk"}
+      className="rounded-md border border-[var(--border)] bg-[var(--bg-elev)] px-2.5 py-1 text-[11px] font-medium text-[var(--fg-muted)] transition hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)] disabled:hover:text-[var(--fg-muted)]"
+    >
+      Delete
+    </button>
+  );
 }
 
 /**
