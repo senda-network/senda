@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { Setup } from "../../components/Setup";
-import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
+import { type CatalogModel } from "../../lib/model-catalog";
+import { useCatalog } from "../../lib/use-catalog";
 import { useMeshStatus, type NodeSummary } from "../../lib/use-mesh-status";
 import { nodeDisplayState } from "../../lib/node-display-state";
 
@@ -111,6 +112,7 @@ const BACKEND_LABEL: Record<string, string> = {
 
 export default function DashboardPage() {
   const mesh = useMeshStatus();
+  const { catalog } = useCatalog();
   const [control, setControl] = useState<ControlStatus | null>(null);
   const [busy, setBusy] = useState<
     "start" | "stop" | "repair" | "quickstart" | "update" | null
@@ -309,6 +311,13 @@ export default function DashboardPage() {
         let buffer = "";
         let okFinal: boolean | null = null;
         let errMsg: string | null = null;
+        // Tail the stream's stderr separately from generic last-line: when
+        // the runtime CLI bails (e.g. "Expected an exact model ref…") the
+        // useful sentence almost always lands on stderr right before exit,
+        // and the dashboard previously threw it away in favour of a generic
+        // "see Activity" hint that pointed at the wrong log file.
+        let lastStderr: string | null = null;
+        let lastAnyLine: string | null = null;
 
         while (true) {
           const { value, done } = await reader.read();
@@ -337,6 +346,8 @@ export default function DashboardPage() {
                   : q,
               );
             } else if (ev.kind === "stdout" || ev.kind === "stderr") {
+              lastAnyLine = ev.text;
+              if (ev.kind === "stderr") lastStderr = ev.text;
               setQuickStart((q) =>
                 q.kind === "downloading" && q.modelId === choice.id
                   ? { ...q, lastLine: ev.text }
@@ -355,7 +366,10 @@ export default function DashboardPage() {
             kind: "failed",
             modelId: choice.id,
             error:
-              errMsg ?? "Download didn't finish cleanly — see Activity for the full log.",
+              errMsg ??
+              lastStderr ??
+              lastAnyLine ??
+              "Download didn't finish cleanly.",
           });
           setBusy(null);
           return;
@@ -512,7 +526,7 @@ export default function DashboardPage() {
     if (!running) setReadyCardModelId(null);
   }, [running]);
   const localModelIds = new Set((localModels ?? []).map((m) => m.id));
-  const recommendation = pickRecommendedModel(selfVram, selfBackend);
+  const recommendation = pickRecommendedModel(catalog, selfVram, selfBackend);
 
   // Auto-trigger the quick-start download on first launch. We wait until
   // both `startup` and `localModels` are non-null (i.e. the initial data
@@ -971,15 +985,16 @@ function SummaryStat({
  * Returns null only if the catalog is empty (shouldn't happen).
  */
 function pickRecommendedModel(
+  catalog: CatalogModel[],
   vramGb: number,
   backend: string,
 ): CatalogModel | null {
   const hasGpu = backend !== "cpu" && backend !== "" && backend !== "unknown";
-  const candidates = MODEL_CATALOG.filter((m) => {
+  const candidates = catalog.filter((m) => {
     if (vramGb >= m.minVramGb) return true;
     return m.cpuOk === true && vramGb === 0;
   });
-  if (candidates.length === 0) return MODEL_CATALOG[0] ?? null;
+  if (candidates.length === 0) return catalog[0] ?? null;
 
   const eightB = candidates.find((m) => m.id === "Qwen3-8B-Q4_K_M");
   if (eightB && vramGb >= eightB.minVramGb && hasGpu) return eightB;
@@ -987,7 +1002,7 @@ function pickRecommendedModel(
   const phi = candidates.find((m) => m.id === "Phi-3-mini-4k-Q4_K_M");
   if (phi && vramGb >= phi.minVramGb) return phi;
 
-  const smokeTest = MODEL_CATALOG.find((m) => m.id === "Qwen3-0.6B-Q4_K_M");
+  const smokeTest = catalog.find((m) => m.id === "Qwen3-0.6B-Q4_K_M");
   return smokeTest ?? candidates[0] ?? null;
 }
 
@@ -1110,7 +1125,13 @@ function QuickStartCard({
 
       {failed && (
         <div className="relative mt-5 rounded-lg border border-rose-400/40 bg-rose-400/5 px-3 py-2.5 text-xs text-rose-200">
-          {phase.error} — try again, or open Activity for the full log.
+          <div className="font-medium text-rose-100">Download failed</div>
+          <div className="mt-1 break-words font-mono text-[11px] text-rose-200/90">
+            {phase.error}
+          </div>
+          <div className="mt-1 text-[11px] text-rose-200/70">
+            Try again, or pick a different model below.
+          </div>
         </div>
       )}
     </section>

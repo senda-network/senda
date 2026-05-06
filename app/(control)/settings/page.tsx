@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
-import { MODEL_CATALOG } from "../../lib/model-catalog";
+import { useCatalog } from "../../lib/use-catalog";
 
 type Backend = "auto" | "metal" | "cuda" | "rocm" | "vulkan" | "cpu";
 
@@ -27,6 +27,7 @@ const BACKEND_LABEL: Record<Backend, string> = {
 };
 
 export default function SettingsPage() {
+  const { catalog } = useCatalog();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
@@ -125,7 +126,7 @@ export default function SettingsPage() {
   );
 
   const downloadedIds = new Set(localModels.map((m) => m.id));
-  const downloadedCatalog = MODEL_CATALOG.filter((m) => downloadedIds.has(m.id));
+  const downloadedCatalog = catalog.filter((m) => downloadedIds.has(m.id));
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -206,20 +207,19 @@ export default function SettingsPage() {
                   ))}
                 </optgroup>
               )}
-              {MODEL_CATALOG.filter((m) => !downloadedIds.has(m.id)).length >
-                0 && (
+              {catalog.filter((m) => !downloadedIds.has(m.id)).length > 0 && (
                 <optgroup label="Catalog (not downloaded yet)">
-                  {MODEL_CATALOG.filter((m) => !downloadedIds.has(m.id)).map(
-                    (m) => (
+                  {catalog
+                    .filter((m) => !downloadedIds.has(m.id))
+                    .map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
                       </option>
-                    ),
-                  )}
+                    ))}
                 </optgroup>
               )}
               {localModels
-                .filter((m) => !MODEL_CATALOG.find((c) => c.id === m.id))
+                .filter((m) => !catalog.find((c) => c.id === m.id))
                 .map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.id}

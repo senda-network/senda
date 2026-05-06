@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
-import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
+import { type CatalogModel } from "../../lib/model-catalog";
+import { useCatalog } from "../../lib/use-catalog";
 import { useMeshStatus, type MeshModel } from "../../lib/use-mesh-status";
 import { useMeshModels } from "../../lib/use-mesh-models";
 
@@ -62,6 +63,7 @@ const FAMILY_TINT: Record<CatalogModel["family"], string> = {
 export default function ModelsPage() {
   const mesh = useMeshStatus();
   const meshModels = useMeshModels();
+  const { catalog } = useCatalog();
   const [local, setLocal] = useState<LocalModel[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<Record<string, DownloadState>>(
@@ -205,6 +207,12 @@ export default function ModelsPage() {
       const decoder = new TextDecoder();
       let buffer = "";
       let okFinal: boolean | null = null;
+      // Same rationale as the dashboard QuickStart flow: when the runtime
+      // CLI exits non-zero its diagnostic line is on stderr, not in any
+      // log file the dashboard otherwise tails. Capture it so we can show
+      // a real error instead of "Download failed (exit 1)".
+      let lastStderr: string | null = null;
+      let lastAnyLine: string | null = null;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -221,6 +229,10 @@ export default function ModelsPage() {
           } catch {
             continue;
           }
+          if (ev.kind === "stdout" || ev.kind === "stderr") {
+            lastAnyLine = ev.text;
+            if (ev.kind === "stderr") lastStderr = ev.text;
+          }
           setDownloads((d) => {
             const cur = d[id];
             if (!cur) return d;
@@ -234,7 +246,12 @@ export default function ModelsPage() {
             } else if (ev.kind === "done") {
               next.phase = ev.ok ? "done" : "failed";
               next.percent = ev.ok ? 100 : next.percent;
-              if (!ev.ok) next.error = `Download failed (exit ${ev.code}).`;
+              if (!ev.ok) {
+                next.error =
+                  lastStderr ??
+                  lastAnyLine ??
+                  `Download failed (exit ${ev.code}).`;
+              }
               okFinal = ev.ok;
             } else if (ev.kind === "error") {
               next.phase = "failed";
@@ -254,10 +271,10 @@ export default function ModelsPage() {
   );
 
   const localIds = new Set((local ?? []).map((m) => m.id));
-  const localCatalog = MODEL_CATALOG.filter((m) => localIds.has(m.id));
-  const remoteCatalog = MODEL_CATALOG.filter((m) => !localIds.has(m.id));
+  const localCatalog = catalog.filter((m) => localIds.has(m.id));
+  const remoteCatalog = catalog.filter((m) => !localIds.has(m.id));
   const orphans =
-    local?.filter((m) => !MODEL_CATALOG.find((c) => c.id === m.id)) ?? [];
+    local?.filter((m) => !catalog.find((c) => c.id === m.id)) ?? [];
 
   const selfNode = mesh.nodes.find((n) => n.isSelf);
   const localVramGb = selfNode?.capability.vramGb ?? selfNode?.vramGb ?? null;

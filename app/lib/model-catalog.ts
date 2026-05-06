@@ -114,21 +114,30 @@ export const MODEL_CATALOG: CatalogModel[] = [
       "Mistral's mixture-of-experts: 47B params, ~13B active per token. Too big for one laptop, well within reach for two or three mesh contributors.",
   },
   {
+    id: "Qwen3-32B-Q4_K_M",
+    name: "Qwen 3 · 32B",
+    family: "qwen",
+    sizeGb: 20,
+    minVramGb: 24,
+    description:
+      "Largest dense Qwen 3. Strong reasoning with thinking-mode, fits on a single 24 GB card or pools nicely across two mid-range contributors.",
+  },
+  {
     id: "Llama-3.3-70B-Instruct-Q4_K_M",
     name: "Llama 3.3 · 70B Instruct",
     family: "llama",
     sizeGb: 40,
     minVramGb: 48,
     description:
-      "Meta's frontier 70B. Comparable quality to Qwen3 72B with a broader tool ecosystem. Needs a 48 GB box or a few mesh contributors.",
+      "Meta's frontier dense 70B. Broad tool ecosystem support. Needs a 48 GB box or a few mesh contributors.",
   },
   {
-    id: "Qwen3-72B-Q4_K_M",
-    name: "Qwen 3 · 72B",
+    id: "Qwen3-235B-A22B-Q4_K_M",
+    name: "Qwen 3 · 235B (A22B MoE)",
     family: "qwen",
-    sizeGb: 40,
-    minVramGb: 48,
+    sizeGb: 142,
+    minVramGb: 144,
     description:
-      "Frontier-class. Needs a 48 GB+ card or a multi-GPU mesh. If no machine in your mesh is big enough, chat will tell you and suggest a smaller model.",
+      "Frontier-class mixture-of-experts: 235B params, ~22B active per token. Won't fit on any single laptop — this is the model that demonstrates what the mesh is for.",
   },
 ];
