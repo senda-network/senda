@@ -293,11 +293,13 @@ function inferLocalCapability(rt: RuntimeStatus): RuntimeCapability {
   // my_vram_gb is already in GB — convert to MB for summarizeCapability.
   const vram_total_mb = Math.round((rt.my_vram_gb ?? 0) * 1024);
 
-  // Treat serving + hosted models as "loaded" for the local node.
-  const loaded_models = [
-    ...(rt.serving_models ?? []),
-    ...(rt.hosted_models ?? []),
-  ].filter((m, i, a) => a.indexOf(m) === i);
+  // Treat ONLY `hosted_models` as actually loaded. The runtime sets
+  // `serving_models` the moment it commits to bringing a model up — well
+  // before llama-server has finished loading the GGUF — so unioning the
+  // two makes the dashboard claim "READY · model" while the runtime is
+  // still in `node_state: "loading"`. `hosted_models` only flips on once
+  // `llama_ready === true`, which is the invariant the UI cares about.
+  const loaded_models = rt.hosted_models ?? [];
 
   return { backend, vendor, compute_class: computeClass, vram_total_mb, loaded_models };
 }
