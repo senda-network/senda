@@ -115,21 +115,46 @@ export const LOG_PATHS = {
 
 /**
  * The `closedmesh service start` command can emit a multi-section status
- * dump after an error (the "mesh-llm ┌ Running …" block). Strip that noise
- * and return only the first meaningful error lines so the dashboard toast
- * stays readable.
+ * dump after an error (the "closedmesh ┌ Running …" block, or the legacy
+ * "mesh-llm" equivalent on older runtimes). Strip that noise and return
+ * only the first meaningful error lines so the dashboard toast stays
+ * readable.
  */
 export function extractStartError(raw: string): string {
   if (!raw) return "start failed";
   const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  // The mesh-llm status dump always starts with a bare "mesh-llm" line or
-  // box-drawing characters (┌ / └─). Everything before that is the actual
-  // error from launchctl / the CLI itself.
+  // The status dump starts with a bare binary-name line ("closedmesh" on
+  // current builds, "mesh-llm" on the legacy CLI) or with box-drawing
+  // characters (┌ / └─). Everything before that is the actual error from
+  // launchctl / the CLI itself.
   const dumpStart = lines.findIndex(
-    (l) => l === "mesh-llm" || l.startsWith("┌ ") || l.startsWith("└─"),
+    (l) =>
+      l === "mesh-llm" ||
+      l === "closedmesh" ||
+      l === "> closedmesh" ||
+      l.startsWith("┌ ") ||
+      l.startsWith("└─"),
   );
   const errorLines = dumpStart > 0 ? lines.slice(0, dumpStart) : lines.slice(0, 4);
   return errorLines.join(" ").trim() || raw.slice(0, 300);
+}
+
+/**
+ * True when the CLI's failure looks like the launchctl race that hits
+ * when `bootstrap` fires before the previous `bootout` has finished
+ * unloading — exit code 5 / "Input/output error". The runtime CLI has
+ * no retry for this; a 2 s wait followed by a second `service start`
+ * almost always succeeds because launchd's async unload completes in
+ * the meantime.
+ */
+export function isLaunchctlBootstrapRace(stderr: string, stdout: string): boolean {
+  const blob = `${stderr}\n${stdout}`.toLowerCase();
+  return (
+    blob.includes("bootstrap failed") ||
+    blob.includes("launchctl bootstrap failed") ||
+    /exit code\s+(?:some\()?5\)?/i.test(blob) ||
+    blob.includes("input/output error")
+  );
 }
 
 export async function tailFile(filepath: string, maxBytes = 16_384) {

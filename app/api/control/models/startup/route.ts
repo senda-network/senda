@@ -7,7 +7,13 @@ import {
   writeStartupModels,
   type StartupModel,
 } from "../../_config-toml";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../../_lib";
+import {
+  extractStartError,
+  findClosedmeshBin,
+  isLaunchctlBootstrapRace,
+  isPublic,
+  runClosedmesh,
+} from "../../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -188,7 +194,25 @@ async function bounceService(): Promise<{ ok: boolean; message: string }> {
   // `service stop` exits non-zero if the unit was already stopped or
   // never installed, which is fine. We treat both as "ok to start now".
   await runClosedmesh(bin, ["service", "stop"], 10_000);
-  const start = await runClosedmesh(bin, ["service", "start"], 15_000);
+  let start = await runClosedmesh(bin, ["service", "start"], 15_000);
+
+  // Work around a known race in the runtime CLI's `service start`:
+  // `launchctl bootout` returns immediately but the agent unload is
+  // async, so a `bootstrap` issued in the next ~1 s reliably fails with
+  // EIO ("Bootstrap failed: 5: Input/output error"). The desktop app
+  // already retries with backoff for its own bounce path; the CLI
+  // doesn't, so we retry here. Two attempts spaced 2 s and 4 s after
+  // the initial failure is enough on a healthy machine — if it's still
+  // failing after ~6 s of accumulated wait, it's almost certainly a
+  // real plist / permissions problem and we surface the error.
+  const backoffMs = [2_000, 4_000];
+  for (const wait of backoffMs) {
+    if (start.ok) break;
+    if (!isLaunchctlBootstrapRace(start.stderr, start.stdout)) break;
+    await new Promise((r) => setTimeout(r, wait));
+    start = await runClosedmesh(bin, ["service", "start"], 15_000);
+  }
+
   if (start.ok) {
     return {
       ok: true,
@@ -217,27 +241,18 @@ async function bounceService(): Promise<{ ok: boolean; message: string }> {
       }
       return {
         ok: false,
-        message:
-          retry.stderr ||
-          retry.stdout ||
-          "Installed the service but it didn't start. See Activity for details.",
+        message: extractStartError(retry.stderr || retry.stdout || ""),
       };
     }
     return {
       ok: false,
-      message:
-        install.stderr ||
-        install.stdout ||
-        "Couldn't install the autostart service. Try `closedmesh service install` from a terminal.",
+      message: extractStartError(install.stderr || install.stdout || ""),
     };
   }
 
   return {
     ok: false,
-    message:
-      start.stderr ||
-      start.stdout ||
-      "Saved config, but the autostart service didn't restart cleanly. Try `closedmesh service start` from a terminal.",
+    message: extractStartError(start.stderr || start.stdout || ""),
   };
 }
 
