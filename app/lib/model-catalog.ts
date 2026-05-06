@@ -9,7 +9,7 @@
 export type CatalogModel = {
   id: string;
   name: string;
-  family: "qwen" | "llama" | "mistral" | "phi" | "gemma";
+  family: "qwen" | "llama" | "mistral" | "phi" | "gemma" | "deepseek";
   sizeGb: number;
   /** Memory the runtime needs to actually serve this model at Q4_K_M. */
   minVramGb: number;
@@ -30,6 +30,16 @@ export const MODEL_CATALOG: CatalogModel[] = [
     cpuOk: true,
   },
   {
+    id: "Llama-3.2-3B-Instruct-Q4_K_M",
+    name: "Llama 3.2 · 3B Instruct",
+    family: "llama",
+    sizeGb: 2,
+    minVramGb: 3,
+    description:
+      "Meta's smallest instruct. The natural step up from the Qwen smoke test — runs on CPU-only laptops but handles real chat.",
+    cpuOk: true,
+  },
+  {
     id: "Qwen3-8B-Q4_K_M",
     name: "Qwen 3 · 8B",
     family: "qwen",
@@ -47,6 +57,15 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minVramGb: 8,
     description:
       "Meta's instruction-tuned 8B. Wide tool ecosystem, great default for chat.",
+  },
+  {
+    id: "Qwen2.5-Coder-7B-Instruct-Q4_K_M",
+    name: "Qwen 2.5 Coder · 7B Instruct",
+    family: "qwen",
+    sizeGb: 4.7,
+    minVramGb: 8,
+    description:
+      "Coding-specialized 7B. Pair it with the OpenAI-compatible endpoint to use ClosedMesh as a local backend for editors and agents.",
   },
   {
     id: "Mistral-7B-Instruct-Q4_K_M",
@@ -75,6 +94,33 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minVramGb: 10,
     description:
       "Google's 9B with strong multilingual + reasoning chops. A bit chunkier than 8B class.",
+  },
+  {
+    id: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M",
+    name: "DeepSeek R1 Distill · Qwen 14B",
+    family: "deepseek",
+    sizeGb: 9,
+    minVramGb: 12,
+    description:
+      "Reasoning model distilled from DeepSeek-R1 onto a Qwen 14B base. Thinks step-by-step before answering — trades latency for stronger math and code.",
+  },
+  {
+    id: "Mixtral-8x7B-Instruct-v0.1-Q4_K_M",
+    name: "Mixtral · 8x7B Instruct",
+    family: "mistral",
+    sizeGb: 26,
+    minVramGb: 32,
+    description:
+      "Mistral's mixture-of-experts: 47B params, ~13B active per token. Too big for one laptop, well within reach for two or three mesh contributors.",
+  },
+  {
+    id: "Llama-3.3-70B-Instruct-Q4_K_M",
+    name: "Llama 3.3 · 70B Instruct",
+    family: "llama",
+    sizeGb: 40,
+    minVramGb: 48,
+    description:
+      "Meta's frontier 70B. Comparable quality to Qwen3 72B with a broader tool ecosystem. Needs a 48 GB box or a few mesh contributors.",
   },
   {
     id: "Qwen3-72B-Q4_K_M",
