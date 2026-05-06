@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { type CatalogModel } from "../../lib/model-catalog";
 import { useCatalog } from "../../lib/use-catalog";
@@ -931,10 +931,21 @@ function formatBytes(n: number): string {
  * Why a two-click pattern instead of `window.confirm()`: the native
  * dialog is jarring inside a Tauri webview (steals focus, looks
  * different on each OS) and gives no visual hint of what's about to
- * happen. The expand-then-confirm pattern keeps everything inline,
- * shows the size that'll be reclaimed, and auto-cancels after a few
- * seconds if the user wanders off so the row doesn't sit in a
- * pre-armed state forever.
+ * happen. The expand-then-confirm pattern keeps everything inline
+ * and shows the size that'll be reclaimed.
+ *
+ * Disarm strategy:
+ *   1. Clicking anywhere outside the armed widget cancels — the
+ *      common "wandered off" case, instant feedback, no waiting.
+ *   2. A 15 s safety timer is the backstop for the genuinely abandoned
+ *      case (e.g. user closed the laptop mid-flow). The earlier
+ *      version used 4 s, which routinely fired between the user
+ *      clicking Delete and reaching for Confirm — they'd then click
+ *      a freshly-rendered "Delete" button by accident, arming it
+ *      again and creating the impression "Confirm doesn't work".
+ *      15 s is generous enough to read "Confirm · free 5.00 GB",
+ *      think about it, and act, without being so long the row
+ *      sits armed forever.
  */
 function DeleteButton({
   busy,
@@ -950,11 +961,26 @@ function DeleteButton({
   onConfirm: () => void;
 }) {
   const [armed, setArmed] = useState(false);
+  const armedRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 4000);
-    return () => clearTimeout(t);
+    const t = setTimeout(() => setArmed(false), 15_000);
+    const onPointerDown = (ev: PointerEvent) => {
+      const target = ev.target;
+      if (
+        target instanceof Node &&
+        armedRef.current &&
+        !armedRef.current.contains(target)
+      ) {
+        setArmed(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
   }, [armed]);
 
   if (busy) {
@@ -967,7 +993,10 @@ function DeleteButton({
 
   if (armed) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-red-400/40 bg-red-500/10 p-0.5 text-[11px] font-medium">
+      <span
+        ref={armedRef}
+        className="inline-flex items-center gap-1 rounded-md border border-red-400/40 bg-red-500/10 p-0.5 text-[11px] font-medium"
+      >
         <button
           type="button"
           onClick={() => {
