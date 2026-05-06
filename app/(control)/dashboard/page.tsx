@@ -874,12 +874,18 @@ function ThisNodeCard({
   // so this card, the /nodes mesh table, and the public status page can never
   // disagree about whether the same node is Ready / Idle / Offline.
   const display = nodeDisplayState(self, running);
+  // When the runtime has committed to load the startup model but
+  // llama-server hasn't finished yet, `nodeDisplayState` now returns
+  // "Loading" with a verbose troubleshooting description aimed at
+  // stuck-loading nodes on the public status page. For first-boot users
+  // on this machine that copy is alarming, so swap in a calmer line
+  // when we know we're just waiting for the configured startup model.
   const statusText = !running
     ? stopped
       ? "Not running. Start to share this machine."
       : "Checking status…"
-    : startupConfigured && display.label === "Idle"
-      ? "Loading the startup model…"
+    : startupConfigured && display.label === "Loading"
+      ? "Loading the startup model — this can take a minute on first boot, longer for big GGUFs."
       : display.description;
 
   return (

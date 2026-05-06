@@ -6,6 +6,7 @@ import { type CatalogModel } from "../../lib/model-catalog";
 import { useCatalog } from "../../lib/use-catalog";
 import { useMeshStatus, type MeshModel } from "../../lib/use-mesh-status";
 import { useMeshModels } from "../../lib/use-mesh-models";
+import { modelIdsMatch, normalizeModelId } from "../../lib/model-id";
 import { LiveLaunchState } from "../../components/LiveLaunchState";
 
 type LocalModel = { id: string; sizeBytes: number | null };
@@ -310,23 +311,46 @@ export default function ModelsPage() {
     [refreshLocal],
   );
 
-  const localIds = new Set((local ?? []).map((m) => m.id));
-  const localCatalog = catalog.filter((m) => localIds.has(m.id));
-  const remoteCatalog = catalog.filter((m) => !localIds.has(m.id));
+  // Match catalog ids against the runtime's installed-model ids using a
+  // normalized form (case-folded, dots/underscores collapsed to dashes,
+  // `.gguf` stripped). The runtime resolves a catalog ref like
+  // `Mixtral-8x7B-Instruct-v0.1-Q5_K_M` to a real HF filename and stores
+  // the model under that filename's stem (`Mixtral-8x7B-Instruct-v0.1.q5_k_m`
+  // for TheBloke / mradermacher), so a strict equality check would
+  // banish the model to the "Custom — not in our catalog" orphan bucket
+  // even though we just downloaded it from the catalog. See
+  // app/lib/model-id.ts for the normalization rules.
+  const localIdsNormalized = new Set(
+    (local ?? []).map((m) => normalizeModelId(m.id)),
+  );
+  const localCatalog = catalog.filter((m) =>
+    localIdsNormalized.has(normalizeModelId(m.id)),
+  );
+  const remoteCatalog = catalog.filter(
+    (m) => !localIdsNormalized.has(normalizeModelId(m.id)),
+  );
   const orphans =
-    local?.filter((m) => !catalog.find((c) => c.id === m.id)) ?? [];
+    local?.filter((m) => !catalog.some((c) => modelIdsMatch(c.id, m.id))) ?? [];
 
   const selfNode = mesh.nodes.find((n) => n.isSelf);
   const localVramGb = selfNode?.capability.vramGb ?? selfNode?.vramGb ?? null;
   const localBackend = selfNode?.capability.backend ?? null;
   const selfHostname = selfNode?.hostname ?? null;
 
-  // Find a runtime-reported MeshModel for any catalog id by either name match
-  // (the typical case once the runtime warms up) or substring match (the
-  // runtime sometimes appends `-Q4_K_M` suffixes; we accept partial overlap).
+  // Find a runtime-reported MeshModel for any catalog id. First try exact
+  // match, then a normalized (case + separator-folded) match — same
+  // rationale as the orphan/local matching above, since the runtime can
+  // also report the same model under either the catalog ref or the
+  // resolved HF filename stem depending on whether the model is loaded
+  // or just available. Substring fallback as a last resort for
+  // historical `-Q4_K_M` suffix variations.
   const findMeshModel = (id: string): MeshModel | null => {
     const exact = meshModels.models.find((m) => m.name === id);
     if (exact) return exact;
+    const normalized = meshModels.models.find((m) =>
+      modelIdsMatch(m.name, id),
+    );
+    if (normalized) return normalized;
     return (
       meshModels.models.find(
         (m) => m.name.includes(id) || id.includes(m.name),
@@ -334,8 +358,21 @@ export default function ModelsPage() {
     );
   };
 
+  // Index startup configs by both the raw id and a normalized id, so a
+  // catalog row matches whether the user configured it via the catalog
+  // ref (`Mixtral-8x7B-Instruct-v0.1-Q5_K_M`) or via the resolved HF
+  // filename stem (`Mixtral-8x7B-Instruct-v0.1.q5_k_m`). Without this,
+  // the catalog row would lose its "Startup model" pill the moment the
+  // runtime restarts and re-keys the startup entry under the resolved
+  // filename. See app/lib/model-id.ts.
   const startupById = new Map(startup.map((s) => [s.model, s] as const));
-  const startupIds = new Set(startup.map((s) => s.model));
+  const startupNormalizedToEntry = new Map(
+    startup.map((s) => [normalizeModelId(s.model), s] as const),
+  );
+  const isStartupModel = (id: string) =>
+    startupById.has(id) || startupNormalizedToEntry.has(normalizeModelId(id));
+  const startupEntryFor = (id: string) =>
+    startupById.get(id) ?? startupNormalizedToEntry.get(normalizeModelId(id));
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -393,7 +430,7 @@ export default function ModelsPage() {
                           <LiveLaunchState
                             meshModel={findMeshModel(m)}
                             isLoaded
-                            isConfigured={startupIds.has(m)}
+                            isConfigured={isStartupModel(m)}
                             selfHostname={selfHostname}
                           />
                         </div>
@@ -451,14 +488,15 @@ export default function ModelsPage() {
                     localBackend={localBackend}
                     meshModel={findMeshModel(m.id)}
                     state="downloaded"
-                    isStartup={startupIds.has(m.id)}
+                    isStartup={isStartupModel(m.id)}
                     startupForceSplit={
-                      startupById.get(m.id)?.forceSplit === true
+                      startupEntryFor(m.id)?.forceSplit === true
                     }
                     startupBusy={startupBusy === m.id}
                     deleteBusy={deleteBusy === m.id}
                     sizeBytes={
-                      local?.find((lm) => lm.id === m.id)?.sizeBytes ?? null
+                      local?.find((lm) => modelIdsMatch(lm.id, m.id))
+                        ?.sizeBytes ?? null
                     }
                     onDownload={() => startDownload(m.id)}
                     onSetStartup={(opts) => setStartupModel(m.id, opts)}
@@ -485,12 +523,12 @@ export default function ModelsPage() {
                         disabled={startupBusy !== null}
                         className={
                           "rounded-md border px-2.5 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 " +
-                          (startupIds.has(m.id)
+                          (isStartupModel(m.id)
                             ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
                             : "border-[var(--border)] bg-[var(--bg-elev)] text-[var(--fg)] hover:border-[var(--accent)]/40")
                         }
                       >
-                        {startupIds.has(m.id)
+                        {isStartupModel(m.id)
                           ? "Startup model"
                           : startupBusy === m.id
                             ? "Setting…"
@@ -498,9 +536,9 @@ export default function ModelsPage() {
                       </button>
                       <DeleteButton
                         busy={deleteBusy === m.id}
-                        disabled={startupIds.has(m.id) || deleteBusy !== null}
+                        disabled={isStartupModel(m.id) || deleteBusy !== null}
                         disabledReason={
-                          startupIds.has(m.id)
+                          isStartupModel(m.id)
                             ? "Currently set as the startup model — clear startup first."
                             : null
                         }
@@ -528,9 +566,9 @@ export default function ModelsPage() {
                   localBackend={localBackend}
                   meshModel={findMeshModel(m.id)}
                   state="catalog"
-                  isStartup={startupIds.has(m.id)}
+                  isStartup={isStartupModel(m.id)}
                   startupForceSplit={
-                    startupById.get(m.id)?.forceSplit === true
+                    startupEntryFor(m.id)?.forceSplit === true
                   }
                   startupBusy={startupBusy === m.id}
                   onDownload={() => startDownload(m.id)}

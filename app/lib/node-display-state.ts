@@ -76,11 +76,22 @@ export function nodeDisplayState(
 
   const greenBadge =
     "border-emerald-400/40 bg-emerald-400/10 text-emerald-300";
-  const hasModel =
-    (node.capability?.loadedModels?.length ?? 0) > 0 ||
-    node.servingModels.length > 0;
+  // `loadedModels` is the actual readiness signal: the controller's
+  // /api/status route only forwards `hosted_models` into it, which the
+  // runtime flips on once `llama_ready === true` (the GGUF is mmapped
+  // and the server is accepting requests). `servingModels` on the other
+  // hand is `serving_models ∪ hosted_models`, where `serving_models`
+  // is set the moment the runtime *commits* to bringing a model up —
+  // potentially 30+ seconds before llama-server has finished loading.
+  // So if we have an intent to serve but no loaded model yet, that's
+  // "Loading", not "Ready". Conflating the two is what made the
+  // dashboard cheerfully announce "READY · X loaded and waiting for
+  // requests" while the public status page (and reality) said
+  // "stuck loading 37s" for the exact same node.
+  const hasLoadedModel = (node.capability?.loadedModels?.length ?? 0) > 0;
+  const intendsToServe = node.servingModels.length > 0;
 
-  if (node.state === "loading") {
+  if (node.state === "loading" || (intendsToServe && !hasLoadedModel)) {
     return {
       dot: "bg-amber-400",
       badge: "border-amber-400/40 bg-amber-400/10 text-amber-300",
@@ -95,13 +106,13 @@ export function nodeDisplayState(
       dot: "bg-emerald-400",
       badge: greenBadge,
       label: "Serving",
-      description: hasModel
+      description: hasLoadedModel
         ? `Processing a request now — ${primaryModel(node)} loaded.`
         : "Processing a request now.",
     };
   }
 
-  if (hasModel) {
+  if (hasLoadedModel) {
     return {
       dot: "bg-emerald-400",
       badge: greenBadge,
@@ -123,9 +134,12 @@ export function nodeDisplayState(
 }
 
 function primaryModel(node: NodeSummary): string {
+  // Prefer the actually-loaded model over the merely-intended one; the
+  // caller only invokes us on the "Ready"/"Serving" branches, where
+  // `loadedModels` is guaranteed non-empty after the fix above.
   return (
-    node.servingModels[0] ||
     node.capability?.loadedModels?.[0] ||
+    node.servingModels[0] ||
     "model"
   );
 }
