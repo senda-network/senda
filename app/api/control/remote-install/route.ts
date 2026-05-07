@@ -319,6 +319,10 @@ async function runStreaming(
     const child = spawn(cmd, args, {
       stdio: [stdinFromFile ? "pipe" : "ignore", "pipe", "pipe"],
       env: process.env,
+      // Hide the spawned helper's console on Windows; this route shells
+      // out to ssh / scp during remote install, which would otherwise
+      // flash an extra terminal per remote-install action.
+      windowsHide: true,
     });
 
     if (stdinFromFile && child.stdin) {

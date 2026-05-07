@@ -240,6 +240,13 @@ async function openWithSystem(filepath: string): Promise<boolean> {
       const child = spawn(cmd, args, {
         detached: true,
         stdio: "ignore",
+        // The actual installer (.dmg / .msi / .exe / xdg-open) needs to
+        // be visible — that's the whole point. But on Windows we go
+        // through `cmd /C start "" <path>` and we don't want to flash a
+        // cmd.exe console *before* the installer launches. `windowsHide`
+        // hides the cmd shim; the installer it launches comes up with
+        // its own normal window.
+        windowsHide: true,
       });
       child.on("error", () => resolve(false));
       child.unref();

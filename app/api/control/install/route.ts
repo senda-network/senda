@@ -91,6 +91,11 @@ export async function POST(req: Request) {
       const child = spawn("bash", args, {
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
+        // No-op here in practice — this route refuses on Windows above —
+        // but kept for consistency with the rest of /api/control/* so
+        // future readers don't think this spawn is intentionally
+        // console-visible.
+        windowsHide: true,
       });
 
       child.stdout.setEncoding("utf-8");

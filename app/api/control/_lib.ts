@@ -82,6 +82,17 @@ export function runClosedmesh(
     const child = spawn(bin, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
+      // CRITICAL on Windows: this controller runs as a Node sidecar of the
+      // Tauri desktop app, which is a GUI process (`windows_subsystem =
+      // "windows"`). When such a parent spawns a console-subsystem child
+      // like `closedmesh.exe`, `schtasks.exe`, or `tar.exe`, Windows
+      // allocates a brand-new console window for it. With `/api/control/*`
+      // routes invoked on every dashboard tick, that meant a terminal
+      // window flashed on the user's screen 4× a second forever — the
+      // "opening terminals like crazy" symptom. `windowsHide` translates
+      // to `CREATE_NO_WINDOW` (0x0800_0000) on the underlying CreateProcess
+      // call, which suppresses the allocation. No effect on macOS / Linux.
+      windowsHide: true,
     });
     let stdout = "";
     let stderr = "";

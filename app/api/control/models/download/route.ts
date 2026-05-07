@@ -70,6 +70,10 @@ export async function POST(req: Request) {
       const child = spawn(bin, ["models", "download", id], {
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
+        // See _lib.ts — without this every model download flashes a
+        // closedmesh.exe console window on Windows for the duration of
+        // the (potentially multi-minute) download.
+        windowsHide: true,
       });
 
       const handle = (chunk: string, kind: "stdout" | "stderr") => {

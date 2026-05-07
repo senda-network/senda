@@ -8,6 +8,48 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+/// Extension trait: hide the Windows console window on every child we spawn.
+///
+/// Why this exists: the desktop binary is built with
+/// `windows_subsystem = "windows"`, i.e. no console of its own. When a
+/// console-subsystem child (`closedmesh.exe`, `node.exe`, `tar.exe`,
+/// `schtasks.exe`, `taskkill.exe`, `rpc-server.exe`, `llama-server.exe`)
+/// is spawned by such a parent on Windows, the OS allocates a *new*
+/// console window and attaches the child to it. The window flashes for
+/// short-lived children and stays open for long-lived ones (the bundled
+/// Node sidecar, in particular, was a permanently-visible black box on
+/// every user's screen). On a fresh install the desktop spawns a dozen
+/// of these in the first 30 seconds — `tar` to extract the runtime,
+/// `closedmesh --version` to verify it, `closedmesh service start`,
+/// then the runtime itself spawning `rpc-server` and `llama-server`,
+/// each with its own console — and on a Scheduled-Task autostart loop
+/// (1 min restart interval, 3 retries) a crash-restart cycle multiplies
+/// the count. Users on lower-end Windows boxes reported the cascade as
+/// "opening apps and terminals like crazy until it crashed the whole
+/// computer", which it effectively was.
+///
+/// `CREATE_NO_WINDOW` (0x0800_0000) tells `CreateProcess` not to
+/// allocate a console for the child. Combined with stdout/stderr
+/// redirection (which we already do for the sidecar), the child runs
+/// completely headless. No effect on macOS / Linux — the call is
+/// compiled away.
+pub(crate) trait CommandExtNoWindow {
+    fn hide_console(&mut self) -> &mut Self;
+}
+
+impl CommandExtNoWindow for Command {
+    #[cfg(windows)]
+    fn hide_console(&mut self) -> &mut Self {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        self.creation_flags(CREATE_NO_WINDOW)
+    }
+    #[cfg(not(windows))]
+    fn hide_console(&mut self) -> &mut Self {
+        self
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct InvitePayload {
     #[serde(default)]
@@ -343,6 +385,7 @@ fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
             let _ = Command::new("xattr")
                 .args(["-d", "com.apple.quarantine"])
                 .arg(&dst)
+                .hide_console()
                 .output();
         }
         moved += 1;
@@ -870,6 +913,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         let _ = Command::new("xattr")
             .args(["-d", "com.apple.quarantine"])
             .arg(&new_bin)
+            .hide_console()
             .output();
     }
 
@@ -974,7 +1018,11 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
 /// that the comparator treats as "very old", which means a broken
 /// binary will always look upgrade-eligible.
 fn installed_runtime_version(bin: &Path) -> Option<(u32, u32, u32, Option<String>)> {
-    let out = Command::new(bin).arg("--version").output().ok()?;
+    let out = Command::new(bin)
+        .arg("--version")
+        .hide_console()
+        .output()
+        .ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let token = text
         .split_whitespace()
@@ -1174,6 +1222,7 @@ fn repair_launchd_plist(bin: &std::path::Path) {
     let _ = Command::new("chflags")
         .args(["nouchg"])
         .arg(&plist_path)
+        .hide_console()
         .output();
 
     // Ensure the log directory referenced in the plist exists. launchd
@@ -1191,6 +1240,7 @@ fn repair_launchd_plist(bin: &std::path::Path) {
     let _ = Command::new("xattr")
         .args(["-dr", "com.apple.quarantine"])
         .arg(bin)
+        .hide_console()
         .output();
 
     let tmp_path = plist_path.with_extension("plist.tmp");
@@ -1231,7 +1281,11 @@ fn launchd_plist_path() -> Option<PathBuf> {
 /// hard-coding a CLI version the desktop has to keep in sync with.
 #[cfg(target_os = "macos")]
 fn cli_supports_join_url(bin: &std::path::Path) -> bool {
-    let Ok(output) = Command::new(bin).args(["serve", "--help"]).output() else {
+    let Ok(output) = Command::new(bin)
+        .args(["serve", "--help"])
+        .hide_console()
+        .output()
+    else {
         return false;
     };
     let combined: Vec<u8> = output
@@ -1398,6 +1452,7 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
 
     let _ = Command::new("launchctl")
         .args(["bootout", &label_target])
+        .hide_console()
         .output();
 
     // Wait for launchd's async unload to actually finish before we
@@ -1434,6 +1489,7 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
         }
         let bootstrap = Command::new("launchctl")
             .args(["bootstrap", &target, &plist_str])
+            .hide_console()
             .output();
         match &bootstrap {
             Ok(out) if out.status.success() => {
@@ -1490,6 +1546,7 @@ fn current_uid() -> u32 {
     // launch and the cost is negligible.
     Command::new("id")
         .arg("-u")
+        .hide_console()
         .output()
         .ok()
         .and_then(|o| {
@@ -1558,7 +1615,7 @@ const RUNTIME_RELEASE_BASE: &str =
 /// unparseable version string is conservatively rejected so it gets
 /// replaced with a known-good download.
 fn runtime_meets_minimum(bin: &std::path::Path) -> bool {
-    let out = match Command::new(bin).arg("--version").output() {
+    let out = match Command::new(bin).arg("--version").hide_console().output() {
         Ok(o) => o,
         Err(e) => {
             eprintln!(
@@ -1731,6 +1788,7 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
         let _ = Command::new("xattr")
             .args(["-d", "com.apple.quarantine"])
             .arg(&dest)
+            .hide_console()
             .output();
     }
 
@@ -1783,6 +1841,7 @@ fn extract_tar_gz(archive: &std::path::Path, dest_dir: &std::path::Path) -> bool
         .arg(archive)
         .arg("-C")
         .arg(dest_dir)
+        .hide_console()
         .output()
     {
         Ok(o) => o,
@@ -1810,6 +1869,7 @@ fn extract_zip(archive: &std::path::Path, dest_dir: &std::path::Path) -> bool {
         .arg(archive)
         .arg("-C")
         .arg(dest_dir)
+        .hide_console()
         .output()
     {
         Ok(o) => o,
@@ -1888,7 +1948,7 @@ fn run_cli(args: &[&str]) {
     // to parse output for success. But we do log failures so they appear in
     // macOS Console (searchable with "closedmesh" subsystem) and in any
     // attached terminal session.
-    match Command::new(&bin).args(args).output() {
+    match Command::new(&bin).args(args).hide_console().output() {
         Ok(out) if !out.status.success() => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             let stdout = String::from_utf8_lossy(&out.stdout);

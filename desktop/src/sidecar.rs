@@ -343,6 +343,31 @@ impl Sidecar {
             }
         }
 
+        // Windows analogue: the desktop binary uses
+        // `windows_subsystem = "windows"`, which means it runs without a
+        // console of its own. When such a parent spawns a console-subsystem
+        // child like `node.exe`, the OS allocates a brand-new console window
+        // and attaches the child to it — so users were getting a permanent
+        // black `node.exe` window sitting next to the app for the entire
+        // session, plus a flash for every short-lived child the runtime then
+        // spawned (`closedmesh.exe`, `tar.exe`, `rpc-server.exe`,
+        // `llama-server.exe`, …). On lower-end boxes the cascade was reported
+        // as "the app started opening terminals like crazy until it crashed
+        // the computer".
+        //
+        // `CREATE_NO_WINDOW` (0x0800_0000) tells `CreateProcess` not to
+        // allocate a console for this child. Combined with the stdout/stderr
+        // redirection above (Node's output already goes to
+        // `controller.{stdout,stderr}.log`), the sidecar runs completely
+        // headless and any subprocess Node itself spawns inherits the
+        // no-console inheritance chain.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
         let child = command
             // Run from the controller dir so relative paths inside the
             // standalone bundle resolve correctly.
