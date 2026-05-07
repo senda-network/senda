@@ -17,39 +17,67 @@
 ; Two-step kill, in this order:
 ;
 ;   1. `taskkill /F /T /IM ClosedMesh.exe` — force-kill the desktop
-;      window and its process tree. `/T` only catches descendants of
-;      a *currently alive* parent though, so when the user has
-;      previously closed the window (Tauri's prevent_close keeps the
-;      process alive but a crash or earlier upgrade may have killed
-;      ClosedMesh.exe and orphaned the sidecar) `node.exe` survives
-;      this step.
+;      window and its child tree. `/T` walks descendants of the
+;      currently alive parent only, so when ClosedMesh.exe has
+;      already exited (Tauri's prevent_close keeps it alive while
+;      a hidden window is around, but a previous upgrade or crash
+;      can leave node.exe orphaned and reparented to System) `/T`
+;      misses the sidecar — handled by step 2.
 ;
 ;   2. PowerShell sweep that finds any `node.exe` whose full path
-;      ends with `\ClosedMesh\node.exe` and kills it. Matching on
-;      full path (not just image name) protects unrelated `node.exe`
-;      processes the user might be running — a Node dev server, a
-;      VS Code extension host, the Electron renderer of another
+;      ends with `\ClosedMesh\node.exe` and force-kills it. Path
+;      filter (not just image name) protects unrelated `node.exe`
+;      processes the user might be running — Node dev server, VS
+;      Code extension host, the Electron renderer of any other
 ;      installed app.
 ;
-; Sleep 800 ms after the kill to give the OS time to drop file locks
-; before NSIS opens the destination files for writing. 500 ms was
-; consistently enough on a fast NVMe; 800 ms keeps a margin for
-; slower disks without making the install perceptibly slower.
+; CRITICAL ESCAPING NOTE — `$$_` and `$\"`:
+;
+;   NSIS treats `$VAR_NAME` as a variable reference inside string
+;   literals. PowerShell's pipeline-variable `$_` would be silently
+;   eaten by NSIS (resulting in `.Path -like '...'` which PowerShell
+;   parses as accessing a Path property on `$null` → Where-Object
+;   matches zero items → no kill, no error, file lock survives,
+;   "Error opening file for writing" dialog).
+;
+;   `$$` is the NSIS literal-`$` escape, so `$$_` arrives at
+;   PowerShell as `$_`. This is the SOLE reason the v0.1.65 hook
+;   appeared to do nothing on the user's machine. Same goes for
+;   `$\"` for embedded double quotes.
+;
+;   Verified by inserting `DetailPrint` lines below — install log
+;   now prints the exit code from each step.
+;
+; Sleep 1500 ms after the kills to give the OS time to drop file
+; handles before NSIS opens the destination files for writing.
+; 800 ms wasn't reliably enough on the user's machine (Win11 + NVMe
+; reportedly still failed 1-in-3 times); 1500 ms is conservative
+; without making the install perceptibly slower.
 
 !macro NSIS_HOOK_PREINSTALL
-  DetailPrint "Stopping any running ClosedMesh instance..."
+  DetailPrint "[ClosedMesh] preinstall: terminating any running app instance..."
   nsExec::Exec 'taskkill /F /T /IM ClosedMesh.exe'
   Pop $0
-  nsExec::Exec 'powershell -NoProfile -WindowStyle Hidden -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like ''*\ClosedMesh\node.exe'' } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  DetailPrint "[ClosedMesh] preinstall: taskkill ClosedMesh.exe -> exit $0"
+
+  nsExec::Exec 'powershell -NoProfile -WindowStyle Hidden -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like ''*\ClosedMesh\node.exe'' } | Stop-Process -Force -ErrorAction SilentlyContinue"'
   Pop $0
-  Sleep 800
+  DetailPrint "[ClosedMesh] preinstall: orphaned node.exe sweep -> exit $0"
+
+  Sleep 1500
+  DetailPrint "[ClosedMesh] preinstall: ready to install"
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  DetailPrint "Stopping any running ClosedMesh instance..."
+  DetailPrint "[ClosedMesh] preuninstall: terminating any running app instance..."
   nsExec::Exec 'taskkill /F /T /IM ClosedMesh.exe'
   Pop $0
-  nsExec::Exec 'powershell -NoProfile -WindowStyle Hidden -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like ''*\ClosedMesh\node.exe'' } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  DetailPrint "[ClosedMesh] preuninstall: taskkill ClosedMesh.exe -> exit $0"
+
+  nsExec::Exec 'powershell -NoProfile -WindowStyle Hidden -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like ''*\ClosedMesh\node.exe'' } | Stop-Process -Force -ErrorAction SilentlyContinue"'
   Pop $0
-  Sleep 800
+  DetailPrint "[ClosedMesh] preuninstall: orphaned node.exe sweep -> exit $0"
+
+  Sleep 1500
+  DetailPrint "[ClosedMesh] preuninstall: ready to uninstall"
 !macroend

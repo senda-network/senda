@@ -17,16 +17,37 @@ export const isPublic =
   flagSet(process.env.FORGEMESH_DEPLOYMENT);
 
 const explicit = process.env.CLOSEDMESH_BIN ?? process.env.FORGEMESH_BIN;
+const isWindows = process.platform === "win32";
 
+// Pre-0.1.66 this list was Unix-only and `/api/control/status` always
+// returned `available: false` on Windows even after install.ps1 had
+// dropped a binary at AppData\Local\closedmesh\bin\closedmesh.exe.
+// Setup.tsx polled the endpoint after install, never saw available
+// flip to true, and showed "Something went wrong. Try again." which
+// gave the impression the install had failed when it had actually
+// fully succeeded.
 const candidates = [
   explicit,
-  path.join(homedir(), ".local", "bin", "closedmesh"),
-  "/opt/homebrew/bin/closedmesh",
-  "/usr/local/bin/closedmesh",
-  // Legacy fallbacks (one release of grace).
-  path.join(homedir(), ".local", "bin", "forgemesh"),
-  "/opt/homebrew/bin/forgemesh",
-  "/usr/local/bin/forgemesh",
+  // Windows: install.ps1 (Setup-button install path) drops the binary
+  // here; the Rust auto-install path on first launch matches.
+  isWindows
+    ? path.join(homedir(), "AppData", "Local", "closedmesh", "bin", "closedmesh.exe")
+    : null,
+  // Windows: secondary location used by Rust ensure_runtime_installed
+  // when the .ps1 path doesn't exist yet (and on Unix, the canonical
+  // user-local install path).
+  isWindows
+    ? path.join(homedir(), ".local", "bin", "closedmesh.exe")
+    : path.join(homedir(), ".local", "bin", "closedmesh"),
+  // macOS: Homebrew (Apple Silicon and Intel respectively).
+  isWindows ? null : "/opt/homebrew/bin/closedmesh",
+  isWindows ? null : "/usr/local/bin/closedmesh",
+  // Legacy fallbacks (one release of grace from the forgemesh rename).
+  isWindows
+    ? path.join(homedir(), "AppData", "Local", "forgemesh", "bin", "forgemesh.exe")
+    : path.join(homedir(), ".local", "bin", "forgemesh"),
+  isWindows ? null : "/opt/homebrew/bin/forgemesh",
+  isWindows ? null : "/usr/local/bin/forgemesh",
 ].filter((p): p is string => typeof p === "string" && p.length > 0);
 
 let cachedBin: string | null = null;
@@ -42,11 +63,21 @@ let cachedBin: string | null = null;
  * still here, never showing the Setup screen again until the controller
  * is restarted. Re-stat'ing one path is essentially free.
  */
+// Windows reports `mode` bits from the read-only attribute, not Unix
+// execute permissions, so the `mode & 0o111` check that guards the
+// Unix paths against accidental matches on data files would always
+// fail on Windows even when closedmesh.exe is perfectly executable.
+// The .exe extension is the platform's executability signal anyway.
+function isExecutable(stat: import("node:fs").Stats): boolean {
+  if (isWindows) return stat.isFile();
+  return stat.isFile() && (stat.mode & 0o111) !== 0;
+}
+
 export async function findClosedmeshBin(): Promise<string | null> {
   if (cachedBin) {
     try {
       const stat = await fs.stat(cachedBin);
-      if (stat.isFile() && (stat.mode & 0o111) !== 0) return cachedBin;
+      if (isExecutable(stat)) return cachedBin;
     } catch {
       // fall through and rescan; the cached path is no longer valid
     }
@@ -55,7 +86,7 @@ export async function findClosedmeshBin(): Promise<string | null> {
   for (const candidate of candidates) {
     try {
       const stat = await fs.stat(candidate);
-      if (stat.isFile() && (stat.mode & 0o111) !== 0) {
+      if (isExecutable(stat)) {
         cachedBin = candidate;
         return candidate;
       }
