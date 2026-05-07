@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { PublicHeader } from "../../components/PublicHeader";
 import { MeshLiveStatus } from "../../components/MeshLiveStatus";
 import { nodeDisplayState } from "../../lib/node-display-state";
+import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
+import { normalizeModelId } from "../../lib/model-id";
 import type { NodeSummary } from "../../lib/use-mesh-status";
 
 type MeshNode = NodeSummary;
@@ -42,6 +44,89 @@ function backendLabel(backend: string, _vendor: string): string {
     cpu: "CPU",
   };
   return map[backend] ?? backend;
+}
+
+/**
+ * Try to match a runtime-reported model id against our hand-maintained
+ * catalog. The runtime stores models under the resolved Hugging Face
+ * filename stem (e.g. `Mixtral-8x7B-Instruct-v0.1.q5_k_m`) while the
+ * catalog uses our canonical refs (`Mixtral-8x7B-Instruct-v0.1-Q5_K_M`),
+ * so go through the same normalization we use everywhere else for
+ * matching. Returns null for orphan / custom models — those we just
+ * can't make any fit claim about, since we have no minVramGb.
+ */
+function lookupCatalogModel(id: string): CatalogModel | null {
+  const target = normalizeModelId(id);
+  return MODEL_CATALOG.find((m) => normalizeModelId(m.id) === target) ?? null;
+}
+
+/**
+ * What is this node trying to load, and is it actually going to fit?
+ *
+ * Returns `null` if the node isn't trying to load anything. Otherwise
+ * returns the first servingModels entry plus a fit verdict: if we can
+ * map it to a catalog entry we compute the shortfall against the host's
+ * usable VRAM, and otherwise we say "unknown" so the UI can render
+ * "Loading X" without making a false fit claim.
+ *
+ * Why a single model rather than the whole list: stuck-loading hosts
+ * almost always have just one entry in `servingModels` — it's the
+ * startup-config model the runtime is trying to bring up. If we ever
+ * see multiple, picking the first one is a reasonable default; the
+ * card layout doesn't need to fan out.
+ */
+type WarmingVerdict =
+  | { kind: "fits"; modelId: string; displayName: string; catalog: CatalogModel; hostVramGb: number }
+  | {
+      kind: "underprovisioned";
+      modelId: string;
+      displayName: string;
+      catalog: CatalogModel;
+      hostVramGb: number;
+      shortfallGb: number;
+    }
+  | { kind: "unknown"; modelId: string; displayName: string };
+
+function warmingUpVerdict(node: NodeSummary): WarmingVerdict | null {
+  const modelId = node.servingModels[0];
+  if (!modelId) return null;
+  const display = prettyModelName(modelId);
+  const catalog = lookupCatalogModel(modelId);
+  if (!catalog) return { kind: "unknown", modelId, displayName: display };
+  // Use the smaller of the two reported numbers — `vramGb` (top-level)
+  // is the Metal-budgeted figure for Apple Silicon (~75% of unified
+  // memory) and `capability.vramGb` is sometimes the unified-memory
+  // total. The conservative number is what actually constrains
+  // llama-server's allocator, so it's what we should compare against
+  // the catalog's minVramGb.
+  const hostVramGb = Math.min(
+    node.vramGb || Number.POSITIVE_INFINITY,
+    node.capability?.vramGb || Number.POSITIVE_INFINITY,
+  );
+  if (!Number.isFinite(hostVramGb) || hostVramGb <= 0) {
+    return { kind: "unknown", modelId, displayName: display };
+  }
+  const shortfall = catalog.minVramGb - hostVramGb;
+  // Same threshold as app/lib/mesh-fit.ts — sub-gigabyte misses are
+  // measurement noise, anything bigger is a real "won't actually
+  // serve" verdict.
+  if (shortfall > 0.5) {
+    return {
+      kind: "underprovisioned",
+      modelId,
+      displayName: catalog.name,
+      catalog,
+      hostVramGb,
+      shortfallGb: shortfall,
+    };
+  }
+  return {
+    kind: "fits",
+    modelId,
+    displayName: catalog.name,
+    catalog,
+    hostVramGb,
+  };
 }
 
 function backendColor(backend: string): string {
@@ -361,6 +446,123 @@ function IssueNodeRow({
   );
 }
 
+/**
+ * Loud, informative card for a peer that has committed to a model and
+ * is in the loading window. This used to be a one-line entry buried in
+ * the collapsed "machines connected but not currently serving"
+ * accordion, which left the public status page reporting "0 machines /
+ * 0 models / Be the first to share" while a contributor was actively
+ * trying — and, in the underprovisioned case, would never succeed.
+ *
+ * Two variants driven by `verdict.kind`:
+ *
+ *   - `underprovisioned`: amber border + headline "Won't actually
+ *     load" with the exact GB shortfall and a CTA to add a peer. This
+ *     is the case the public homepage was lying about most loudly:
+ *     llama_ready never flips so the entry node sees the host stuck
+ *     forever in `state: "loading"` and the page used to claim "0
+ *     models available · Be the first to share" while the contributor
+ *     was sitting there mmap-thrashing.
+ *
+ *   - `fits` / `unknown`: muted "Loading X — this can take a minute"
+ *     line, no warning. This is the legitimate transient case (model
+ *     does fit, just hasn't finished mmap'ing yet).
+ */
+function WarmingUpCard({
+  node,
+  verdict,
+  history,
+}: {
+  node: MeshNode & { _vanished?: boolean };
+  verdict: WarmingVerdict;
+  history?: NodeHistory;
+}) {
+  const hostname = prettyHostname(node.hostname);
+  const loadingFor =
+    node.state === "loading" && history?.loadingSince
+      ? Date.now() - history.loadingSince
+      : 0;
+  const danger = verdict.kind === "underprovisioned";
+  return (
+    <div
+      className={
+        "rounded-xl border p-5 " +
+        (danger
+          ? "border-amber-400/50 bg-amber-400/5"
+          : "border-[var(--border)] bg-[var(--bg-elev)]")
+      }
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className={
+              "mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full " +
+              (danger ? "bg-amber-400" : "bg-amber-300")
+            }
+          />
+          <div className="min-w-0">
+            <div
+              className={
+                "text-[10px] uppercase tracking-[0.18em] " +
+                (danger ? "text-amber-300" : "text-[var(--fg-muted)]")
+              }
+            >
+              {danger ? "Won't actually load" : "Warming up"}
+            </div>
+            <div className="mt-0.5 text-sm font-semibold tracking-tight text-[var(--fg)]">
+              {hostname}
+            </div>
+            <div className="mt-1 font-mono text-[12px] text-[var(--fg)]/85">
+              {verdict.displayName}
+              {loadingFor > 0 && (
+                <span className="ml-2 text-[11px] text-[var(--fg-muted)]">
+                  · {formatDuration(loadingFor)}
+                </span>
+              )}
+            </div>
+            <div className="mt-1.5 text-[12px] text-[var(--fg-muted)]">
+              {verdict.kind === "underprovisioned" ? (
+                <>
+                  This model needs ~
+                  <span className="font-semibold text-amber-200">
+                    {verdict.catalog.minVramGb} GB
+                  </span>{" "}
+                  but the host has ~
+                  <span className="font-semibold text-amber-200">
+                    {verdict.hostVramGb.toFixed(0)} GB
+                  </span>
+                  . llama-server is mmap&apos;ing it from disk and will
+                  thrash — chat requests will time out until a peer with at
+                  least{" "}
+                  <span className="font-semibold text-amber-200">
+                    {Math.ceil(verdict.shortfallGb)} GB
+                  </span>{" "}
+                  more memory joins the mesh.
+                </>
+              ) : verdict.kind === "fits" ? (
+                <>
+                  Loading the GGUF into VRAM. This usually takes 30s–2 min for
+                  models in this size range.
+                </>
+              ) : (
+                <>Loading the GGUF into VRAM. This usually takes 30s–2 min.</>
+              )}
+            </div>
+          </div>
+        </div>
+        {danger && (
+          <a
+            href="/download"
+            className="shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-[11px] font-semibold text-black transition hover:brightness-110"
+          >
+            Add a peer →
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SummaryBar({
   status,
   workingPeerCount,
@@ -624,6 +826,26 @@ export default function StatusPage() {
   const workingNodes = renderNodes
     .filter((n) => !isUnavailable(n))
     .sort(sortNodes);
+
+  // Peers in the loading state that are actively trying to bring a
+  // model up. We surface these as full-width cards (with a fit verdict)
+  // above the empty state, so the public page actually reports
+  // "MacBook-Air-de-al-2 is warming up Mixtral 8x7B — won't actually
+  // load on its own, needs 24 GB more memory" instead of the previous
+  // "Be the first to share" lie + collapsed accordion.
+  const warmingUpNodes = unavailableNodes
+    .map((n) => ({ node: n, verdict: warmingUpVerdict(n) }))
+    .filter((x): x is { node: typeof x.node; verdict: WarmingVerdict } =>
+      x.verdict !== null,
+    );
+  // Anything in `unavailableNodes` that ISN'T a warming-up peer (e.g.
+  // unreachable, vanished, recently offline) still goes into the
+  // collapsed details section below — those don't have anything
+  // interesting to say to a public visitor and we don't want to fill
+  // the page with broken-peer noise.
+  const trulyUnavailableNodes = unavailableNodes.filter(
+    (n) => !warmingUpNodes.some((w) => w.node.id === n.id),
+  );
   // Highest version observed across BOTH lists. Used to flag outdated
   // peers in any section. Computed once per render so all rows agree
   // on what "latest" means.
@@ -705,10 +927,7 @@ export default function StatusPage() {
 
             {/* Working nodes — peers that are currently useful or have
                 been useful at some point in this session, plus the entry
-                node. The empty state is deliberately positive ("be the
-                first to share") rather than alarmed; users on the public
-                page don't need a technical explanation of which peer is
-                stuck where. */}
+                node. */}
             <div>
               <div className="mb-3 text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
                 Available machines
@@ -721,6 +940,23 @@ export default function StatusPage() {
                       node={node}
                       history={historyRef.current.get(node.id)}
                       latestVersion={latestVersion}
+                    />
+                  ))}
+                </div>
+              ) : warmingUpNodes.length > 0 ? (
+                // At least one peer is actively trying to bring a model
+                // up. Show what they're loading and whether it'll fit
+                // instead of the misleading "Be the first to share"
+                // empty state — the user IS sharing, the question is
+                // whether the model is actually going to load. See
+                // WarmingUpCard for the underprovisioned vs fits split.
+                <div className="space-y-3">
+                  {warmingUpNodes.map(({ node, verdict }) => (
+                    <WarmingUpCard
+                      key={node.id}
+                      node={node}
+                      verdict={verdict}
+                      history={historyRef.current.get(node.id)}
                     />
                   ))}
                 </div>
@@ -743,28 +979,26 @@ export default function StatusPage() {
               )}
             </div>
 
-            {/* Unavailable machines — peers that the entry node knows
-                about but that aren't currently serving (stuck loading,
-                unreachable, recently vanished). Tucked into a collapsed
-                <details> so the public page isn't dominated by broken
-                peers, but still discoverable for users who want to know
-                why their machine isn't appearing. The count is debounced
-                via VANISH_GRACE_MS so a flapping peer doesn't make the
-                disclosure label flicker. */}
-            {unavailableNodes.length > 0 && (
+            {/* Truly-broken peers — unreachable, vanished, recently
+                offline. Warming-up peers no longer land here; they got
+                promoted to the main "Available machines" section above
+                where they belong. This stays collapsed because there's
+                genuinely nothing actionable for a public visitor to do
+                about a stranger's offline node. */}
+            {trulyUnavailableNodes.length > 0 && (
               <details className="group rounded-xl border border-[var(--border)] bg-[var(--bg-elev)]/40 px-4 py-3 text-[12px]">
                 <summary className="flex cursor-pointer items-center justify-between gap-2 text-[var(--fg-muted)] [&::-webkit-details-marker]:hidden">
                   <span>
-                    {unavailableNodes.length} machine
-                    {unavailableNodes.length === 1 ? "" : "s"} connected but
-                    not currently serving
+                    {trulyUnavailableNodes.length} machine
+                    {trulyUnavailableNodes.length === 1 ? "" : "s"} connected
+                    but offline or unreachable
                   </span>
                   <span className="text-[var(--fg-muted)] transition-transform group-open:rotate-90">
                     ›
                   </span>
                 </summary>
                 <div className="mt-3 space-y-2">
-                  {unavailableNodes.map((node) => (
+                  {trulyUnavailableNodes.map((node) => (
                     <IssueNodeRow
                       key={node.id}
                       node={node}
