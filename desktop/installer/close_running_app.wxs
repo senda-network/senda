@@ -32,11 +32,23 @@
       </Component>
     </DirectoryRef>
 
-    <!-- /F = force, /T = terminate the entire process tree (so the
-         bundled node.exe sidecar dies with its parent), /IM = match
-         by image name. Return="ignore" because taskkill returns
-         non-zero on "no such process" — the expected case for a
-         fresh install with no prior ClosedMesh instance. -->
+    <!-- Two-step kill, in this order:
+
+         1. taskkill /F /T /IM ClosedMesh.exe — force-kills the desktop
+            window and its child tree. /T only catches descendants of
+            an *alive* parent though, so an orphaned node.exe sidecar
+            (left behind by an earlier crash or upgrade) survives this.
+
+         2. PowerShell sweep that finds any node.exe whose path ends
+            with \ClosedMesh\node.exe and force-kills it. Path filter
+            (not just image name) protects the user's unrelated
+            node.exe processes — Node dev servers, VS Code extension
+            host, the Electron renderer of another app.
+
+         Return="ignore" on both because either action returns
+         non-zero on a clean install (no prior ClosedMesh, no node.exe
+         to match) — the expected case, definitely not a reason to
+         abort the install. -->
     <CustomAction Id="StopClosedMesh"
                   Directory="TARGETDIR"
                   Execute="immediate"
@@ -44,12 +56,20 @@
                   Impersonate="yes"
                   ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM ClosedMesh.exe" />
 
-    <!-- Schedule the kill before InstallValidate, which is the phase
+    <CustomAction Id="StopClosedMeshSidecar"
+                  Directory="TARGETDIR"
+                  Execute="immediate"
+                  Return="ignore"
+                  Impersonate="yes"
+                  ExeCommand="powershell -NoProfile -WindowStyle Hidden -Command &quot;Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\ClosedMesh\node.exe' } | Stop-Process -Force -ErrorAction SilentlyContinue&quot;" />
+
+    <!-- Schedule the kills before InstallValidate, which is the phase
          where MSI checks whether any target files are in use. By the
          time InstallValidate runs, ClosedMesh.exe and its node.exe
-         are gone and the file locks have been released. -->
+         sidecar are gone and the file locks have been released. -->
     <InstallExecuteSequence>
       <Custom Action="StopClosedMesh" Before="InstallValidate">1</Custom>
+      <Custom Action="StopClosedMeshSidecar" After="StopClosedMesh">1</Custom>
     </InstallExecuteSequence>
   </Fragment>
 </Wix>

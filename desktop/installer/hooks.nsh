@@ -14,32 +14,42 @@
 ;     Click Abort to stop the installation, Retry to try again, or
 ;     Ignore to skip this file.
 ;
-; That dialog made the upgrade flow look broken to a friend testing
-; the .exe. The fix is to terminate the running process tree before
-; touching any files.
+; Two-step kill, in this order:
 ;
-; `taskkill /F` = force-terminate, `/T` = also terminate descendants
-; (so the bundled `node.exe` dies cleanly with its parent), `/IM` =
-; match by image name. Output is captured by nsExec and discarded.
-; The exit code is popped and ignored: on a fresh install (no prior
-; ClosedMesh process) taskkill returns 128 ("process not found"),
-; which is the expected case and definitely not a reason to abort.
+;   1. `taskkill /F /T /IM ClosedMesh.exe` — force-kill the desktop
+;      window and its process tree. `/T` only catches descendants of
+;      a *currently alive* parent though, so when the user has
+;      previously closed the window (Tauri's prevent_close keeps the
+;      process alive but a crash or earlier upgrade may have killed
+;      ClosedMesh.exe and orphaned the sidecar) `node.exe` survives
+;      this step.
 ;
-; Sleep 600 ms after the kill to give the OS time to drop file locks
+;   2. PowerShell sweep that finds any `node.exe` whose full path
+;      ends with `\ClosedMesh\node.exe` and kills it. Matching on
+;      full path (not just image name) protects unrelated `node.exe`
+;      processes the user might be running — a Node dev server, a
+;      VS Code extension host, the Electron renderer of another
+;      installed app.
+;
+; Sleep 800 ms after the kill to give the OS time to drop file locks
 ; before NSIS opens the destination files for writing. 500 ms was
-; consistently enough on a fast NVMe; 600 ms keeps a small margin
-; for slower disks without making the install perceptibly slower.
+; consistently enough on a fast NVMe; 800 ms keeps a margin for
+; slower disks without making the install perceptibly slower.
 
 !macro NSIS_HOOK_PREINSTALL
   DetailPrint "Stopping any running ClosedMesh instance..."
   nsExec::Exec 'taskkill /F /T /IM ClosedMesh.exe'
   Pop $0
-  Sleep 600
+  nsExec::Exec 'powershell -NoProfile -WindowStyle Hidden -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like ''*\ClosedMesh\node.exe'' } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  Pop $0
+  Sleep 800
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
   DetailPrint "Stopping any running ClosedMesh instance..."
   nsExec::Exec 'taskkill /F /T /IM ClosedMesh.exe'
   Pop $0
-  Sleep 600
+  nsExec::Exec 'powershell -NoProfile -WindowStyle Hidden -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like ''*\ClosedMesh\node.exe'' } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  Pop $0
+  Sleep 800
 !macroend
