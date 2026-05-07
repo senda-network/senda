@@ -1634,7 +1634,12 @@ const REGISTER_TASK_PS: &str = r#"param(
     [Parameter(Mandatory=$true)][string]$TaskName
 )
 $ErrorActionPreference = 'Stop'
-schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null
+# schtasks writes to stderr when the task doesn't exist (the expected
+# case on the very first install). Under $ErrorActionPreference =
+# 'Stop' that stderr write becomes a terminating NativeCommandError
+# even though `2>$null` should have eaten it — wrap in try/catch so
+# a missing prior task is silently OK.
+try { schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null } catch { }
 $action    = New-ScheduledTaskAction    -Execute $BinPath -Argument $ArgString -WorkingDirectory $WorkingDirectory
 $trigger   = New-ScheduledTaskTrigger   -AtLogOn -User $UserName
 $settings  = New-ScheduledTaskSettingsSet `
@@ -2130,6 +2135,14 @@ fn locate_binary() -> Option<PathBuf> {
         candidates.push(home.join(".local/bin/closedmesh"));
         if cfg!(windows) {
             candidates.push(home.join(".local/bin/closedmesh.exe"));
+            // install.ps1 (the PowerShell installer) drops the runtime
+            // here. Discovering it lets a user who installed via
+            // `iwr | iex` skip the redundant Rust download on first
+            // launch — and lets the dashboard's Setup-button install
+            // path (which also runs install.ps1) reuse its own output
+            // instead of duplicating work.
+            candidates.push(home.join("AppData/Local/closedmesh/bin/closedmesh.exe"));
+            // Legacy path from earlier install.ps1 versions.
             candidates.push(home.join("AppData/Local/closedmesh/closedmesh.exe"));
         }
     }

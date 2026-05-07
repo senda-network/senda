@@ -150,8 +150,13 @@ function Install-ScheduledTaskUnit {
     if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Force -Path $DataDir | Out-Null }
 
     # Re-register: nuke any existing task with the same name to keep the
-    # installer idempotent.
-    schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null
+    # installer idempotent. schtasks writes "ERROR: The system cannot
+    # find the file specified." to stderr when the task doesn't exist
+    # (the expected case on a fresh install). Under
+    # $ErrorActionPreference = 'Stop' that stderr write becomes a
+    # terminating NativeCommandError even though `2>$null` should have
+    # eaten it — wrap in try/catch so a missing task is silently OK.
+    try { schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null } catch { }
 
     # `serve --auto --publish --mesh-name closedmesh ...` discovers and
     # joins the public ClosedMesh through the canonical entry node at
