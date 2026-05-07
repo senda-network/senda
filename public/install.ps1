@@ -252,9 +252,10 @@ function Download-Binary {
         }
 
         Write-Info 'Extracting...'
-        Expand-Archive -Path (Join-Path $tmp $asset) -DestinationPath $tmp -Force
+        $unpack = Join-Path $tmp 'unpack'
+        Expand-Archive -Path (Join-Path $tmp $asset) -DestinationPath $unpack -Force
 
-        $binSrc = Join-Path $tmp 'closedmesh.exe'
+        $binSrc = Join-Path $unpack 'closedmesh.exe'
         if (-not (Test-Path $binSrc)) {
             throw "Extracted archive did not contain closedmesh.exe at $binSrc"
         }
@@ -271,8 +272,26 @@ function Download-Binary {
         # service is already running).
         Stop-RunningRuntime
 
-        Copy-Item -Force $binSrc (Join-Path $InstallDir 'closedmesh.exe')
-        Write-Ok "Installed: $InstallDir\closedmesh.exe"
+        # Drop EVERY file from the runtime ZIP into $InstallDir, not
+        # just closedmesh.exe. As of closedmesh-llm v0.66.4 the
+        # Windows ZIP is self-contained: closedmesh.exe + rpc-server.exe
+        # + llama-server.exe + the full ggml-*.dll fan-out (and on the
+        # cuda flavor, cudart_64_*.dll). Pre-this-commit Copy-Item only
+        # touched closedmesh.exe and discarded the helpers — so a user
+        # who upgraded straight from a release that ALSO had only
+        # closedmesh.exe would still see "rpc-server.exe not found".
+        # Install-LlamaCppHelpers below remains as a fallback for
+        # (older / future) runtime ZIPs that don't bundle them.
+        $copied = 0
+        Get-ChildItem -Path $unpack -File | ForEach-Object {
+            try {
+                Copy-Item -Force $_.FullName (Join-Path $InstallDir $_.Name)
+                $copied++
+            } catch {
+                Write-Warn2 ("Could not place $($_.Name): " + $_.Exception.Message)
+            }
+        }
+        Write-Ok "Installed $copied file(s) into $InstallDir (closedmesh.exe + helpers if bundled)."
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
@@ -329,11 +348,20 @@ function Get-LlamaCppAsset {
 function Install-LlamaCppHelpers {
     param([string]$Flavor)
 
-    # Idempotency stamp. install.ps1 is re-run on every desktop-app
-    # Setup-button click and on every runtime upgrade — a 70MB+
-    # download per click is unacceptable. We record the llama.cpp tag
-    # we already installed and short-circuit when the on-disk version
-    # matches.
+    # Idempotency. Two short-circuits:
+    #
+    #   1. If our stamp matches "$LlamaCppTag/$Flavor", we already
+    #      installed this exact version; skip.
+    #   2. If rpc-server.exe + llama-server.exe + at least one ggml
+    #      dll are already on disk, the runtime ZIP just shipped them
+    #      (closedmesh-llm v0.66.4+ bundles helpers natively). We
+    #      don't know exactly which llama.cpp version the runtime
+    #      bundled, but we trust the runtime's choice over ours, so
+    #      skip and write the stamp as "bundled".
+    #
+    # Without short-circuit #2 every Setup-button click would
+    # re-download a 70MB ZIP from ggml-org just to install the same
+    # files the runtime already dropped seconds earlier.
     $stamp = Join-Path $InstallDir '.llama-cpp-version'
     $rpc = Join-Path $InstallDir 'rpc-server.exe'
     $srv = Join-Path $InstallDir 'llama-server.exe'
@@ -342,6 +370,20 @@ function Install-LlamaCppHelpers {
         $current = (Get-Content -Path $stamp -Raw -ErrorAction SilentlyContinue).Trim()
         if ($current -eq "$LlamaCppTag/$Flavor") {
             Write-Info "llama.cpp helpers already at $LlamaCppTag/$Flavor; skipping download."
+            return
+        }
+    }
+
+    if ((Test-Path $rpc) -and (Test-Path $srv)) {
+        # ggml-base.dll ships in every flavor of llama.cpp's Windows
+        # release; its presence is a good proxy for "the helpers
+        # actually have their DLL deps next to them." On Windows
+        # without a *.dll set the helpers fail to load with the
+        # opaque exit 0xC0000135.
+        $hasGgml = Get-ChildItem -Path $InstallDir -Filter 'ggml-base.dll' -File -ErrorAction SilentlyContinue
+        if ($hasGgml) {
+            Write-Info "llama.cpp helpers already bundled by the runtime; skipping ggml-org download."
+            Set-Content -Path $stamp -Value "bundled/$Flavor" -NoNewline -Encoding ASCII
             return
         }
     }

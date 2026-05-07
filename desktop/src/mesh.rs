@@ -313,6 +313,38 @@ fn name_matches_prefix(name: &str, prefix: &str) -> bool {
     name == prefix || (name.starts_with(prefix) && name.as_bytes().get(prefix.len()) == Some(&b'-'))
 }
 
+/// True if `install_helpers_from_stage` should move this file out of
+/// the staging dir into the runtime install dir. Helpers (rpc-server,
+/// llama-server, llama-moe-*) qualify everywhere. On Windows we also
+/// move every DLL: the llama.cpp build there ships a fan-out of
+/// `ggml-*.dll`, `llama.dll`, `llama-common.dll`, `libomp140.x86_64.dll`
+/// (and on CUDA, the `cudart_64_*.dll` family), all of which the
+/// helpers `LoadLibrary` at runtime. Missing any one of them surfaces
+/// as exit `0xC0000135` with no stderr — exactly the silent failure
+/// mode 0.1.71 saw when only the .exe helpers got installed.
+///
+/// We deliberately don't move `closedmesh.exe` here: the upgrade
+/// caller has its own "stop service, atomic rename" sequencing for
+/// the main binary, and double-handling would race.
+fn helper_stage_file_should_move(name: &str) -> bool {
+    if name.eq_ignore_ascii_case("closedmesh.exe") || name == "closedmesh" {
+        return false;
+    }
+    if MOVE_PREFIXES
+        .iter()
+        .any(|prefix| name_matches_prefix(name, prefix))
+    {
+        return true;
+    }
+    if cfg!(windows) {
+        let lower = name.to_ascii_lowercase();
+        if lower.ends_with(".dll") {
+            return true;
+        }
+    }
+    false
+}
+
 /// Returns true iff `dir` contains at least one binary matching every
 /// prefix in [`REQUIRED_PREFIXES`]. We require *one* flavor per prefix,
 /// not all of them — the tarball for a given platform only ships one
@@ -355,10 +387,7 @@ fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if !MOVE_PREFIXES
-            .iter()
-            .any(|prefix| name_matches_prefix(&name_str, prefix))
-        {
+        if !helper_stage_file_should_move(&name_str) {
             continue;
         }
         let src = entry.path();
@@ -444,7 +473,7 @@ fn repair_missing_helpers(bin: &Path) -> bool {
         eprintln!("[closedmesh] helpers: mkdir staging failed: {e}");
         return false;
     }
-    let archive = stage_dir.join(asset);
+    let archive = stage_dir.join(&asset);
     let mut tmp_file = match std::fs::File::create(&archive) {
         Ok(f) => f,
         Err(e) => {
@@ -867,7 +896,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         }
     };
 
-    let archive = stage_dir.join(asset);
+    let archive = stage_dir.join(&asset);
     let mut tmp_file = match std::fs::File::create(&archive) {
         Ok(f) => f,
         Err(e) => {
@@ -2133,17 +2162,37 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
 /// publish a runtime for this platform yet — the caller should leave the
 /// binary uninstalled and the user falls through to the chat-from-website
 /// experience instead of running a node locally.
-fn runtime_asset_name() -> Option<&'static str> {
+///
+/// Windows is the odd one out: the runtime release ships
+/// `closedmesh-windows-x86_64-{cuda,vulkan}.zip` (flavor-specific), not
+/// a single `closedmesh-windows-x86_64.zip`. Pre-0.1.72 we returned the
+/// flavorless filename here and silently 404'd on every Windows
+/// auto-update / `repair_missing_helpers` call — which is why a user who
+/// upgraded the desktop without re-clicking Setup never picked up
+/// `rpc-server.exe`. Default to vulkan because it works on every GPU
+/// (NVIDIA / AMD / Intel) without a system CUDA install; the user can
+/// override via `CLOSEDMESH_BACKEND=cuda` if they actually have a
+/// modern NVIDIA card and CUDA 12.x runtime present.
+fn runtime_asset_name() -> Option<String> {
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some("closedmesh-darwin-aarch64.tar.gz")
+        Some("closedmesh-darwin-aarch64.tar.gz".to_string())
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Some("closedmesh-darwin-x86_64.tar.gz")
+        Some("closedmesh-darwin-x86_64.tar.gz".to_string())
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Some("closedmesh-linux-x86_64.tar.gz")
+        Some("closedmesh-linux-x86_64.tar.gz".to_string())
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        Some("closedmesh-linux-aarch64.tar.gz")
+        Some("closedmesh-linux-aarch64.tar.gz".to_string())
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        Some("closedmesh-windows-x86_64.zip")
+        let flavor = match std::env::var("CLOSEDMESH_BACKEND")
+            .ok()
+            .map(|v| v.trim().to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("cuda") => "cuda",
+            Some("cpu") => "cpu",
+            _ => "vulkan",
+        };
+        Some(format!("closedmesh-windows-x86_64-{flavor}.zip"))
     } else {
         None
     }

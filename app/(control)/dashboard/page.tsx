@@ -629,7 +629,16 @@ export default function DashboardPage() {
           {!showQuickStart &&
             running &&
             startupConfigured &&
-            loadedHere.length === 0 && (
+            loadedHere.length === 0 &&
+            // Suppress "Loading…" while the success card is still up for
+            // the same startup model. /api/status occasionally returns
+            // empty nodes during a network blip or runtime bounce — that
+            // momentarily flips loadedHere from ["foo"] back to [], which
+            // would otherwise mount this card *next to* the green "Ready"
+            // card for the exact same model. The ready card has its own
+            // 12 s auto-clear, so if the unload is real this card will
+            // reappear once the success banner times out.
+            readyCardModelId !== (startup?.[0]?.model ?? null) && (
               <ModelLoadingCard
                 startupModelId={startup?.[0]?.model ?? "unknown"}
                 startedAt={(() => {
