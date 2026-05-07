@@ -45,6 +45,37 @@ fn main() {
     // thread emits it.
     redirect_stderr_to_desktop_log();
 
+    // Pin the HuggingFace Hub cache directory before anything else
+    // spawns a runtime child. The runtime CLI's `huggingface_hub_cache`
+    // resolves the cache from a chain of env vars (HF_HUB_CACHE,
+    // HF_HOME, XDG_CACHE_HOME, finally $HOME/.cache/huggingface/hub).
+    // On Windows `$HOME` is not normally set — Windows uses
+    // %USERPROFILE% — so when none of the higher-priority vars are set,
+    // the runtime falls back to `PathBuf::from(".")` and the cache lands
+    // at *whatever the runtime's current working directory happens to
+    // be*. Two spawn paths produce two different working dirs:
+    //
+    //   * Scheduled Task launcher (wscript.exe): WorkingDirectory =
+    //     %USERPROFILE% → cache at C:\Users\<u>\.cache\huggingface\hub
+    //   * `closedmesh models download` invoked from the bundled Node
+    //     controller (sidecar): inherits the desktop app's CWD,
+    //     %LOCALAPPDATA%\ClosedMesh → cache at
+    //     C:\Users\<u>\AppData\Local\ClosedMesh\.cache\huggingface\hub
+    //
+    // The user downloads a model via the dashboard (path #2), then sets
+    // it as the startup model — which restarts the runtime via the
+    // Scheduled Task (path #1). The startup-loading runtime looks in a
+    // different cache, can't find the model, and silently restarts a
+    // 33 GB download. Diagnosing this required reading the runtime
+    // source; from a user perspective it just looked like "I downloaded
+    // the model, set it as startup, and then it got stuck on loading."
+    //
+    // Setting HF_HUB_CACHE explicitly here pins the location across
+    // every codepath (this process, the Node sidecar, every closedmesh
+    // child the sidecar spawns, the Scheduled Task — see also the
+    // mirror set in mesh.rs::REGISTER_TASK_PS and install.ps1).
+    pin_huggingface_cache_dir();
+
     let state = Arc::new(AppState {
         last_status: Mutex::new(MeshStatus::default()),
         sidecar: Mutex::new(None),
@@ -435,6 +466,73 @@ fn render_tooltip(status: &MeshStatus) -> String {
 }
 
 // ---------- Misc helpers ------------------------------------------------
+
+/// Pick a stable HuggingFace Hub cache directory and export it via
+/// `HF_HUB_CACHE` so every runtime child the desktop app spawns —
+/// directly or indirectly — agrees on where models live. See the
+/// callsite in `main` for the failure mode this prevents.
+///
+/// We layer the choice the same way the runtime does, but resolved at
+/// the desktop process: respect any pre-existing `HF_HUB_CACHE` /
+/// `HF_HOME` / `XDG_CACHE_HOME` (so power users with custom HF setups
+/// keep working), otherwise pick the canonical user-cache location for
+/// the host OS via the `dirs` crate. The path returned by
+/// `dirs::cache_dir()` is stable across launch contexts on every
+/// platform we ship — that's the whole point of making this the
+/// authoritative answer instead of letting the runtime guess from CWD.
+fn pin_huggingface_cache_dir() {
+    fn nonempty(v: std::ffi::OsString) -> Option<std::ffi::OsString> {
+        if v.is_empty() {
+            None
+        } else {
+            Some(v)
+        }
+    }
+
+    if std::env::var_os("HF_HUB_CACHE")
+        .and_then(nonempty)
+        .is_some()
+    {
+        return;
+    }
+    if let Some(hf_home) = std::env::var_os("HF_HOME").and_then(nonempty) {
+        let cache = std::path::PathBuf::from(hf_home).join("hub");
+        eprintln!(
+            "[closedmesh] pinning HF_HUB_CACHE={} (derived from HF_HOME)",
+            cache.display()
+        );
+        std::env::set_var("HF_HUB_CACHE", cache);
+        return;
+    }
+    if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME").and_then(nonempty) {
+        let cache = std::path::PathBuf::from(xdg)
+            .join("huggingface")
+            .join("hub");
+        eprintln!(
+            "[closedmesh] pinning HF_HUB_CACHE={} (derived from XDG_CACHE_HOME)",
+            cache.display()
+        );
+        std::env::set_var("HF_HUB_CACHE", cache);
+        return;
+    }
+    // Final fallback: the canonical user-cache dir for this OS. Same
+    // result `dirs::cache_dir()` uses, hardened against the
+    // Windows-no-HOME edge case that broke the runtime's own resolver.
+    if let Some(cache_root) = dirs::cache_dir() {
+        let cache = cache_root.join("huggingface").join("hub");
+        eprintln!(
+            "[closedmesh] pinning HF_HUB_CACHE={} (platform user cache dir)",
+            cache.display()
+        );
+        let _ = std::fs::create_dir_all(&cache);
+        std::env::set_var("HF_HUB_CACHE", cache);
+        return;
+    }
+    eprintln!(
+        "[closedmesh] could not resolve a user cache dir; HF_HUB_CACHE left unset \
+         (runtime will fall back to its built-in default)"
+    );
+}
 
 /// Append the control-group entry path (`/dashboard`) to the controller's
 /// base URL. Handles both `http://127.0.0.1:3000` and `http://127.0.0.1:3000/`
