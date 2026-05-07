@@ -5,8 +5,10 @@
 #
 # Detects whether your GPU prefers the CUDA or Vulkan flavor, downloads the
 # matching closedmesh-windows-x86_64-<flavor>.zip, installs closedmesh.exe to
-# %LOCALAPPDATA%\closedmesh\bin, and (with -Service) registers a Scheduled
-# Task so it auto-starts at login.
+# %LOCALAPPDATA%\closedmesh\bin, then pulls the matching llama.cpp Windows
+# helpers (rpc-server.exe / llama-server.exe + DLLs) from ggml-org/llama.cpp's
+# official release so the runtime can actually load models. With -Service it
+# also registers a Scheduled Task so it auto-starts at login.
 #
 # Backend override:
 #   $env:CLOSEDMESH_BACKEND = 'cuda' | 'vulkan' | 'cpu'
@@ -287,6 +289,152 @@ function Add-PathHint {
     Write-Warn2 'PATH updated. New shells will pick it up automatically; existing shells need to reopen.'
 }
 
+# llama.cpp release tag the runtime is built against. Bump this when the
+# runtime upgrades its `.deps/llama.cpp` checkout (see
+# `git -C closedmesh-llm/.deps/llama.cpp describe --tags`). The user's
+# rpc-server.exe / llama-server.exe must speak the same RPC and CLI
+# protocol as the closedmesh.exe in this bundle, and llama.cpp does
+# break protocol inside major releases — so keeping the two in lockstep
+# matters more than chasing the latest llama.cpp build.
+$LlamaCppTag = 'b9041'
+
+# Map closedmesh flavor (the suffix on closedmesh-windows-x86_64-<flavor>.zip)
+# to the matching llama.cpp official Windows release.
+#
+# Why we pull these from ggml-org/llama.cpp instead of bundling them in
+# the closedmesh runtime release: as of 0.66.x the closedmesh-llm
+# Windows CI pipeline (release.yml::build_windows) only compiles
+# closedmesh.exe and skips the llama.cpp bundle (`scripts/release-
+# closedmesh.ps1` ships closedmesh.exe + LICENSE + the task XML, end of
+# list). So the runtime ZIP genuinely doesn't contain rpc-server.exe or
+# llama-server.exe — without this fallback the runtime fails every
+# model load with "rpc-server.exe not found in
+# C:\Users\…\AppData\Local\closedmesh\bin", which is exactly what
+# 0.1.70 users saw. Long-term fix is on the runtime side; until that
+# lands, this installer pulls the matching binaries directly from
+# llama.cpp's official Windows releases.
+function Get-LlamaCppAsset {
+    param([string]$Flavor)
+
+    switch ($Flavor) {
+        'cuda'   { return "llama-$LlamaCppTag-bin-win-cuda-12.4-x64.zip" }
+        'vulkan' { return "llama-$LlamaCppTag-bin-win-vulkan-x64.zip" }
+        'cpu'    { return "llama-$LlamaCppTag-bin-win-cpu-x64.zip" }
+        default {
+            throw "Unsupported flavor for llama.cpp helper download: $Flavor"
+        }
+    }
+}
+
+function Install-LlamaCppHelpers {
+    param([string]$Flavor)
+
+    # Idempotency stamp. install.ps1 is re-run on every desktop-app
+    # Setup-button click and on every runtime upgrade — a 70MB+
+    # download per click is unacceptable. We record the llama.cpp tag
+    # we already installed and short-circuit when the on-disk version
+    # matches.
+    $stamp = Join-Path $InstallDir '.llama-cpp-version'
+    $rpc = Join-Path $InstallDir 'rpc-server.exe'
+    $srv = Join-Path $InstallDir 'llama-server.exe'
+
+    if ((Test-Path $stamp) -and (Test-Path $rpc) -and (Test-Path $srv)) {
+        $current = (Get-Content -Path $stamp -Raw -ErrorAction SilentlyContinue).Trim()
+        if ($current -eq "$LlamaCppTag/$Flavor") {
+            Write-Info "llama.cpp helpers already at $LlamaCppTag/$Flavor; skipping download."
+            return
+        }
+    }
+
+    if (-not (Test-Path $InstallDir)) {
+        New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    }
+
+    $asset = Get-LlamaCppAsset -Flavor $Flavor
+    $url = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaCppTag/$asset"
+    $tmp = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString()))
+
+    try {
+        Write-Info "Fetching llama.cpp $LlamaCppTag helpers ($asset)..."
+        try {
+            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile (Join-Path $tmp $asset)
+        } catch {
+            Write-Err "Failed to download $url"
+            Write-Err 'The runtime needs rpc-server.exe / llama-server.exe to host models.'
+            Write-Err 'Without these, closedmesh.exe joins the mesh but cannot load any local model.'
+            throw
+        }
+
+        $extractDir = Join-Path $tmp 'llama'
+        Expand-Archive -Path (Join-Path $tmp $asset) -DestinationPath $extractDir -Force
+
+        # llama.cpp's Windows ZIPs unpack flat (rpc-server.exe and *.dll
+        # at the root). Defensive against a future layout change: search
+        # recursively and fall over only if the two helpers are missing.
+        $rpcSrc = Get-ChildItem -Path $extractDir -Filter 'rpc-server.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        $srvSrc = Get-ChildItem -Path $extractDir -Filter 'llama-server.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $rpcSrc -or -not $srvSrc) {
+            throw "llama.cpp $LlamaCppTag $Flavor build did not contain rpc-server.exe / llama-server.exe in $extractDir"
+        }
+
+        # The runtime is currently shut down by Stop-RunningRuntime
+        # (called from Download-Binary right before this) so DLLs can
+        # be replaced cleanly. Belt-and-braces: if a wscript launcher
+        # somehow restarted the runtime, we tolerate Copy-Item failure
+        # on individual DLLs rather than blow up the whole install.
+        Stop-RunningRuntime
+
+        Copy-Item -Force $rpcSrc.FullName (Join-Path $InstallDir 'rpc-server.exe')
+        Copy-Item -Force $srvSrc.FullName (Join-Path $InstallDir 'llama-server.exe')
+
+        # Drop every shipped DLL next to the helpers. Both rpc-server
+        # and llama-server depend on a fan-out of ggml-*.dll variants
+        # (ggml-base, ggml-cpu-<isa>, ggml-vulkan / ggml-cuda, …) that
+        # they LoadLibrary at runtime. Missing any one of them surfaces
+        # as an opaque exit code 0xC0000135 with no stderr — easier to
+        # just install the whole DLL set.
+        $dllSrcDir = $rpcSrc.DirectoryName
+        Get-ChildItem -Path $dllSrcDir -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+                Copy-Item -Force $_.FullName (Join-Path $InstallDir $_.Name)
+            } catch {
+                Write-Warn2 ("Could not replace $($_.Name) (in use?): " + $_.Exception.Message)
+            }
+        }
+
+        # CUDA flavor: also drop the CUDA runtime DLLs the helpers
+        # link against. llama.cpp ships these in a separate `cudart-*`
+        # zip on the same release. Users who already have a system
+        # CUDA install will just see overwrites; everyone else needs
+        # them to load any model at all.
+        if ($Flavor -eq 'cuda') {
+            $cudartAsset = "cudart-llama-bin-win-cuda-12.4-x64.zip"
+            $cudartUrl = "https://github.com/ggml-org/llama.cpp/releases/download/$LlamaCppTag/$cudartAsset"
+            try {
+                Write-Info "Fetching CUDA runtime DLLs ($cudartAsset)..."
+                Invoke-WebRequest -UseBasicParsing -Uri $cudartUrl -OutFile (Join-Path $tmp $cudartAsset)
+                $cudartDir = Join-Path $tmp 'cudart'
+                Expand-Archive -Path (Join-Path $tmp $cudartAsset) -DestinationPath $cudartDir -Force
+                Get-ChildItem -Path $cudartDir -Filter '*.dll' -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                    try {
+                        Copy-Item -Force $_.FullName (Join-Path $InstallDir $_.Name)
+                    } catch {
+                        Write-Warn2 ("Could not replace $($_.Name) (in use?): " + $_.Exception.Message)
+                    }
+                }
+            } catch {
+                Write-Warn2 "Could not fetch $cudartAsset — CUDA models may fail to load with 0xC0000135."
+                Write-Warn2 "Manually install the CUDA 12.4 runtime if that happens, or set CLOSEDMESH_BACKEND=vulkan."
+            }
+        }
+
+        Set-Content -Path $stamp -Value "$LlamaCppTag/$Flavor" -NoNewline -Encoding ASCII
+        Write-Ok  "Installed llama.cpp $LlamaCppTag $Flavor helpers in $InstallDir"
+    } finally {
+        Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    }
+}
+
 function Install-ScheduledTaskUnit {
     $bin = Join-Path $InstallDir 'closedmesh.exe'
     if (-not (Test-Path $bin)) {
@@ -415,6 +563,16 @@ function Invoke-Install {
         Write-Err 'Installed binary did not run cleanly. Aborting.'
         throw
     }
+
+    # Pull rpc-server.exe / llama-server.exe + llama.cpp DLLs from
+    # ggml-org/llama.cpp's official Windows release. Without these the
+    # runtime joins the mesh but every model load fails immediately
+    # with "rpc-server.exe not found in <InstallDir>" (see
+    # closedmesh-llm/closedmesh/src/inference/launch.rs::resolve_binary).
+    # Long-term this should move into the closedmesh-llm CI bundle.
+    # `$target` is "windows-x86_64-<flavor>"; strip the prefix.
+    $flavorOnly = $target -replace '^windows-x86_64-', ''
+    Install-LlamaCppHelpers -Flavor $flavorOnly
 
     if ($Service) { Install-ScheduledTaskUnit }
 
