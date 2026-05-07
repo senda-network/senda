@@ -54,6 +54,25 @@ fn main() {
     let exit_state = state.clone();
 
     tauri::Builder::default()
+        // Single-instance guard. If a second `ClosedMesh.exe` is launched
+        // (WiX installer's "Launch on completion" tick, Start Menu shortcut,
+        // double-click on the desktop icon, file-association open, …), the
+        // plugin contacts the running instance, runs this callback in *that*
+        // process to focus the existing window, and exits the new process
+        // immediately. Without this, every invocation spawned its own
+        // webview, Node sidecar, tray icon, and runtime-upgrade loop — on
+        // Windows users hit a state where the app kept opening more windows
+        // until the OOM killer took the box down.
+        //
+        // Registered before `setup`/window-builder so the callback can
+        // resolve the main window through `app.get_webview_window`.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(move |app| {
             // Wipe the WKWebView cache on first launch of a new version.
             // Each release rebuilds the Next.js controller and produces

@@ -1,6 +1,6 @@
 [package]
 name = "closedmesh-desktop"
-version = "0.1.60"
+version = "0.1.61"
 edition = "2021"
 description = "Cross-platform desktop shell for ClosedMesh — an open peer-to-peer mesh of contributed compute serving open-weight models."
 license = "MIT OR Apache-2.0"
@@ -22,6 +22,16 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Single-instance enforcement. Without this, every invocation of
+# `ClosedMesh.exe` spawns a fresh process — its own webview window, its own
+# Node sidecar, its own tray icon, its own runtime-upgrade loop. On Windows
+# in particular, the WiX installer's "Launch ClosedMesh" post-install action,
+# the Start Menu shortcut, and any user double-click compound: 0.1.60 users
+# reported "the app keeps opening windows non stop until the computer crashes".
+# This plugin makes a second invocation focus the live window and exit.
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+tauri-plugin-single-instance = "2"
 
 # Lightweight blocking HTTP for status polling AND for the runtime
 # auto-upgrade thread (which fetches https://github.com/.../releases/latest).
