@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  desktop/installer/close_running_app.wxs
+
+  WiX fragment that terminates a running ClosedMesh.exe (and its child
+  process tree, including the bundled node.exe sidecar) before the
+  .msi installer starts copying files.
+
+  Why this exists: the same problem the NSIS hook in hooks.nsh solves.
+  When a user upgrades while ClosedMesh is running, node.exe is held
+  open by the live sidecar — and the installer pops a "file in use"
+  dialog. Killing the process tree ahead of the file-copy phase makes
+  the upgrade look like a single-click no-op to the user.
+
+  Wiring: the fragment is referenced via tauri.conf.json's
+  `bundle.windows.wix.fragmentPaths` + `componentRefs`. The Component
+  is a phantom (CreateFolder under TARGETDIR, no payload) that exists
+  solely to give the fragment something for componentRefs to reference;
+  the real work is the CustomAction + InstallExecuteSequence directives,
+  which get linked into the main .msi when the fragment is pulled in.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!-- Phantom component so `componentRefs: ["CloseRunningApp"]` in
+         tauri.conf.json has something to bind against and pulls in
+         this fragment (and with it the CustomAction below). -->
+    <DirectoryRef Id="TARGETDIR">
+      <Component Id="CloseRunningApp"
+                 Guid="C7A6F7E4-2A12-4B6E-B7C5-6F8E1A4D9C3E"
+                 KeyPath="yes">
+        <CreateFolder />
+      </Component>
+    </DirectoryRef>
+
+    <!-- /F = force, /T = terminate the entire process tree (so the
+         bundled node.exe sidecar dies with its parent), /IM = match
+         by image name. Return="ignore" because taskkill returns
+         non-zero on "no such process" — the expected case for a
+         fresh install with no prior ClosedMesh instance. -->
+    <CustomAction Id="StopClosedMesh"
+                  Directory="TARGETDIR"
+                  Execute="immediate"
+                  Return="ignore"
+                  Impersonate="yes"
+                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM ClosedMesh.exe" />
+
+    <!-- Schedule the kill before InstallValidate, which is the phase
+         where MSI checks whether any target files are in use. By the
+         time InstallValidate runs, ClosedMesh.exe and its node.exe
+         are gone and the file locks have been released. -->
+    <InstallExecuteSequence>
+      <Custom Action="StopClosedMesh" Before="InstallValidate">1</Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>
