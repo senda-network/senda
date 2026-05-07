@@ -1,5 +1,6 @@
 "use client";
 
+import { loadedModelUnderprovisioning } from "../lib/mesh-fit";
 import type { MeshModel } from "../lib/use-mesh-status";
 
 /**
@@ -45,6 +46,26 @@ export function LiveLaunchState({
   const palette = paletteFor(variant);
 
   if (isLoaded) {
+    // The runtime reports this model as loaded, but the planner may have
+    // classified it as `cold` because the host is too small to actually
+    // serve it (mmap-fallback thrash). In that case llama-server WILL
+    // accept requests and then time out trying to page weights from
+    // disk, so we treat it as a danger state — same color as
+    // WaitingForCapacity, with concrete numbers — instead of the green
+    // "ok" we show for true solo / split / multi-host. See
+    // app/lib/mesh-fit.ts for the threshold and rationale.
+    const under = loadedModelUnderprovisioning(meshModel);
+    if (under) {
+      return (
+        <span className={palette.waiting}>
+          Underprovisioned · loaded but won&apos;t actually serve — needs{" "}
+          {under.needGb.toFixed(0)} GB, mesh has {under.haveGb.toFixed(0)} GB ·{" "}
+          <span className="font-semibold">
+            add {under.shortfallGb.toFixed(0)} GB more to make it usable
+          </span>
+        </span>
+      );
+    }
     return (
       <span className={palette.ok}>{loadedLabel(meshModel, selfHostname)}</span>
     );
@@ -111,11 +132,15 @@ function loadedLabel(model: MeshModel | null, selfHostname: string | null): stri
       return `Solo · ${here}`;
     case "cold":
     default:
-      // The model is in `loaded_models` but the planner classifies it as
-      // cold — this is the "loaded via mmap fallback on a single under-spec
-      // machine" case, which is technically running but won't be fast.
-      // Hint at it without alarming the user.
-      return `Solo · ${here} (mmap from disk — slow until you add a peer)`;
+      // Reaching the cold branch here means the mesh-fit shortfall was
+      // below the underprovisioning threshold (otherwise the caller
+      // returned the loud amber message). That's almost always the
+      // brief window after llama-server flips ready and before the
+      // planner reclassifies — say so plainly rather than the old
+      // "slow until you add a peer" line, which sugar-coated the real
+      // mmap-thrash case and confused users on under-spec hosts who
+      // were watching every chat request hang.
+      return `Solo · ${here} · warming up`;
   }
 }
 

@@ -6,7 +6,15 @@ import { useEffect, useState } from "react";
 type StatusNode = {
   hostname?: string | null;
   vramGb?: number;
-  capability?: { vramGb?: number };
+  capability?: { vramGb?: number; loadedModels?: string[] };
+  /** Runtime's transient state. We only need to know when no node is
+   * actually serving anything so we can flip the dot from green to
+   * amber — see `noWarmModel` below. */
+  state?: string;
+  /** `serving_models ∪ hosted_models`. Non-empty means at least an
+   * intent to load; `capability.loadedModels` is the hosted-only
+   * subset that actually proves readiness. */
+  servingModels?: string[];
 };
 
 type Status = {
@@ -45,6 +53,15 @@ export function MeshLiveStatus({
   const [models, setModels] = useState<string[]>([]);
   const [contributorCount, setContributorCount] = useState(0);
   const [pooledVramGb, setPooledVramGb] = useState(0);
+  // `noWarmModel` is true when we have contributors connected but
+  // nobody has actually finished loading a model. Distinct from
+  // "offline" (entry node unreachable) — the mesh is up, peers are
+  // present, but chat will fail because there's nothing warm to route
+  // to. Used to flip the dot to amber so the public homepage stops
+  // shouting "1 contributor · 18 GB pooled" in cheerful green while
+  // the only contributor is mmap-thrashing a model that's too big to
+  // serve.
+  const [noWarmModel, setNoWarmModel] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,11 +88,22 @@ export function MeshLiveStatus({
               0,
             ),
           );
+          // "Has any contributor finished loading a model?" — the
+          // signal we need to differentiate "mesh is genuinely
+          // serving" from "peers are present but every model is
+          // stuck in load / mmap-thrash". `loadedModels` is the
+          // hosted_models-only subset (see app/api/status/route.ts),
+          // so this is the readiness ground truth.
+          const anyWarm = contributors.some(
+            (n) => (n.capability?.loadedModels?.length ?? 0) > 0,
+          );
+          setNoWarmModel(contributors.length > 0 && !anyWarm);
         } else {
           setPhase("offline");
           setModels([]);
           setContributorCount(0);
           setPooledVramGb(0);
+          setNoWarmModel(false);
         }
       } catch {
         if (!cancelled) {
@@ -83,6 +111,7 @@ export function MeshLiveStatus({
           setModels([]);
           setContributorCount(0);
           setPooledVramGb(0);
+          setNoWarmModel(false);
         }
       } finally {
         if (!cancelled) {
@@ -99,10 +128,16 @@ export function MeshLiveStatus({
   }, []);
 
   if (variant === "header") {
-    // Compact pill that lives in the page header.
+    // Compact pill that lives in the page header. Goes amber when the
+    // mesh is online with contributors but nobody has finished loading
+    // a model yet — green here would imply "ready to chat", which is a
+    // lie if every contributor is still mmap'ing or stuck-loading. See
+    // `noWarmModel` above for the source signal.
     const dot =
       phase === "online"
-        ? "bg-emerald-400"
+        ? noWarmModel
+          ? "bg-amber-400"
+          : "bg-emerald-400"
         : phase === "loading"
           ? "bg-[var(--fg-muted)]"
           : "bg-red-400";
@@ -112,7 +147,9 @@ export function MeshLiveStatus({
         : "";
     const contribLabel =
       contributorCount > 0
-        ? `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"}${poolLabel}`
+        ? noWarmModel
+          ? `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"} · loading…`
+          : `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"}${poolLabel}`
         : models.length > 0
           ? `${models.length} model${models.length === 1 ? "" : "s"}`
           : "Mesh online";
@@ -128,7 +165,7 @@ export function MeshLiveStatus({
         className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-2.5 py-1 text-[11px] text-[var(--fg-muted)] transition hover:border-[var(--accent)]/40 hover:text-[var(--fg)]"
       >
         <span className="relative inline-flex h-2 w-2">
-          {phase === "online" && (
+          {phase === "online" && !noWarmModel && (
             <span
               aria-hidden
               className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"

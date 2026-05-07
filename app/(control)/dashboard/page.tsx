@@ -9,6 +9,7 @@ import { useCatalog } from "../../lib/use-catalog";
 import { useMeshStatus, type MeshModel, type NodeSummary } from "../../lib/use-mesh-status";
 import { useMeshModels } from "../../lib/use-mesh-models";
 import { nodeDisplayState } from "../../lib/node-display-state";
+import { loadedModelUnderprovisioning } from "../../lib/mesh-fit";
 import { LiveLaunchState } from "../../components/LiveLaunchState";
 
 type ServiceState =
@@ -648,6 +649,10 @@ export default function DashboardPage() {
           {readyCardModelId && (
             <ModelReadyCard
               modelId={readyCardModelId}
+              underprovisioning={loadedModelUnderprovisioning(
+                meshModels.models.find((m) => m.name === readyCardModelId) ??
+                  null,
+              )}
               onDismiss={() => setReadyCardModelId(null)}
             />
           )}
@@ -874,6 +879,20 @@ function ThisNodeCard({
   // so this card, the /nodes mesh table, and the public status page can never
   // disagree about whether the same node is Ready / Idle / Offline.
   const display = nodeDisplayState(self, running);
+
+  // Detect "loaded but underprovisioned" — the runtime says hosted_models
+  // includes this model, but the planner classified it as cold/mmap-fallback
+  // because the host is too small to fit it in VRAM. llama-server WILL
+  // accept requests in that state and then time out trying to page weights
+  // from disk; from the user's POV the dashboard says "Ready · serving"
+  // while every chat fails. Override the green Ready treatment with an
+  // amber warning that names the exact shortfall. See app/lib/mesh-fit.ts.
+  const loadedMeshModels = loaded.map((id) => findMeshModel(id));
+  const underprovisioned = loadedMeshModels
+    .map((m) => loadedModelUnderprovisioning(m))
+    .find((u) => u !== null);
+  const isUnderprovisioned = underprovisioned !== undefined;
+
   // When the runtime has committed to load the startup model but
   // llama-server hasn't finished yet, `nodeDisplayState` now returns
   // "Loading" with a verbose troubleshooting description aimed at
@@ -884,9 +903,11 @@ function ThisNodeCard({
     ? stopped
       ? "Not running. Start to share this machine."
       : "Checking status…"
-    : startupConfigured && display.label === "Loading"
-      ? "Loading the startup model — this can take a minute on first boot, longer for big GGUFs."
-      : display.description;
+    : isUnderprovisioned && underprovisioned
+      ? `${primaryLoadedDisplayName(loadedMeshModels, loaded)} is loaded via mmap fallback — this Mac doesn't have enough memory to actually serve it on its own (needs ~${underprovisioned.needGb.toFixed(0)} GB, has ~${underprovisioned.haveGb.toFixed(0)} GB). Chat will hang or time out until a peer with more memory joins.`
+      : startupConfigured && display.label === "Loading"
+        ? "Loading the startup model — this can take a minute on first boot, longer for big GGUFs."
+        : display.description;
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6">
@@ -903,11 +924,13 @@ function ThisNodeCard({
           <span
             className={
               "mt-1 inline-block h-3 w-3 rounded-full " +
-              (running
-                ? `${display.dot} ${display.label === "Ready" || display.label === "Serving" ? "shadow-[0_0_14px_rgba(52,211,153,0.7)]" : ""}`
-                : stopped
+              (!running
+                ? stopped
                   ? "bg-zinc-500"
-                  : "bg-amber-400")
+                  : "bg-amber-400"
+                : isUnderprovisioned
+                  ? "bg-amber-400"
+                  : `${display.dot} ${display.label === "Ready" || display.label === "Serving" ? "shadow-[0_0_14px_rgba(52,211,153,0.7)]" : ""}`)
             }
           />
           <div>
@@ -1335,6 +1358,22 @@ function formatElapsed(s: number): string {
 }
 
 /**
+ * Best human-readable name for the first loaded model. Prefers the
+ * runtime's `displayName` (catalog ref → "Mixtral 8x7B Instruct"),
+ * falls back to the raw id when the planner hasn't surfaced the model
+ * yet — both cases are common during the first few seconds after
+ * llama-server flips ready.
+ */
+function primaryLoadedDisplayName(
+  meshModels: ReadonlyArray<MeshModel | null>,
+  loadedIds: ReadonlyArray<string>,
+): string {
+  const first = meshModels.find((m) => m !== null);
+  if (first?.displayName) return first.displayName;
+  return loadedIds[0] ?? "This model";
+}
+
+/**
  * Small "your model just came up" success card. Shown briefly after a
  * Quick start completes and the polled status confirms the runtime is
  * actually serving the model. The card is auto-dismissed via state in
@@ -1342,46 +1381,85 @@ function formatElapsed(s: number): string {
  */
 function ModelReadyCard({
   modelId,
+  underprovisioning,
   onDismiss,
 }: {
   modelId: string;
+  /** Non-null when the runtime accepted the model into hosted_models but
+   * the planner classifies it as cold/mmap-fallback. We still pop a card
+   * (because llama_ready DID flip and the user just spent 30 s staring
+   * at a loading spinner — they deserve confirmation that something
+   * happened) but we recolor it amber and tell the truth: the model is
+   * loaded, but won't actually serve solo, and chat will hang until a
+   * peer joins. */
+  underprovisioning: ReturnType<typeof loadedModelUnderprovisioning>;
   onDismiss: () => void;
 }) {
+  const danger = underprovisioning !== null;
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-emerald-400/40 bg-emerald-400/5 p-5">
+    <section
+      className={
+        "relative overflow-hidden rounded-2xl border p-5 " +
+        (danger
+          ? "border-amber-400/50 bg-amber-400/5"
+          : "border-emerald-400/40 bg-emerald-400/5")
+      }
+    >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
-          background:
-            "radial-gradient(60% 100% at 0% 0%, rgba(52,211,153,0.10), transparent 70%)",
+          background: danger
+            ? "radial-gradient(60% 100% at 0% 0%, rgba(251,191,36,0.10), transparent 70%)"
+            : "radial-gradient(60% 100% at 0% 0%, rgba(52,211,153,0.10), transparent 70%)",
         }}
       />
       <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 max-w-2xl items-start gap-3">
           <span
             aria-hidden
-            className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.7)]"
+            className={
+              "mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full " +
+              (danger
+                ? "bg-amber-400"
+                : "bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.7)]")
+            }
           />
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-300">
-              Ready
+            <div
+              className={
+                "text-[10px] uppercase tracking-[0.18em] " +
+                (danger ? "text-amber-300" : "text-emerald-300")
+              }
+            >
+              {danger ? "Loaded — but not servable solo" : "Ready"}
             </div>
             <div className="mt-0.5 truncate font-mono text-sm text-[var(--fg)]">
               {modelId}
             </div>
             <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
-              The runtime is serving this model. You&apos;re sharing with the mesh.
+              {danger
+                ? `Loaded via mmap fallback — this Mac is too small to serve it on its own. Needs ~${underprovisioning.needGb.toFixed(0)} GB, mesh has ~${underprovisioning.haveGb.toFixed(0)} GB. Chat requests will hang or time out until a peer with at least ${underprovisioning.shortfallGb.toFixed(0)} GB more memory joins.`
+                : "The runtime is serving this model. You're sharing with the mesh."}
             </div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Link
-            href="/chat"
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110"
-          >
-            Open chat
-          </Link>
+          {danger ? (
+            <Link
+              href="/nodes"
+              className="rounded-lg bg-amber-400 px-4 py-2 text-xs font-semibold text-black transition hover:brightness-110"
+            >
+              Add a peer
+            </Link>
+          ) : (
+            <Link
+              href="/chat"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+            >
+              Open chat
+            </Link>
+          )}
           <button
             onClick={onDismiss}
             className="rounded-lg px-2 py-2 text-xs text-[var(--fg-muted)] transition hover:text-[var(--fg)]"

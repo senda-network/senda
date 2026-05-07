@@ -5,6 +5,7 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatMessage } from "./ChatMessage";
 import { MeshAwareNote } from "./MeshAwareNote";
+import { MeshUnderprovisionedNote } from "./MeshUnderprovisionedNote";
 import { apiUrl } from "../lib/runtime-target";
 
 const SESSION_KEY = "closedmesh:threadId";
@@ -216,6 +217,7 @@ export function ChatExperience({
         <div className={innerWrap}>
           {intro}
           <MeshAwareNote />
+          <MeshUnderprovisionedNote />
           {messages.length === 0 ? (
             renderedEmpty ?? null
           ) : (
