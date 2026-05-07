@@ -7,19 +7,19 @@
 ; The Tauri template runs the hook AFTER `SetOutPath $INSTDIR` and
 ; BEFORE the built-in `CheckIfAppIsRunning` macro. CheckIfAppIsRunning
 ; only kills the main exe (`ClosedMesh.exe`) — it knows nothing about
-; the bundled `node.exe` sidecar — so on every upgrade with a running
-; instance, NSIS would proceed to copy `node.exe` over a still-locked
+; the bundled Node sidecar — so on every upgrade with a running
+; instance NSIS would proceed to copy the sidecar over a still-locked
 ; binary and pop:
 ;
 ;     Error opening file for writing:
-;     C:\Users\…\AppData\Local\ClosedMesh\node.exe
+;     C:\Users\…\AppData\Local\ClosedMesh\<sidecar>
 ;     Click Abort to stop the installation, Retry to try again, or
 ;     Ignore to skip this file.
 ;
-; Three previous fix attempts failed:
+; Five previous fix attempts failed:
 ;
 ;   - 0.1.63 / 0.1.64: `taskkill /F /T /IM ClosedMesh.exe`. /T walks
-;     descendants of an *alive* parent only, so an orphaned node.exe
+;     descendants of an *alive* parent only, so an orphaned sidecar
 ;     (left behind by a previous crash, or by Tauri's prevent_close
 ;     handler keeping the parent alive while a hidden window is around)
 ;     wasn't caught.
@@ -34,19 +34,26 @@
 ;     Still didn't reach PowerShell intact on the user's machine —
 ;     symptom unchanged.
 ;
-; Fix in 0.1.67: stop fighting NSIS string escaping and use the
-; `nsis_tauri_utils` plugin that Tauri's own template uses for
-; `CheckIfAppIsRunning`. The plugin is already bundled by Tauri so no
-; install step is needed; calling its `KillProcessCurrentUser` by
-; image name is one line and has no escaping pitfalls.
+;   - 0.1.67/0.1.68: switched to `nsis_tauri_utils::KillProcessCurrentUser
+;     "node.exe"`. Worked, but indiscriminately killed every node.exe
+;     under the current user — including a Node dev server, VS Code's
+;     extension host, the Electron renderer of any other installed
+;     app. Unacceptable side effect for an installer popup fix.
 ;
-; Trade-off: `KillProcessCurrentUser "node.exe"` kills *all* node.exe
-; processes the current user is running — including a Node dev
-; server, a VS Code extension host, the Electron renderer of any
-; other installed app. Acceptable for an installer flow: the user
-; has explicitly accepted the install, the disruption is momentary,
-; and other apps recover cleanly. The alternative — keep showing a
-; modal mid-install — is worse.
+; Fix in 0.1.69 (this file): the sidecar is now bundled as
+; `closedmesh-node.exe` (see desktop/scripts/fetch-node.sh and
+; desktop/tauri.conf.json::externalBin). That image name is unique to
+; us, so a kill-by-image-name is automatically path-filtered: it can
+; only match a process started from our own install directory. The
+; user's other node.exe processes are completely untouched.
+;
+; Two-step kill, in this order:
+;   1. ClosedMesh.exe — the desktop window. Includes a /T pass for
+;      child processes that are still parented to a live ClosedMesh.
+;   2. closedmesh-node.exe — the bundled sidecar. /T won't catch it
+;      when ClosedMesh has already exited but the sidecar limped on
+;      (the actual cause of the file lock pre-0.1.69), so we kill by
+;      image name explicitly. Safe now that the name is unique to us.
 ;
 ; Sleep 1500 ms after the kills to give Windows time to release file
 ; handles before NSIS opens the destination files for writing. The
@@ -72,9 +79,21 @@
   Pop $0
   DetailPrint "[ClosedMesh] preinstall: taskkill ClosedMesh.exe /T -> $0"
 
-  nsis_tauri_utils::KillProcessCurrentUser "node.exe"
+  ; The bundled Node sidecar. Unique image name (closedmesh-node.exe)
+  ; means we can kill all matches without disturbing the user's
+  ; other node.exe processes. This is the actual fix for the
+  ; "Error opening file for writing" popup that 0.1.63-0.1.68 chased.
+  nsis_tauri_utils::KillProcessCurrentUser "closedmesh-node.exe"
   Pop $0
-  DetailPrint "[ClosedMesh] preinstall: KillProcess node.exe -> $0"
+  DetailPrint "[ClosedMesh] preinstall: KillProcess closedmesh-node.exe -> $0"
+
+  ; Defence in depth in case the plugin missed the sidecar (e.g. it
+  ; was started by a different session id and KillProcessCurrentUser's
+  ; "current user" filter excluded it). taskkill by image name is
+  ; safe for the same reason — the name is ours alone.
+  nsExec::Exec 'taskkill /F /IM closedmesh-node.exe'
+  Pop $0
+  DetailPrint "[ClosedMesh] preinstall: taskkill closedmesh-node.exe -> $0"
 
   Sleep 1500
   DetailPrint "[ClosedMesh] preinstall: ready to install"
@@ -91,9 +110,13 @@
   Pop $0
   DetailPrint "[ClosedMesh] preuninstall: taskkill ClosedMesh.exe /T -> $0"
 
-  nsis_tauri_utils::KillProcessCurrentUser "node.exe"
+  nsis_tauri_utils::KillProcessCurrentUser "closedmesh-node.exe"
   Pop $0
-  DetailPrint "[ClosedMesh] preuninstall: KillProcess node.exe -> $0"
+  DetailPrint "[ClosedMesh] preuninstall: KillProcess closedmesh-node.exe -> $0"
+
+  nsExec::Exec 'taskkill /F /IM closedmesh-node.exe'
+  Pop $0
+  DetailPrint "[ClosedMesh] preuninstall: taskkill closedmesh-node.exe -> $0"
 
   Sleep 1500
   DetailPrint "[ClosedMesh] preuninstall: ready to uninstall"

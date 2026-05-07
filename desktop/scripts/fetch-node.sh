@@ -5,8 +5,21 @@
 # `bundle.externalBin` expects.
 #
 # Output:
-#     desktop/sidecar/binaries/node-<target-triple>          (executable)
-#     desktop/sidecar/binaries/node-<target-triple>.exe      (Windows)
+#     desktop/sidecar/binaries/closedmesh-node-<target-triple>          (executable)
+#     desktop/sidecar/binaries/closedmesh-node-<target-triple>.exe      (Windows)
+#
+# Why the `closedmesh-node` prefix instead of plain `node`: on Windows we
+# need a path-safe way to terminate just *our* sidecar Node process during
+# .msi/.exe upgrade — the installer is otherwise greeted with "Error
+# opening file for writing: ...node.exe" because the running sidecar holds
+# a write lock on the destination. The clean fix is to give the bundled
+# binary a unique image name (`closedmesh-node.exe`) so a kill-by-image-
+# name in the installer hook doesn't disturb the user's other node.exe
+# processes (Node dev server, VS Code extension host, Electron renderers).
+# Bundle-as renaming happens automatically: Tauri's `bundle.externalBin`
+# strips the `-<triple>` suffix and ships whatever's left, so a source
+# named `closedmesh-node-<triple>(.exe)` lands as `closedmesh-node(.exe)`
+# in the installed app dir on every platform.
 #
 # Usage:
 #     ./desktop/scripts/fetch-node.sh                        # host platform
@@ -78,7 +91,7 @@ case "$TARGET" in
     *) err "unsupported target: $TARGET"; exit 1 ;;
 esac
 
-OUT_PATH="$BIN_DIR/node-${TARGET}${OUT_EXT}"
+OUT_PATH="$BIN_DIR/closedmesh-node-${TARGET}${OUT_EXT}"
 
 if [[ -x "$OUT_PATH" || -f "$OUT_PATH" ]]; then
     # Skip re-fetch if the target file already exists. Bumping NODE_VERSION
@@ -142,3 +155,16 @@ fi
 
 install -m 0755 "$src" "$OUT_PATH"
 ok "Node $NODE_VERSION installed at $OUT_PATH"
+
+# Backwards-compat shim for any tooling/CI that still expects the
+# pre-0.1.69 filename (`node-<triple>`). Symlink/copy is cheap and keeps
+# accidental local builds working through the rename. Safe to delete
+# after one or two release cycles once nothing references the old name.
+LEGACY_PATH="$BIN_DIR/node-${TARGET}${OUT_EXT}"
+if [[ ! -e "$LEGACY_PATH" ]]; then
+    if ln -s "$(basename "$OUT_PATH")" "$LEGACY_PATH" 2>/dev/null; then
+        info "compat symlink: $LEGACY_PATH -> $(basename "$OUT_PATH")"
+    else
+        cp "$OUT_PATH" "$LEGACY_PATH" && info "compat copy: $LEGACY_PATH"
+    fi
+fi

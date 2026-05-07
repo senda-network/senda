@@ -55,20 +55,41 @@ fn host_arch_label() -> &'static str {
 /// Filenames the bundled Node.js binary may go by, in resolution order.
 ///
 /// Tauri's `bundle.externalBin` ships the host-platform variant with
-/// the bare prefix name (just `node` / `node.exe`) when copying it into
-/// the .app / .msi / .deb. During `cargo run` against an unbundled
-/// debug binary, the file still lives at its source path with the
-/// target-triple suffix appended (e.g. `node-aarch64-apple-darwin`),
-/// because no bundling step has run yet. Probe both — first the
-/// bundled convention so the .app starts fast, then the dev one.
-fn sidecar_node_filename_candidates() -> [&'static str; 2] {
+/// the bare prefix name (just `closedmesh-node` / `closedmesh-node.exe`)
+/// when copying it into the .app / .msi / .deb. During `cargo run`
+/// against an unbundled debug binary, the file still lives at its
+/// source path with the target-triple suffix appended (e.g.
+/// `closedmesh-node-aarch64-apple-darwin`), because no bundling step has
+/// run yet. Probe the bundled convention first so the .app starts fast,
+/// then the dev path. The legacy `node` / `node.exe` names are kept as a
+/// last resort so a partial local checkout that hasn't re-fetched the
+/// sidecar after the 0.1.69 rename still boots — they get dropped after
+/// one or two release cycles.
+///
+/// Why the rename: pre-0.1.69 we shipped the sidecar as `node.exe`. On
+/// Windows the .msi/.exe upgrade flow then needed to terminate that
+/// process to release its write lock on the destination — but a
+/// kill-by-image-name (the only thing NSIS can do reliably) would have
+/// also killed every *other* `node.exe` on the user's machine (Node dev
+/// server, VS Code extension host, Electron renderers). Renaming our
+/// copy to `closedmesh-node.exe` makes the kill-by-name targeted: only
+/// our sidecar matches that image, so the installer can be aggressive
+/// without disturbing the user's environment.
+fn sidecar_node_filename_candidates() -> [&'static str; 4] {
     if cfg!(windows) {
         [
+            "closedmesh-node.exe",
+            concat!("closedmesh-node-", env!("CLOSEDMESH_TARGET_TRIPLE"), ".exe"),
             "node.exe",
             concat!("node-", env!("CLOSEDMESH_TARGET_TRIPLE"), ".exe"),
         ]
     } else {
-        ["node", concat!("node-", env!("CLOSEDMESH_TARGET_TRIPLE"))]
+        [
+            "closedmesh-node",
+            concat!("closedmesh-node-", env!("CLOSEDMESH_TARGET_TRIPLE")),
+            "node",
+            concat!("node-", env!("CLOSEDMESH_TARGET_TRIPLE")),
+        ]
     }
 }
 
@@ -151,7 +172,7 @@ fn find_node_binary() -> io::Result<PathBuf> {
 
     // Dev fallback: running `cargo run` from desktop/ leaves the binary
     // at desktop/target/{debug,release}/closedmesh, with the sidecar
-    // staged at desktop/sidecar/binaries/node-<triple>.
+    // staged at desktop/sidecar/binaries/closedmesh-node-<triple>.
     if let Some(workspace) = dir.parent().and_then(|d| d.parent()) {
         let sidecar_dir = workspace.join("sidecar").join("binaries");
         for name in candidates {

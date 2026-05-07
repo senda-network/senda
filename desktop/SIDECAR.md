@@ -24,7 +24,7 @@ ClosedMesh.app
 ├── Contents/
 │   ├── MacOS/
 │   │   ├── closedmesh                ← Tauri shell (Rust binary)
-│   │   └── node-aarch64-apple-darwin ← bundled Node.js (sidecar binary)
+│   │   └── closedmesh-node           ← bundled Node.js (sidecar binary)
 │   └── Resources/
 │       └── controller/               ← Next.js standalone bundle
 │           ├── server.js
@@ -108,20 +108,42 @@ We fetch the official Node.js LTS distribution from `nodejs.org`:
 | `aarch64-unknown-linux-gnu`| `node-vXX.XX.X-linux-arm64.tar.xz`          |
 | `x86_64-pc-windows-msvc`   | `node-vXX.XX.X-win-x64.zip` (extract `node.exe`) |
 
-Tauri's `bundle.externalBin` requires platform-suffixed names:
+Tauri's `bundle.externalBin` requires platform-suffixed names. We use a
+`closedmesh-` prefix so the installed image name is unique to our
+installer (see "Why the prefix?" below):
 
 ```
 desktop/sidecar/binaries/
-├── node-aarch64-apple-darwin
-├── node-x86_64-apple-darwin
-├── node-x86_64-unknown-linux-gnu
-├── node-aarch64-unknown-linux-gnu
-└── node-x86_64-pc-windows-msvc.exe
+├── closedmesh-node-aarch64-apple-darwin
+├── closedmesh-node-x86_64-apple-darwin
+├── closedmesh-node-x86_64-unknown-linux-gnu
+├── closedmesh-node-aarch64-unknown-linux-gnu
+└── closedmesh-node-x86_64-pc-windows-msvc.exe
 ```
 
 `desktop/scripts/fetch-node.sh` downloads only the binary for the host
 target on local builds; CI fetches all of them in parallel jobs (matrix
 in `desktop-release.yml`).
+
+### Why the `closedmesh-` prefix?
+
+Pre-0.1.69 we shipped this binary as plain `node.exe` on Windows (and
+`node` on macOS/Linux). The .msi/.exe upgrade flow then ran into a
+dead-end problem: NSIS / WiX needed to terminate the running sidecar
+to release the file lock on the destination, but the only reliable
+way to kill a process from inside an installer hook is by image name —
+which would have *also* killed every other `node.exe` on the user's
+machine (Node dev server, VS Code's extension host, Electron
+renderers of unrelated apps). Both the path-filtered PowerShell sweep
+(0.1.65/0.1.66) and the kill-all-node.exe approach (0.1.67/0.1.68)
+were rejected for being fragile and disruptive respectively.
+
+Renaming to `closedmesh-node` solves the underlying problem
+permanently: the image name is unique to our installer, so an
+unconditional kill-by-name in `installer/hooks.nsh` and
+`installer/close_running_app.wxs` can only match our process. The
+"Error opening file for writing: ...\node.exe" popup goes away
+without touching anything the user is running.
 
 ## Build pipeline
 
@@ -133,7 +155,7 @@ Local build (`desktop/scripts/build.sh`) now does:
    into `desktop/sidecar/controller/`, including `.next/static` and
    `public/`.
 3. `desktop/scripts/fetch-node.sh` — download the host-platform Node
-   binary into `desktop/sidecar/binaries/node-<target-triple>`.
+   binary into `desktop/sidecar/binaries/closedmesh-node-<target-triple>`.
 4. `tauri build` — bundles everything into the platform installers.
 
 CI (`.github/workflows/desktop-release.yml`) runs steps 1–3 inside each

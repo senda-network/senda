@@ -194,6 +194,42 @@ async function bounceService(): Promise<{ ok: boolean; message: string }> {
   // `service stop` exits non-zero if the unit was already stopped or
   // never installed, which is fine. We treat both as "ok to start now".
   await runClosedmesh(bin, ["service", "stop"], 10_000);
+
+  // Windows-only: bridge two async-termination races between stop and
+  // start, both of which manifest as "I clicked Make startup model and
+  // the model never loaded" because the *new* instance silently failed
+  // to launch.
+  //
+  //   1. `closedmesh service stop` shells out to `schtasks /End`, which
+  //      returns as soon as the End command is queued — not when the
+  //      process tree has actually exited. The Scheduled Task's default
+  //      MultipleInstances policy is IgnoreNew, so the next
+  //      `schtasks /Run` we issue is a no-op while the old wscript →
+  //      cmd → closedmesh.exe tree is still tearing down. The user
+  //      sees the toast "your model will be available in a few seconds"
+  //      but the runtime never re-reads config.toml because it never
+  //      restarted.
+  //
+  //   2. If the previous run crashed, an orphaned `closedmesh.exe` may
+  //      be holding admin port 3131 open. The new task action launches,
+  //      its closedmesh.exe fails to bind, exits silently, and the
+  //      Scheduled Task's RestartCount=3 / RestartInterval=1m kicks in
+  //      — so the user waits a full minute (or never recovers) before
+  //      anything happens.
+  //
+  // We sleep 1.5s to let `schtasks /End`'s tree termination settle,
+  // then force-kill any residual closedmesh.exe whose image path is
+  // exactly $bin. Path-equality (not just image name) protects any
+  // unrelated `closedmesh.exe` the user might have lying around (e.g. a
+  // dev checkout). The kill is best-effort: if PowerShell isn't on
+  // PATH we just skip it and rely on the sleep alone.
+  if (process.platform === "win32") {
+    await new Promise((r) => setTimeout(r, 1500));
+    const ps = `Get-Process -Name closedmesh -ErrorAction SilentlyContinue | Where-Object { $_.Path -and ($_.Path -ieq '${bin.replace(/'/g, "''")}') } | Stop-Process -Force -ErrorAction SilentlyContinue`;
+    await runClosedmesh("powershell", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps], 5_000).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
   let start = await runClosedmesh(bin, ["service", "start"], 15_000);
 
   // Work around a known race in the runtime CLI's `service start`:
