@@ -97,7 +97,7 @@ export function nodeDisplayState(
       badge: "border-amber-400/40 bg-amber-400/10 text-amber-300",
       label: "Loading",
       description:
-        "Loading model into memory — not serving requests yet. If this persists more than a minute the model is probably failing to fit; check the runtime logs.",
+        "Loading model into memory — not yet ready for requests. If this persists for more than a minute, the model is likely larger than the available memory.",
     };
   }
 

@@ -46,14 +46,13 @@ export function MeshUnderprovisionedNote() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-medium text-amber-200">
-            {name} is loaded but underprovisioned.
+            {name} is awaiting capacity.
           </div>
           <div className="mt-1 text-amber-300/85">
-            The runtime accepted it via mmap fallback, but the host doesn&apos;t
-            have enough memory to serve it on its own (needs ~
-            {under.needGb.toFixed(0)} GB, mesh has ~{under.haveGb.toFixed(0)} GB).
-            Chat requests will hang or time out until a peer with at least{" "}
-            {under.shortfallGb.toFixed(0)} GB more memory joins.
+            This model needs about {under.needGb.toFixed(0)} GB of pooled
+            memory to serve. The mesh currently offers{" "}
+            {under.haveGb.toFixed(0)} GB — connect another peer to bring it
+            online.
           </div>
         </div>
         <Link

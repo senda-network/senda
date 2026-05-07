@@ -447,26 +447,26 @@ function IssueNodeRow({
 }
 
 /**
- * Loud, informative card for a peer that has committed to a model and
- * is in the loading window. This used to be a one-line entry buried in
- * the collapsed "machines connected but not currently serving"
- * accordion, which left the public status page reporting "0 machines /
- * 0 models / Be the first to share" while a contributor was actively
- * trying — and, in the underprovisioned case, would never succeed.
+ * Card for a peer that has committed to a model and is currently
+ * bringing it up. Replaces the previous "Be the first to share" empty
+ * state + collapsed accordion combo, which left the public page
+ * reporting "0 machines / 0 models" while a contributor was actively
+ * loading — sometimes a model that the host couldn't fit on its own
+ * and would never finish bringing online.
  *
  * Two variants driven by `verdict.kind`:
  *
- *   - `underprovisioned`: amber border + headline "Won't actually
- *     load" with the exact GB shortfall and a CTA to add a peer. This
- *     is the case the public homepage was lying about most loudly:
- *     llama_ready never flips so the entry node sees the host stuck
- *     forever in `state: "loading"` and the page used to claim "0
- *     models available · Be the first to share" while the contributor
- *     was sitting there mmap-thrashing.
+ *   - `underprovisioned`: amber treatment with an "Awaiting capacity"
+ *     label and a plain-language explanation of the pooled-memory
+ *     shortfall, plus a "Share your machine →" CTA. We deliberately
+ *     keep the copy neutral and product-y here — this surface is
+ *     public, so no jargon ("mmap", "GGUF", "thrash") and no
+ *     defeatist phrasing ("won't load", "will time out"); the user
+ *     just needs to know that the mesh is waiting on more memory.
  *
- *   - `fits` / `unknown`: muted "Loading X — this can take a minute"
- *     line, no warning. This is the legitimate transient case (model
- *     does fit, just hasn't finished mmap'ing yet).
+ *   - `fits` / `unknown`: muted "Loading X — usually takes 30 s to
+ *     2 min" line. Legitimate transient case where the model does fit
+ *     and just hasn't finished bringing up yet.
  */
 function WarmingUpCard({
   node,
@@ -482,13 +482,13 @@ function WarmingUpCard({
     node.state === "loading" && history?.loadingSince
       ? Date.now() - history.loadingSince
       : 0;
-  const danger = verdict.kind === "underprovisioned";
+  const awaiting = verdict.kind === "underprovisioned";
   return (
     <div
       className={
         "rounded-xl border p-5 " +
-        (danger
-          ? "border-amber-400/50 bg-amber-400/5"
+        (awaiting
+          ? "border-amber-400/40 bg-amber-400/5"
           : "border-[var(--border)] bg-[var(--bg-elev)]")
       }
     >
@@ -497,24 +497,24 @@ function WarmingUpCard({
           <span
             className={
               "mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full " +
-              (danger ? "bg-amber-400" : "bg-amber-300")
+              (awaiting ? "bg-amber-400" : "bg-amber-300")
             }
           />
           <div className="min-w-0">
             <div
               className={
                 "text-[10px] uppercase tracking-[0.18em] " +
-                (danger ? "text-amber-300" : "text-[var(--fg-muted)]")
+                (awaiting ? "text-amber-300" : "text-[var(--fg-muted)]")
               }
             >
-              {danger ? "Won't actually load" : "Warming up"}
+              {awaiting ? "Awaiting capacity" : "Loading"}
             </div>
             <div className="mt-0.5 text-sm font-semibold tracking-tight text-[var(--fg)]">
               {hostname}
             </div>
             <div className="mt-1 font-mono text-[12px] text-[var(--fg)]/85">
               {verdict.displayName}
-              {loadingFor > 0 && (
+              {loadingFor > 0 && !awaiting && (
                 <span className="ml-2 text-[11px] text-[var(--fg-muted)]">
                   · {formatDuration(loadingFor)}
                 </span>
@@ -523,39 +523,38 @@ function WarmingUpCard({
             <div className="mt-1.5 text-[12px] text-[var(--fg-muted)]">
               {verdict.kind === "underprovisioned" ? (
                 <>
-                  This model needs ~
-                  <span className="font-semibold text-amber-200">
+                  Needs about{" "}
+                  <span className="font-semibold text-[var(--fg)]">
                     {verdict.catalog.minVramGb} GB
                   </span>{" "}
-                  but the host has ~
-                  <span className="font-semibold text-amber-200">
+                  of pooled memory to serve. This machine offers{" "}
+                  <span className="font-semibold text-[var(--fg)]">
                     {verdict.hostVramGb.toFixed(0)} GB
-                  </span>
-                  . llama-server is mmap&apos;ing it from disk and will
-                  thrash — chat requests will time out until a peer with at
-                  least{" "}
-                  <span className="font-semibold text-amber-200">
-                    {Math.ceil(verdict.shortfallGb)} GB
                   </span>{" "}
-                  more memory joins the mesh.
+                  on its own — additional contributors are needed to pool the
+                  remaining{" "}
+                  <span className="font-semibold text-[var(--fg)]">
+                    ~{Math.ceil(verdict.shortfallGb)} GB
+                  </span>{" "}
+                  before the model can come online.
                 </>
               ) : verdict.kind === "fits" ? (
                 <>
-                  Loading the GGUF into VRAM. This usually takes 30s–2 min for
-                  models in this size range.
+                  Loading model into memory. This usually takes 30 s to 2 min
+                  for models in this size range.
                 </>
               ) : (
-                <>Loading the GGUF into VRAM. This usually takes 30s–2 min.</>
+                <>Loading model into memory. This usually takes 30 s to 2 min.</>
               )}
             </div>
           </div>
         </div>
-        {danger && (
+        {awaiting && (
           <a
             href="/download"
-            className="shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-[11px] font-semibold text-black transition hover:brightness-110"
+            className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-[11px] font-semibold text-amber-200 transition hover:bg-amber-400/20"
           >
-            Add a peer →
+            Share your machine →
           </a>
         )}
       </div>

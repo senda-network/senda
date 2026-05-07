@@ -904,9 +904,9 @@ function ThisNodeCard({
       ? "Not running. Start to share this machine."
       : "Checking status…"
     : isUnderprovisioned && underprovisioned
-      ? `${primaryLoadedDisplayName(loadedMeshModels, loaded)} is loaded via mmap fallback — this Mac doesn't have enough memory to actually serve it on its own (needs ~${underprovisioned.needGb.toFixed(0)} GB, has ~${underprovisioned.haveGb.toFixed(0)} GB). Chat will hang or time out until a peer with more memory joins.`
+      ? `${primaryLoadedDisplayName(loadedMeshModels, loaded)} needs about ${underprovisioned.needGb.toFixed(0)} GB of pooled memory to serve. This machine offers ${underprovisioned.haveGb.toFixed(0)} GB on its own — connect another peer to bring it online.`
       : startupConfigured && display.label === "Loading"
-        ? "Loading the startup model — this can take a minute on first boot, longer for big GGUFs."
+        ? "Loading the startup model — this can take a minute on first boot, longer for larger models."
         : display.description;
 
   return (
@@ -1432,14 +1432,14 @@ function ModelReadyCard({
                 (danger ? "text-amber-300" : "text-emerald-300")
               }
             >
-              {danger ? "Loaded — but not servable solo" : "Ready"}
+              {danger ? "Awaiting capacity" : "Ready"}
             </div>
             <div className="mt-0.5 truncate font-mono text-sm text-[var(--fg)]">
               {modelId}
             </div>
             <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
               {danger
-                ? `Loaded via mmap fallback — this Mac is too small to serve it on its own. Needs ~${underprovisioning.needGb.toFixed(0)} GB, mesh has ~${underprovisioning.haveGb.toFixed(0)} GB. Chat requests will hang or time out until a peer with at least ${underprovisioning.shortfallGb.toFixed(0)} GB more memory joins.`
+                ? `This model needs about ${underprovisioning.needGb.toFixed(0)} GB of pooled memory to serve. Your machine offers ${underprovisioning.haveGb.toFixed(0)} GB on its own — connect another peer to bring it online.`
                 : "The runtime is serving this model. You're sharing with the mesh."}
             </div>
           </div>

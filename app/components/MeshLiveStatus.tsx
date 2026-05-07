@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { MODEL_CATALOG } from "../lib/model-catalog";
+import { normalizeModelId } from "../lib/model-id";
 
 type StatusNode = {
   hostname?: string | null;
@@ -53,15 +55,26 @@ export function MeshLiveStatus({
   const [models, setModels] = useState<string[]>([]);
   const [contributorCount, setContributorCount] = useState(0);
   const [pooledVramGb, setPooledVramGb] = useState(0);
-  // `noWarmModel` is true when we have contributors connected but
-  // nobody has actually finished loading a model. Distinct from
-  // "offline" (entry node unreachable) — the mesh is up, peers are
-  // present, but chat will fail because there's nothing warm to route
-  // to. Used to flip the dot to amber so the public homepage stops
-  // shouting "1 contributor · 18 GB pooled" in cheerful green while
-  // the only contributor is mmap-thrashing a model that's too big to
-  // serve.
-  const [noWarmModel, setNoWarmModel] = useState(false);
+  // Three distinct "no warm model" sub-states we want to show
+  // different copy for:
+  //
+  //   - "ready":   at least one contributor has finished loading
+  //                something — the cheerful green pill applies.
+  //   - "loading": contributors are present and at least one is
+  //                bringing up a model that we believe will fit
+  //                (per catalog) — amber dot, "loading…".
+  //   - "awaiting":contributors are present but every committed model
+  //                exceeds the host's pooled memory — amber dot,
+  //                "awaiting capacity". This is the case where saying
+  //                "loading…" misleads visitors into expecting it to
+  //                resolve on its own.
+  //
+  // The catalog lookup is the same one used by the warming-up card on
+  // the /status page; see app/lib/model-id.ts and app/(public)/status
+  // for the rationale.
+  const [headlineState, setHeadlineState] = useState<
+    "ready" | "loading" | "awaiting" | "idle"
+  >("idle");
 
   useEffect(() => {
     let cancelled = false;
@@ -88,22 +101,43 @@ export function MeshLiveStatus({
               0,
             ),
           );
-          // "Has any contributor finished loading a model?" — the
-          // signal we need to differentiate "mesh is genuinely
-          // serving" from "peers are present but every model is
-          // stuck in load / mmap-thrash". `loadedModels` is the
-          // hosted_models-only subset (see app/api/status/route.ts),
-          // so this is the readiness ground truth.
+          // Decide which sub-state the headline should render. See
+          // `headlineState` declaration above for the four-way split.
           const anyWarm = contributors.some(
             (n) => (n.capability?.loadedModels?.length ?? 0) > 0,
           );
-          setNoWarmModel(contributors.length > 0 && !anyWarm);
+          if (anyWarm) {
+            setHeadlineState("ready");
+          } else if (contributors.length === 0) {
+            setHeadlineState("idle");
+          } else {
+            // At least one contributor without a loaded model. If any
+            // of them is committed to a model the catalog says fits
+            // their memory, we're in a real loading window. If every
+            // committed model exceeds pooled memory (or there's no
+            // committed model at all), we're awaiting more capacity.
+            const anyFittingLoad = contributors.some((n) => {
+              const id = n.servingModels?.[0];
+              if (!id) return false;
+              const catalog = MODEL_CATALOG.find(
+                (m) => normalizeModelId(m.id) === normalizeModelId(id),
+              );
+              if (!catalog) return true; // unknown model — give it the benefit of the doubt
+              const hostVram = Math.min(
+                n.vramGb || Number.POSITIVE_INFINITY,
+                n.capability?.vramGb || Number.POSITIVE_INFINITY,
+              );
+              if (!Number.isFinite(hostVram) || hostVram <= 0) return true;
+              return catalog.minVramGb - hostVram <= 0.5;
+            });
+            setHeadlineState(anyFittingLoad ? "loading" : "awaiting");
+          }
         } else {
           setPhase("offline");
           setModels([]);
           setContributorCount(0);
           setPooledVramGb(0);
-          setNoWarmModel(false);
+          setHeadlineState("idle");
         }
       } catch {
         if (!cancelled) {
@@ -111,7 +145,7 @@ export function MeshLiveStatus({
           setModels([]);
           setContributorCount(0);
           setPooledVramGb(0);
-          setNoWarmModel(false);
+          setHeadlineState("idle");
         }
       } finally {
         if (!cancelled) {
@@ -128,28 +162,37 @@ export function MeshLiveStatus({
   }, []);
 
   if (variant === "header") {
-    // Compact pill that lives in the page header. Goes amber when the
-    // mesh is online with contributors but nobody has finished loading
-    // a model yet — green here would imply "ready to chat", which is a
-    // lie if every contributor is still mmap'ing or stuck-loading. See
-    // `noWarmModel` above for the source signal.
-    const dot =
-      phase === "online"
-        ? noWarmModel
-          ? "bg-amber-400"
-          : "bg-emerald-400"
+    // Compact pill that lives in the page header. Color and trailing
+    // copy follow `headlineState` so the pill never claims "ready"
+    // when no model is actually warm, and never claims "loading" when
+    // the only attempt is for a model the host can't fit. See the
+    // headlineState declaration for the full state machine.
+    const isAmber =
+      phase === "online" &&
+      (headlineState === "loading" || headlineState === "awaiting");
+    const isGreen = phase === "online" && headlineState === "ready";
+    const dot = isGreen
+      ? "bg-emerald-400"
+      : isAmber
+        ? "bg-amber-400"
         : phase === "loading"
           ? "bg-[var(--fg-muted)]"
-          : "bg-red-400";
+          : phase === "offline"
+            ? "bg-red-400"
+            : "bg-[var(--fg-muted)]";
     const poolLabel =
       pooledVramGb > 0
         ? ` · ${pooledVramGb >= 100 ? Math.round(pooledVramGb) : pooledVramGb.toFixed(0)} GB pooled`
         : "";
+    const contributorWord =
+      contributorCount === 1 ? "contributor" : "contributors";
     const contribLabel =
       contributorCount > 0
-        ? noWarmModel
-          ? `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"} · loading…`
-          : `${contributorCount} ${contributorCount === 1 ? "contributor" : "contributors"}${poolLabel}`
+        ? headlineState === "loading"
+          ? `${contributorCount} ${contributorWord} · loading…`
+          : headlineState === "awaiting"
+            ? `${contributorCount} ${contributorWord} · waiting for capacity`
+            : `${contributorCount} ${contributorWord}${poolLabel}`
         : models.length > 0
           ? `${models.length} model${models.length === 1 ? "" : "s"}`
           : "Mesh online";
@@ -165,7 +208,7 @@ export function MeshLiveStatus({
         className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-2.5 py-1 text-[11px] text-[var(--fg-muted)] transition hover:border-[var(--accent)]/40 hover:text-[var(--fg)]"
       >
         <span className="relative inline-flex h-2 w-2">
-          {phase === "online" && !noWarmModel && (
+          {isGreen && (
             <span
               aria-hidden
               className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"

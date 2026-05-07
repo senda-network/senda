@@ -46,22 +46,22 @@ export function LiveLaunchState({
   const palette = paletteFor(variant);
 
   if (isLoaded) {
-    // The runtime reports this model as loaded, but the planner may have
-    // classified it as `cold` because the host is too small to actually
-    // serve it (mmap-fallback thrash). In that case llama-server WILL
-    // accept requests and then time out trying to page weights from
-    // disk, so we treat it as a danger state — same color as
-    // WaitingForCapacity, with concrete numbers — instead of the green
-    // "ok" we show for true solo / split / multi-host. See
-    // app/lib/mesh-fit.ts for the threshold and rationale.
+    // The runtime reports this model as loaded, but the planner may
+    // have classified it as `cold` — its signal that the host's
+    // memory budget falls short of what the model needs to serve at
+    // useful speed, even though llama-server will accept the model.
+    // Treat that as the same "awaiting capacity" amber state we use
+    // for WaitingForCapacity rather than the green "ok" we show for
+    // true solo / split / multi-host placements. Source helper in
+    // app/lib/mesh-fit.ts.
     const under = loadedModelUnderprovisioning(meshModel);
     if (under) {
       return (
         <span className={palette.waiting}>
-          Underprovisioned · loaded but won&apos;t actually serve — needs{" "}
-          {under.needGb.toFixed(0)} GB, mesh has {under.haveGb.toFixed(0)} GB ·{" "}
+          Awaiting capacity · needs ~{under.needGb.toFixed(0)} GB pooled
+          memory, this mesh offers {under.haveGb.toFixed(0)} GB ·{" "}
           <span className="font-semibold">
-            add {under.shortfallGb.toFixed(0)} GB more to make it usable
+            pool {Math.ceil(under.shortfallGb)} GB more to bring online
           </span>
         </span>
       );
