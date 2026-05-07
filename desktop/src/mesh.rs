@@ -309,8 +309,7 @@ const MOVE_PREFIXES: &[&str] = &[
 const REQUIRED_PREFIXES: &[&str] = &["rpc-server", "llama-server"];
 
 fn name_matches_prefix(name: &str, prefix: &str) -> bool {
-    name == prefix
-        || (name.starts_with(prefix) && name.as_bytes().get(prefix.len()) == Some(&b'-'))
+    name == prefix || (name.starts_with(prefix) && name.as_bytes().get(prefix.len()) == Some(&b'-'))
 }
 
 /// Returns true iff `dir` contains at least one binary matching every
@@ -690,8 +689,7 @@ enum UpgradeOutcome {
 /// authenticated `/api/repos/.../releases/latest` endpoint caps
 /// unauthenticated callers at 60 req/hr per IP, which would be tight
 /// for a multi-user network behind one NAT).
-const RUNTIME_LATEST_PAGE: &str =
-    "https://github.com/closedmesh/closedmesh-llm/releases/latest";
+const RUNTIME_LATEST_PAGE: &str = "https://github.com/closedmesh/closedmesh-llm/releases/latest";
 
 /// Background thread: poll GitHub for a newer runtime, download and
 /// hot-swap when one appears. The first check fires after
@@ -861,7 +859,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     let mut tmp_file = match std::fs::File::create(&archive) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("[closedmesh] runtime upgrade: create {} failed: {e}", archive.display());
+            eprintln!(
+                "[closedmesh] runtime upgrade: create {} failed: {e}",
+                archive.display()
+            );
             let _ = std::fs::remove_dir_all(&stage_dir);
             return UpgradeOutcome::Failed;
         }
@@ -887,7 +888,11 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     }
     let _ = std::fs::remove_file(&archive);
 
-    let exe_name = if cfg!(windows) { "closedmesh.exe" } else { "closedmesh" };
+    let exe_name = if cfg!(windows) {
+        "closedmesh.exe"
+    } else {
+        "closedmesh"
+    };
     let new_bin = stage_dir.join(exe_name);
     if !new_bin.is_file() {
         eprintln!(
@@ -1586,7 +1591,6 @@ pub fn keep_running_after_quit() -> bool {
     trimmed.starts_with("true")
 }
 
-
 // ---------- Runtime auto-install ----------------------------------------
 
 /// GitHub "latest release" asset URL for the closedmesh-llm runtime. The
@@ -1662,10 +1666,7 @@ fn parse_semver(s: &str) -> (u32, u32, u32, Option<String>) {
         Some(i) => (&s[..i], Some(s[i + 1..].to_string())),
         None => (s, None),
     };
-    let parts: Vec<u32> = numeric
-        .split('.')
-        .map(|p| p.parse().unwrap_or(0))
-        .collect();
+    let parts: Vec<u32> = numeric.split('.').map(|p| p.parse().unwrap_or(0)).collect();
     let maj = parts.first().copied().unwrap_or(0);
     let min = parts.get(1).copied().unwrap_or(0);
     let patch = parts.get(2).copied().unwrap_or(0);
