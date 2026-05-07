@@ -50,31 +50,19 @@ export async function POST(req: Request) {
 
   // We avoid `curl | sh` to keep the supply chain visible: the install
   // script is shipped inside this very controller bundle. If somebody
-  // tampered with `public/install.sh` they already had write access.
-  const scriptPath = path.join(process.cwd(), "public", "install.sh");
+  // tampered with `public/install.{sh,ps1}` they already had write access.
+  const scriptName =
+    process.platform === "win32" ? "install.ps1" : "install.sh";
+  const scriptPath = path.join(process.cwd(), "public", scriptName);
   try {
     await fs.access(scriptPath);
   } catch {
     return new Response(
       JSON.stringify({
         ok: false,
-        message: `install.sh not found at ${scriptPath}`,
+        message: `${scriptName} not found at ${scriptPath}`,
       }),
       { status: 500, headers: { "content-type": "application/json" } },
-    );
-  }
-
-  // Linux/macOS only for now — Windows users go through install.ps1 which
-  // we'll wire up once the desktop bundle ships on Windows. Refuse loudly
-  // rather than mis-execute on the wrong shell.
-  if (process.platform === "win32") {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        message:
-          "In-app install isn't wired for Windows yet. Run install.ps1 manually for now.",
-      }),
-      { status: 501, headers: { "content-type": "application/json" } },
     );
   }
 
@@ -85,16 +73,35 @@ export async function POST(req: Request) {
         controller.enqueue(enc.encode(JSON.stringify(obj) + "\n"));
       };
 
-      const args = autoStart ? [scriptPath, "--service"] : [scriptPath];
-      send({ kind: "stdout", text: `bash ${args.join(" ")}` });
+      // Same shape across platforms: pass `--service` / `-Service` to
+      // include the OS-native autostart unit so the runtime survives
+      // logout/reboot. The desktop's first-launch Rust path also calls
+      // this when the user is already past initial setup.
+      let cmd: string;
+      let args: string[];
+      if (process.platform === "win32") {
+        cmd = "powershell";
+        args = [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          scriptPath,
+        ];
+        if (autoStart) args.push("-Service");
+        send({ kind: "stdout", text: `${cmd} ${args.join(" ")}` });
+      } else {
+        cmd = "bash";
+        args = autoStart ? [scriptPath, "--service"] : [scriptPath];
+        send({ kind: "stdout", text: `bash ${args.join(" ")}` });
+      }
 
-      const child = spawn("bash", args, {
+      const child = spawn(cmd, args, {
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
-        // No-op here in practice — this route refuses on Windows above —
-        // but kept for consistency with the rest of /api/control/* so
-        // future readers don't think this spawn is intentionally
-        // console-visible.
+        // Hide the powershell.exe console on Windows. The sub-processes
+        // it launches (Invoke-WebRequest, schtasks, Register-ScheduledTask)
+        // also inherit no-window via this flag.
         windowsHide: true,
       });
 

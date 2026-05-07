@@ -50,6 +50,7 @@ impl CommandExtNoWindow for Command {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Debug, Deserialize, Default)]
 struct InvitePayload {
     #[serde(default)]
@@ -561,6 +562,17 @@ pub fn start_service_if_installed() {
         }
         #[cfg(not(target_os = "macos"))]
         let _ = helpers_repaired;
+
+        // Windows: register (or refresh) the Scheduled Task that turns
+        // `closedmesh.exe serve --auto …` into a logon-triggered, restart-
+        // on-failure background service. Mirrors what install.ps1 does
+        // for users who came in through the PowerShell installer, and
+        // makes the .msi → first-launch path single-click — no terminal
+        // command, no manual install.ps1. Idempotent: if the task is
+        // already registered with matching args it short-circuits, so
+        // an in-flight `serve` isn't killed by a delete+create cycle.
+        #[cfg(target_os = "windows")]
+        register_windows_scheduled_task(&bin);
 
         // Start the runtime immediately with whatever plist exists.
         // We do NOT block here waiting for a token fetch — that can take
@@ -1100,7 +1112,15 @@ fn fmt_version(v: &(u32, u32, u32, Option<String>)) -> String {
 #[cfg(target_os = "macos")]
 const SERVICE_LABEL: &str = "dev.closedmesh.closedmesh";
 
-#[cfg(target_os = "macos")]
+/// Windows Task Scheduler task name. Matches install.ps1.
+#[cfg(target_os = "windows")]
+const SERVICE_NAME_WINDOWS: &str = "ClosedMesh";
+
+/// Live join endpoint for the canonical entry node. Used by both the
+/// macOS launchd plist and the Windows Scheduled Task: the runtime
+/// re-fetches the token from this URL on every restart so an entry-node
+/// key rotation never strands existing installs.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const ENTRY_STATUS_URL: &str = "https://mesh.closedmesh.com/api/status";
 
 /// Fallback join token baked in at build time.
@@ -1125,7 +1145,7 @@ const ENTRY_STATUS_URL: &str = "https://mesh.closedmesh.com/api/status";
 /// (e.g. image update, config change). Read it from the box with:
 ///   ssh ubuntu@3.210.30.58 'docker logs mesh-entry 2>&1 | \
 ///       grep -oE "Invite created.*: \S+" | tail -1 | awk "{print \$NF}"'
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjY2ZmFkNDNhMmZhZWRmMzIwMGZjN2M3YjU4NTVjMzIwZWRjMmY4ZjA0OGU2OTM1ZDIyZjljODkwMjFkNmQwM2EiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjQ2OTMzIn1dfQ";
 
 /// Public Iroh relays we explicitly hand to the runtime via `--relay`.
@@ -1139,7 +1159,7 @@ const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjY2ZmFkNDNhMmZhZWRmMzIwMGZjN2M3YjU4N
 /// running a model locally. Until the runtime ships a fix we override
 /// the relay map at the launchd plist level. n0's canary relays are
 /// public and operationally maintained by the iroh team.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const DEFAULT_RELAYS: &[&str] = &[
     "https://use1-1.relay.n0.iroh-canary.iroh.link./",
     "https://euw-1.relay.n0.iroh-canary.iroh.link./",
@@ -1284,7 +1304,7 @@ fn launchd_plist_path() -> Option<PathBuf> {
 /// Probes `closedmesh serve --help` for the `--join-url` token. Cheap (a
 /// fork+exec of our own binary printing static help text) and avoids
 /// hard-coding a CLI version the desktop has to keep in sync with.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn cli_supports_join_url(bin: &std::path::Path) -> bool {
     let Ok(output) = Command::new(bin)
         .args(["serve", "--help"])
@@ -1313,7 +1333,7 @@ fn cli_supports_join_url(bin: &std::path::Path) -> bool {
 /// no way to tell whether DNS, TLS, the HTTP fetch, or the JSON decode
 /// was the problem, and the user's plist quietly fell back to a private
 /// mesh of one.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn fetch_entry_token() -> String {
     // 5 s connect, 10 s read. Each attempt is called from the retry loop
     // (T+3 s, T+8 s, T+15 s, T+30 s, then every 60 s) so a slow attempt
@@ -1589,6 +1609,210 @@ pub fn keep_running_after_quit() -> bool {
     // `false` token.
     let trimmed = after.trim_start_matches([':', ' ', '\t', '\n', '\r']);
     trimmed.starts_with("true")
+}
+
+// ---------- Windows / Task Scheduler ------------------------------------
+
+/// PowerShell script that registers (or refreshes) the ClosedMesh
+/// Scheduled Task. Mirrors `Install-ScheduledTaskUnit` in
+/// `public/install.ps1` so a user who started from the .msi gets the
+/// exact same task definition (RestartInterval, AllowStartIfOnBatteries,
+/// Limited principal, AtLogon trigger) as one who ran the PowerShell
+/// installer manually. Embedded as a string constant so we don't have
+/// to find install.ps1 on disk at runtime.
+///
+/// Parameters are passed positionally because PowerShell's `-File` mode
+/// needs them via the script's own `param(...)` block. Idempotency
+/// (delete-before-register) is intentional and called from the Rust
+/// caller only when args genuinely changed.
+#[cfg(target_os = "windows")]
+const REGISTER_TASK_PS: &str = r#"param(
+    [Parameter(Mandatory=$true)][string]$BinPath,
+    [Parameter(Mandatory=$true)][string]$ArgString,
+    [Parameter(Mandatory=$true)][string]$UserName,
+    [Parameter(Mandatory=$true)][string]$WorkingDirectory,
+    [Parameter(Mandatory=$true)][string]$TaskName
+)
+$ErrorActionPreference = 'Stop'
+schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null
+$action    = New-ScheduledTaskAction    -Execute $BinPath -Argument $ArgString -WorkingDirectory $WorkingDirectory
+$trigger   = New-ScheduledTaskTrigger   -AtLogOn -User $UserName
+$settings  = New-ScheduledTaskSettingsSet `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable `
+    -RestartInterval (New-TimeSpan -Minutes 1) `
+    -RestartCount 3 `
+    -ExecutionTimeLimit (New-TimeSpan -Days 0)
+$principal = New-ScheduledTaskPrincipal -UserId $UserName -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName $TaskName `
+    -Action $action `
+    -Trigger $trigger `
+    -Settings $settings `
+    -Principal $principal `
+    -Description 'ClosedMesh - private LLM mesh node' | Out-Null
+"#;
+
+/// Compose the runtime CLI argument string baked into the Scheduled
+/// Task. Matches the line install.ps1 generates at install time so a
+/// machine bootstrapped by the PowerShell installer and one
+/// bootstrapped by the desktop app behave identically.
+///
+/// `--join-url` is preferred when the installed CLI supports it (the
+/// runtime then re-fetches the token on every restart, surviving entry
+/// node key rotations); older CLIs fall back to a literal `--join
+/// <token>` fetched at install time.
+#[cfg(target_os = "windows")]
+fn build_windows_service_args(bin: &std::path::Path) -> String {
+    let supports_join_url = cli_supports_join_url(bin);
+    let join_segment = if supports_join_url {
+        format!(" --join-url {ENTRY_STATUS_URL}")
+    } else {
+        let token = fetch_entry_token();
+        format!(" --join {token}")
+    };
+    let mut relays = String::new();
+    for r in DEFAULT_RELAYS {
+        relays.push_str(" --relay ");
+        relays.push_str(r);
+    }
+    format!("serve --auto --publish --mesh-name closedmesh{join_segment}{relays} --headless")
+}
+
+/// Returns the Arguments string of the currently registered ClosedMesh
+/// Scheduled Task, or `None` if the task is not registered (or
+/// PowerShell isn't available, which on supported Windows versions
+/// shouldn't happen).
+///
+/// Used to decide whether `register_windows_scheduled_task` actually
+/// needs to re-register: re-registering on every desktop launch would
+/// kill the running task (delete + create) and disconnect any in-flight
+/// inference. Same idempotency principle as the macOS plist self-heal.
+#[cfg(target_os = "windows")]
+fn current_windows_task_args() -> Option<String> {
+    let script = format!(
+        "$t = Get-ScheduledTask -TaskName '{SERVICE_NAME_WINDOWS}' -ErrorAction SilentlyContinue; \
+         if ($t) {{ $t.Actions[0].Arguments }}"
+    );
+    let out = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .hide_console()
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// Make sure the ClosedMesh Scheduled Task exists and points at `bin`
+/// with the right argument string. No-op when the task already matches
+/// what we'd write.
+///
+/// Why this exists: pre-0.1.62 the desktop app's `start_service_if_installed`
+/// happily downloaded `closedmesh.exe` to `~/.local/bin/` on Windows, then
+/// called `closedmesh service start` — which on Windows just runs
+/// `schtasks /Run /TN ClosedMesh` and errors if the task isn't registered.
+/// Result: a friend who installed the .msi and opened the app got
+/// "In-app install isn't wired for Windows yet. Run install.ps1 manually
+/// for now." This function closes that gap so .msi → first launch → online
+/// is the same one-step flow as macOS .dmg → first launch → online.
+#[cfg(target_os = "windows")]
+fn register_windows_scheduled_task(bin: &std::path::Path) {
+    let args = build_windows_service_args(bin);
+
+    // Skip the re-register if the task already matches. PowerShell
+    // canonicalizes the Arguments string slightly differently from how
+    // we feed it in (no leading whitespace, normalised internal spacing),
+    // so compare on a normalised form rather than byte-equal.
+    let normalised = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
+    if let Some(existing) = current_windows_task_args() {
+        if normalised(&existing) == normalised(&args) {
+            return;
+        }
+        eprintln!(
+            "[closedmesh] scheduled task args changed; re-registering ({SERVICE_NAME_WINDOWS})"
+        );
+    } else {
+        eprintln!(
+            "[closedmesh] scheduled task '{SERVICE_NAME_WINDOWS}' not registered; creating it"
+        );
+    }
+
+    let user_name = std::env::var("USERNAME").unwrap_or_default();
+    if user_name.is_empty() {
+        eprintln!("[closedmesh] cannot register scheduled task: USERNAME env var is empty");
+        return;
+    }
+    let working_dir = std::env::var("USERPROFILE")
+        .ok()
+        .or_else(|| dirs::home_dir().map(|p| p.display().to_string()))
+        .unwrap_or_else(|| ".".to_string());
+
+    let temp_dir = std::env::temp_dir();
+    let script_path = temp_dir.join("closedmesh-register-task.ps1");
+    if let Err(e) = std::fs::write(&script_path, REGISTER_TASK_PS) {
+        eprintln!(
+            "[closedmesh] could not stage register-task script at {}: {e}",
+            script_path.display()
+        );
+        return;
+    }
+
+    let bin_str = bin.display().to_string();
+    let output = match Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&script_path)
+        .arg("-BinPath")
+        .arg(&bin_str)
+        .arg("-ArgString")
+        .arg(&args)
+        .arg("-UserName")
+        .arg(&user_name)
+        .arg("-WorkingDirectory")
+        .arg(&working_dir)
+        .arg("-TaskName")
+        .arg(SERVICE_NAME_WINDOWS)
+        .hide_console()
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("[closedmesh] register-scheduled-task spawn failed: {e}");
+            let _ = std::fs::remove_file(&script_path);
+            return;
+        }
+    };
+    let _ = std::fs::remove_file(&script_path);
+    if !output.status.success() {
+        eprintln!(
+            "[closedmesh] register-scheduled-task failed (exit {:?}): stderr={:?} stdout={:?}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim(),
+            String::from_utf8_lossy(&output.stdout).trim(),
+        );
+        return;
+    }
+    eprintln!(
+        "[closedmesh] scheduled task '{SERVICE_NAME_WINDOWS}' registered for {} (user {user_name})",
+        bin.display()
+    );
 }
 
 // ---------- Runtime auto-install ----------------------------------------
