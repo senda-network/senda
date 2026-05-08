@@ -446,6 +446,35 @@ fn repair_missing_helpers(bin: &Path) -> bool {
     if helpers_present(parent) {
         return false;
     }
+
+    // Windows: try ggml-org/llama.cpp's official Windows release FIRST.
+    // It's the most reliable source — a fixed b9041 tag the runtime
+    // was built against, with a complete bundle (rpc-server.exe,
+    // llama-server.exe, every ggml-*.dll, optionally cudart). The
+    // runtime ZIP path used to be unreliable for Windows users:
+    //   - pre-0.66.4 didn't bundle helpers at all (just closedmesh.exe)
+    //   - 0.66.4+ bundles them, but the ZIP is 70+ MB and can fail
+    //     mid-download on flaky networks while ggml-org's smaller,
+    //     CDN-fronted release succeeds
+    // Either way, pulling the canonical helpers from upstream is
+    // strictly safer than gambling on whatever the runtime shipped.
+    // The runtime ZIP path stays as a fallback for users who somehow
+    // can't reach github.com/ggml-org but can reach github.com/closedmesh.
+    if cfg!(windows) {
+        eprintln!(
+            "[closedmesh] helpers: missing in {}; trying ggml-org/llama.cpp first (most reliable)",
+            parent.display()
+        );
+        if repair_helpers_from_llama_cpp(parent) {
+            eprintln!("[closedmesh] helpers: ggml-org/llama.cpp installation succeeded");
+            return true;
+        }
+        eprintln!(
+            "[closedmesh] helpers: ggml-org/llama.cpp installation failed; \
+             falling back to runtime ZIP"
+        );
+    }
+
     eprintln!(
         "[closedmesh] helpers: missing in {}; fetching latest runtime bundle",
         parent.display()
@@ -675,6 +704,187 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
     false
 }
 
+/// One-shot migration from the legacy auto-installer location
+/// (`~/.local/bin\closedmesh.exe`, used by 0.1.40-0.1.74) to the
+/// canonical Windows runtime path (`%LOCALAPPDATA%\closedmesh\bin\closedmesh.exe`,
+/// used by install.ps1 and v0.1.75+ in-app installs).
+///
+/// We move every file in the legacy dir to the canonical dir (not just
+/// closedmesh.exe) so any helpers/DLLs that DID land there come with
+/// us. The old dir is then removed if it's empty — leaving a stale
+/// `~/.local/bin\` would just confuse the next debugging session.
+///
+/// Idempotent and safe to call repeatedly:
+///   - If the canonical install already has a closedmesh.exe, we skip
+///     entirely (the user has already migrated, or installed via .ps1).
+///   - If the legacy install doesn't exist, we no-op.
+///   - If a file we want to copy is locked (the runtime is currently
+///     running from the legacy path — possible during the bounce),
+///     we log and skip that file rather than aborting; next launch
+///     picks up where this one left off.
+///
+/// This function MUST run before `locate_binary` in
+/// `start_service_if_installed`, otherwise locate_binary keeps
+/// returning the legacy path and every "fix" we ship lands in the
+/// wrong directory.
+#[cfg(target_os = "windows")]
+fn migrate_legacy_runtime_install_windows() {
+    let Some(home) = dirs::home_dir() else {
+        return;
+    };
+    let legacy_dir = home.join(".local").join("bin");
+    let legacy_exe = legacy_dir.join("closedmesh.exe");
+    if !legacy_exe.is_file() {
+        return;
+    }
+    let Some(canonical_dir) = windows_canonical_runtime_dir() else {
+        return;
+    };
+    let canonical_exe = canonical_dir.join("closedmesh.exe");
+
+    // If the canonical path is already populated, just remove the
+    // stale legacy copy and call it done. Don't overwrite a known-good
+    // install with a possibly-older legacy one.
+    if canonical_exe.is_file() {
+        eprintln!(
+            "[closedmesh] migrate: canonical install already at {} — removing stale legacy at {}",
+            canonical_exe.display(),
+            legacy_dir.display()
+        );
+        // Remove every file in the legacy dir, then the dir itself if
+        // it ends up empty. We do file-by-file rather than
+        // remove_dir_all so we leave anything we don't recognise alone
+        // (the user might have unrelated stuff in `~/.local/bin`).
+        wipe_legacy_runtime_dir_windows(&legacy_dir);
+        return;
+    }
+
+    if let Err(e) = std::fs::create_dir_all(&canonical_dir) {
+        eprintln!(
+            "[closedmesh] migrate: cannot create canonical dir {}: {e}",
+            canonical_dir.display()
+        );
+        return;
+    }
+    eprintln!(
+        "[closedmesh] migrate: moving legacy install {} -> {}",
+        legacy_dir.display(),
+        canonical_dir.display()
+    );
+
+    let entries = match std::fs::read_dir(&legacy_dir) {
+        Ok(it) => it,
+        Err(e) => {
+            eprintln!(
+                "[closedmesh] migrate: cannot list legacy dir {}: {e}",
+                legacy_dir.display()
+            );
+            return;
+        }
+    };
+    let mut moved = 0usize;
+    let mut skipped = 0usize;
+    for entry in entries.flatten() {
+        let src = entry.path();
+        if !src.is_file() {
+            continue;
+        }
+        let Some(name) = src.file_name() else {
+            continue;
+        };
+        // Only move things that look like ours. The user might have
+        // their own `~/.local/bin\` populated from WSL or
+        // scoop/chocolatey; we don't want to vacuum unrelated tools
+        // into our install dir.
+        let lower = name.to_string_lossy().to_lowercase();
+        let is_ours = lower == "closedmesh.exe"
+            || lower == "closedmesh-launch.vbs"
+            || lower.starts_with("rpc-server")
+            || lower.starts_with("llama-server")
+            || lower.starts_with("llama-moe-")
+            || lower.starts_with("ggml-")
+            || lower == "llama.dll"
+            || lower == "llama-common.dll"
+            || lower.starts_with("cudart_64_")
+            || lower == "libomp140.x86_64.dll"
+            || lower == ".llama-cpp-version";
+        if !is_ours {
+            continue;
+        }
+        let dest = canonical_dir.join(name);
+        // Try rename first (cheap, atomic on same filesystem). Fall
+        // back to copy + remove if rename trips on cross-volume or
+        // file-in-use. We use copy rather than abort so a partial
+        // migration still puts files in the right place; the legacy
+        // exe itself, if locked because the running runtime is
+        // serving from it, will fail to remove and we'll revisit on
+        // the next launch.
+        match std::fs::rename(&src, &dest) {
+            Ok(()) => moved += 1,
+            Err(_rename_err) => match std::fs::copy(&src, &dest) {
+                Ok(_) => {
+                    moved += 1;
+                    if let Err(e) = std::fs::remove_file(&src) {
+                        eprintln!(
+                            "[closedmesh] migrate: copied {} but could not remove source: {e}",
+                            src.display()
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[closedmesh] migrate: cannot copy {} -> {}: {e}",
+                        src.display(),
+                        dest.display()
+                    );
+                    skipped += 1;
+                }
+            },
+        }
+    }
+    eprintln!(
+        "[closedmesh] migrate: moved {moved} file(s), skipped {skipped} (locked or unreadable)"
+    );
+    // Best-effort remove of the now-(hopefully-)empty legacy dir.
+    let _ = std::fs::remove_dir(&legacy_dir);
+}
+
+#[cfg(target_os = "windows")]
+fn wipe_legacy_runtime_dir_windows(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if !p.is_file() {
+            continue;
+        }
+        let Some(name) = p.file_name() else { continue };
+        let lower = name.to_string_lossy().to_lowercase();
+        let is_ours = lower == "closedmesh.exe"
+            || lower == "closedmesh-launch.vbs"
+            || lower.starts_with("rpc-server")
+            || lower.starts_with("llama-server")
+            || lower.starts_with("llama-moe-")
+            || lower.starts_with("ggml-")
+            || lower == "llama.dll"
+            || lower == "llama-common.dll"
+            || lower.starts_with("cudart_64_")
+            || lower == "libomp140.x86_64.dll"
+            || lower == ".llama-cpp-version";
+        if !is_ours {
+            continue;
+        }
+        if let Err(e) = std::fs::remove_file(&p) {
+            eprintln!(
+                "[closedmesh] migrate: could not remove stale {}: {e}",
+                p.display()
+            );
+        }
+    }
+    let _ = std::fs::remove_dir(dir);
+}
+
 /// Best-effort `closedmesh service start` on launch. Silently no-ops if
 /// the CLI isn't installed yet — the user just gets the offline empty
 /// state (handled by the chat UI) until they install it.
@@ -698,6 +908,16 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
 /// to re-bootstrap the launchd agent. We do this on every launch so users
 /// always get the canonical mesh without ever running a terminal command.
 pub fn start_service_if_installed() {
+    // Windows hygiene: the auto-installer in 0.1.40-0.1.74 dropped
+    // closedmesh.exe into `~/.local/bin\` (a Linux convention applied
+    // by accident — see `runtime_install_path` for the post-mortem).
+    // install.ps1 always used `%LOCALAPPDATA%\closedmesh\bin`, and so
+    // do v0.1.75+ in-app installs, so we now have two install
+    // locations in the wild that need consolidating before
+    // `locate_binary` runs. Migrate any legacy install we find.
+    #[cfg(target_os = "windows")]
+    migrate_legacy_runtime_install_windows();
+
     // Locate an existing runtime binary or install a fresh one. When a
     // binary is already present we also verify that it meets the minimum
     // version requirement. Old installs (v0.1.16 era, pre-rc2) may have
@@ -750,7 +970,37 @@ pub fn start_service_if_installed() {
                 }
             }
         }
-        #[cfg(not(target_os = "macos"))]
+        // Windows mirror of the macOS bounce above. If we just laid
+        // down helpers and a `closedmesh.exe` started by the previous
+        // session is still running with no rpc-server on disk, it'll
+        // happily emit "rpc-server.exe not found" on every model load
+        // until the user signs out and back in (which is when the
+        // Scheduled Task's logon trigger would normally re-run it).
+        // Force-stop the current task so the upcoming `start_service`
+        // call below kicks off a fresh process tree that picks up the
+        // newly-installed helpers immediately.
+        #[cfg(target_os = "windows")]
+        if helpers_repaired {
+            eprintln!(
+                "[closedmesh] helpers: stopping current Scheduled Task so the new helpers \
+                 take effect on next start"
+            );
+            let _ = Command::new("schtasks")
+                .args(["/End", "/TN", SERVICE_NAME_WINDOWS])
+                .hide_console()
+                .output();
+            // schtasks /End is async (it just queues termination); give
+            // the wscript -> cmd -> closedmesh.exe tree a moment to
+            // actually exit before start_service launches a new one,
+            // otherwise the new task action runs while the old one is
+            // still teardown-in-progress and the Scheduled Task's
+            // default IgnoreNew multiple-instances policy silently
+            // drops it. Same fix we use in the bounceService path of
+            // app/api/control/models/startup/route.ts.
+            std::thread::sleep(Duration::from_millis(1500));
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let _ = helpers_repaired;
 
         // Windows: register (or refresh) the Scheduled Task that turns
@@ -2362,15 +2612,54 @@ fn runtime_asset_name() -> Option<String> {
 /// Where the auto-installer puts the binary. Matches the locations
 /// `locate_binary` already searches, so a successful install is
 /// transparent to the rest of the codebase.
+///
+/// Per-OS conventions (DO NOT cross-pollinate; that was the
+/// 0.1.40-0.1.74 bug that made Windows installs ship `closedmesh.exe`
+/// to `~/.local/bin/`, where `install.ps1` and the
+/// `closedmesh-llm` runtime never look. The two install paths fought
+/// each other: helpers landed in `%LOCALAPPDATA%\closedmesh\bin\` from
+/// `install.ps1`, the desktop's auto-installer dropped just
+/// `closedmesh.exe` into `~/.local/bin\`, `locate_binary` found the
+/// auto-installed one first, the runtime started with no helpers in
+/// its dir, and every model load died with
+/// `rpc-server.exe not found in C:\Users\…\.local\bin`):
+///
+///   - Windows: `%LOCALAPPDATA%\closedmesh\bin\closedmesh.exe`
+///     (canonical for the runtime: matches install.ps1, the WiX/NSIS
+///     installers, and the directory the Scheduled Task launches from).
+///   - macOS / Linux: `~/.local/bin/closedmesh` (XDG-ish; consistent
+///     with what `install.sh` and Homebrew users already have).
 fn runtime_install_path() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return windows_canonical_runtime_dir().map(|d| d.join("closedmesh.exe"));
+    }
     let home = dirs::home_dir()?;
-    let dir = home.join(".local").join("bin");
-    let name = if cfg!(windows) {
-        "closedmesh.exe"
-    } else {
-        "closedmesh"
-    };
-    Some(dir.join(name))
+    Some(home.join(".local").join("bin").join("closedmesh"))
+}
+
+/// `%LOCALAPPDATA%\closedmesh\bin`. Falls back to
+/// `~/AppData/Local/closedmesh/bin` if `LOCALAPPDATA` isn't set (rare,
+/// but Windows Sandbox / minimal user profiles can have it unset).
+#[cfg(windows)]
+fn windows_canonical_runtime_dir() -> Option<PathBuf> {
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let p = PathBuf::from(local);
+        if !p.as_os_str().is_empty() {
+            return Some(p.join("closedmesh").join("bin"));
+        }
+    }
+    let home = dirs::home_dir()?;
+    Some(
+        home.join("AppData")
+            .join("Local")
+            .join("closedmesh")
+            .join("bin"),
+    )
+}
+
+#[cfg(not(windows))]
+fn windows_canonical_runtime_dir() -> Option<PathBuf> {
+    None
 }
 
 /// Extracts a `.tar.gz` archive into `dest_dir`, expecting the bundled
@@ -2444,27 +2733,36 @@ fn locate_binary() -> Option<PathBuf> {
     }
 
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        candidates.push(home.join(".local/bin/closedmesh"));
-        if cfg!(windows) {
-            candidates.push(home.join(".local/bin/closedmesh.exe"));
-            // install.ps1 (the PowerShell installer) drops the runtime
-            // here. Discovering it lets a user who installed via
-            // `iwr | iex` skip the redundant Rust download on first
-            // launch — and lets the dashboard's Setup-button install
-            // path (which also runs install.ps1) reuse its own output
-            // instead of duplicating work.
-            candidates.push(home.join("AppData/Local/closedmesh/bin/closedmesh.exe"));
-            // Legacy path from earlier install.ps1 versions.
-            candidates.push(home.join("AppData/Local/closedmesh/closedmesh.exe"));
+
+    // Windows: canonical %LOCALAPPDATA%\closedmesh\bin\closedmesh.exe
+    // FIRST, then legacy fallbacks. install.ps1, the WiX/NSIS
+    // installer, and `runtime_install_path` all use the canonical path
+    // — but pre-0.1.75 the auto-installer wrote to `~/.local/bin\`
+    // (Linux convention applied to Windows, see runtime_install_path
+    // doc comment). Old installs migrated by `migrate_legacy_runtime_install_windows`
+    // get moved out of `~/.local/bin\` into the canonical path; the
+    // legacy candidate stays here as a safety net for installs we
+    // somehow missed migrating.
+    if cfg!(windows) {
+        if let Some(canonical) = windows_canonical_runtime_dir() {
+            candidates.push(canonical.join("closedmesh.exe"));
         }
-    }
-    if cfg!(target_os = "macos") {
-        candidates.push(PathBuf::from("/opt/homebrew/bin/closedmesh"));
-        candidates.push(PathBuf::from("/usr/local/bin/closedmesh"));
-    } else if cfg!(target_os = "linux") {
-        candidates.push(PathBuf::from("/usr/local/bin/closedmesh"));
-        candidates.push(PathBuf::from("/usr/bin/closedmesh"));
+        if let Some(home) = dirs::home_dir() {
+            candidates.push(home.join("AppData/Local/closedmesh/bin/closedmesh.exe"));
+            candidates.push(home.join("AppData/Local/closedmesh/closedmesh.exe"));
+            candidates.push(home.join(".local/bin/closedmesh.exe"));
+        }
+    } else {
+        if let Some(home) = dirs::home_dir() {
+            candidates.push(home.join(".local/bin/closedmesh"));
+        }
+        if cfg!(target_os = "macos") {
+            candidates.push(PathBuf::from("/opt/homebrew/bin/closedmesh"));
+            candidates.push(PathBuf::from("/usr/local/bin/closedmesh"));
+        } else if cfg!(target_os = "linux") {
+            candidates.push(PathBuf::from("/usr/local/bin/closedmesh"));
+            candidates.push(PathBuf::from("/usr/bin/closedmesh"));
+        }
     }
 
     for c in candidates {
