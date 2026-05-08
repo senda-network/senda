@@ -727,11 +727,20 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
 /// sleep, the migration's `std::fs::rename` was racing with process
 /// teardown and silently failing.
 ///
-/// Image names — `closedmesh.exe`, `rpc-server.exe`, `llama-server.exe`
-/// — are unique to us, so taskkill by image is safe (won't hit the
-/// user's other tools the way `node.exe` would have, see hooks.nsh
-/// for the rationale that drove the closedmesh-node.exe rename in
-/// 0.1.69).
+/// CRITICAL self-protection (the 0.1.76 → 0.1.77 fix):
+///
+/// Windows image-name matching is case-insensitive, and our GUI
+/// process is `ClosedMesh.exe` while the runtime is `closedmesh.exe`.
+/// `taskkill /F /T /IM closedmesh.exe` from inside the GUI therefore
+/// matches the GUI itself — instant suicide on every launch, which
+/// is exactly what 0.1.76 shipped. We use `/FI "PID ne <our_pid>"`
+/// to exclude our own process from the kill list. The runtime,
+/// running as a separate process spawned by the Scheduled Task, has
+/// a different PID and gets killed normally.
+///
+/// `rpc-server.exe` and `llama-server.exe` don't share names with
+/// our GUI so they don't need the PID filter, but adding it costs
+/// nothing and makes the code uniform.
 #[cfg(target_os = "windows")]
 fn stop_runtime_aggressively_windows() {
     eprintln!("[closedmesh] startup: stopping any running runtime before migration / repair");
@@ -746,14 +755,17 @@ fn stop_runtime_aggressively_windows() {
     // anything still running by image name.
     std::thread::sleep(Duration::from_millis(800));
 
+    let self_pid = std::process::id();
+    let pid_filter = format!("PID ne {self_pid}");
+
     for image in ["llama-server.exe", "rpc-server.exe", "closedmesh.exe"] {
         let out = Command::new("taskkill")
-            .args(["/F", "/T", "/IM", image])
+            .args(["/F", "/T", "/IM", image, "/FI", &pid_filter])
             .hide_console()
             .output();
         match out {
             Ok(o) if o.status.success() => {
-                eprintln!("[closedmesh] startup: taskkill {image} -> killed");
+                eprintln!("[closedmesh] startup: taskkill {image} (pid != {self_pid}) -> killed");
             }
             Ok(_) => {
                 // Exit code is non-zero when there's nothing to kill —
