@@ -309,8 +309,29 @@ const MOVE_PREFIXES: &[&str] = &[
 ];
 const REQUIRED_PREFIXES: &[&str] = &["rpc-server", "llama-server"];
 
+/// True if `name` is `prefix` itself, `<prefix>-<flavor>` (Unix variant
+/// naming), or `<prefix>.<ext>` / `<prefix>-<flavor>.<ext>` (Windows
+/// `.exe`).
+///
+/// CRITICAL bug history: until 0.1.78 this only accepted `name == prefix`
+/// or `<prefix>-…`. On Windows, every helper is named `rpc-server.exe`
+/// / `llama-server.exe`, where the byte after the prefix is `.` not
+/// `-`. The function returned false for *every* Windows helper —
+/// `install_helpers_from_stage` therefore moved zero `.exe` files out
+/// of the staging dir, the caller wiped the staging dir, and the
+/// runtime started with no helpers. The user saw
+/// "rpc-server.exe not found in <bin>" on every model load and we
+/// shipped five releases worth of "fixes" elsewhere in the pipeline
+/// (path canonicalisation, scheduled-task re-registration, etc.) that
+/// could never have worked because the helpers never made it onto disk.
 fn name_matches_prefix(name: &str, prefix: &str) -> bool {
-    name == prefix || (name.starts_with(prefix) && name.as_bytes().get(prefix.len()) == Some(&b'-'))
+    if name == prefix {
+        return true;
+    }
+    if !name.starts_with(prefix) {
+        return false;
+    }
+    matches!(name.as_bytes().get(prefix.len()), Some(&b'-') | Some(&b'.'))
 }
 
 /// True if `install_helpers_from_stage` should move this file out of
