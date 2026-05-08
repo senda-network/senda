@@ -69,14 +69,63 @@
                   Impersonate="yes"
                   ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /IM closedmesh-node.exe" />
 
+    <!-- 0.1.76: also stop the closedmesh.exe runtime trio. The Tauri
+         CheckIfAppIsRunning macro and the two CustomActions above
+         only handle ClosedMesh.exe (the Tauri shell) and
+         closedmesh-node.exe (the bundled Next.js sidecar). They miss
+         closedmesh.exe / rpc-server.exe / llama-server.exe, which
+         are spawned by the ClosedMesh Scheduled Task and survive
+         every reinstall — locking ~/.local/bin\closedmesh.exe so
+         0.1.75's path migration couldn't move it, and keeping the
+         Activity panel showing "rpc-server.exe not found" from the
+         legacy path no matter what we shipped. The schtasks /End
+         is graceful (gives the runtime a chance to clean up
+         pidfiles); the taskkill calls are belt-and-braces for any
+         orphan a previous crash left behind. Image names are unique
+         to us so this can't hit unrelated user processes. -->
+    <CustomAction Id="EndClosedMeshTask"
+                  Directory="TARGETDIR"
+                  Execute="immediate"
+                  Return="ignore"
+                  Impersonate="yes"
+                  ExeCommand="&quot;[SystemFolder]schtasks.exe&quot; /End /TN ClosedMesh" />
+
+    <CustomAction Id="StopClosedMeshLlamaServer"
+                  Directory="TARGETDIR"
+                  Execute="immediate"
+                  Return="ignore"
+                  Impersonate="yes"
+                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM llama-server.exe" />
+
+    <CustomAction Id="StopClosedMeshRpcServer"
+                  Directory="TARGETDIR"
+                  Execute="immediate"
+                  Return="ignore"
+                  Impersonate="yes"
+                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM rpc-server.exe" />
+
+    <CustomAction Id="StopClosedMeshRuntime"
+                  Directory="TARGETDIR"
+                  Execute="immediate"
+                  Return="ignore"
+                  Impersonate="yes"
+                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM closedmesh.exe" />
+
     <!-- Schedule the kills before InstallValidate, which is the phase
          where MSI checks whether any target files are in use. By the
          time InstallValidate runs, ClosedMesh.exe and its
          closedmesh-node.exe sidecar are gone and the file locks have
-         been released. -->
+         been released. The runtime trio (closedmesh.exe + helpers)
+         doesn't share files with the .msi payload but stopping it
+         here ensures the migration in mesh.rs can move
+         ~/.local/bin\closedmesh.exe on the upcoming first launch. -->
     <InstallExecuteSequence>
       <Custom Action="StopClosedMesh" Before="InstallValidate">1</Custom>
       <Custom Action="StopClosedMeshSidecar" After="StopClosedMesh">1</Custom>
+      <Custom Action="EndClosedMeshTask" After="StopClosedMeshSidecar">1</Custom>
+      <Custom Action="StopClosedMeshLlamaServer" After="EndClosedMeshTask">1</Custom>
+      <Custom Action="StopClosedMeshRpcServer" After="StopClosedMeshLlamaServer">1</Custom>
+      <Custom Action="StopClosedMeshRuntime" After="StopClosedMeshRpcServer">1</Custom>
     </InstallExecuteSequence>
   </Fragment>
 </Wix>

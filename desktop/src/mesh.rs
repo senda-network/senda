@@ -704,6 +704,74 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
     false
 }
 
+/// Belt-and-braces shutdown of every closedmesh runtime process tree
+/// owned by the current user. Called at the very start of
+/// `start_service_if_installed` so that:
+///
+///   - `~/.local/bin\closedmesh.exe` (legacy install) is unlocked
+///     before `migrate_legacy_runtime_install_windows` tries to
+///     move it.
+///   - Any orphan `rpc-server.exe` / `llama-server.exe` from a
+///     previous crashed session no longer holds GPU memory or a TCP
+///     port that the next runtime would race against.
+///   - The next `start_service` call always starts a fresh process
+///     tree from the (potentially newly-discovered) canonical bin
+///     path, instead of leaving an old wscript -> cmd -> closedmesh.exe
+///     chain alive that's still launching from the legacy path.
+///
+/// Order matters: `schtasks /End` first (graceful — gives the runtime
+/// a chance to exit cleanly and release pidfiles), then a forceful
+/// `taskkill /F /T` per image name as a safety net for orphans the
+/// task manager doesn't own. Sleeps after each stage to let the
+/// kernel actually release file locks before we proceed; without the
+/// sleep, the migration's `std::fs::rename` was racing with process
+/// teardown and silently failing.
+///
+/// Image names — `closedmesh.exe`, `rpc-server.exe`, `llama-server.exe`
+/// — are unique to us, so taskkill by image is safe (won't hit the
+/// user's other tools the way `node.exe` would have, see hooks.nsh
+/// for the rationale that drove the closedmesh-node.exe rename in
+/// 0.1.69).
+#[cfg(target_os = "windows")]
+fn stop_runtime_aggressively_windows() {
+    eprintln!("[closedmesh] startup: stopping any running runtime before migration / repair");
+
+    let _ = Command::new("schtasks")
+        .args(["/End", "/TN", SERVICE_NAME_WINDOWS])
+        .hide_console()
+        .output();
+
+    // schtasks /End queues termination but the wscript -> cmd ->
+    // closedmesh.exe chain may stay alive briefly. Wait, then mop up
+    // anything still running by image name.
+    std::thread::sleep(Duration::from_millis(800));
+
+    for image in ["llama-server.exe", "rpc-server.exe", "closedmesh.exe"] {
+        let out = Command::new("taskkill")
+            .args(["/F", "/T", "/IM", image])
+            .hide_console()
+            .output();
+        match out {
+            Ok(o) if o.status.success() => {
+                eprintln!("[closedmesh] startup: taskkill {image} -> killed");
+            }
+            Ok(_) => {
+                // Exit code is non-zero when there's nothing to kill —
+                // that's the steady state on a clean launch and not
+                // worth surfacing.
+            }
+            Err(e) => {
+                eprintln!("[closedmesh] startup: taskkill {image} spawn failed: {e}");
+            }
+        }
+    }
+
+    // Final settle: filesystem handles take a beat to release after
+    // the process actually exits. 700 ms is empirically enough on
+    // Windows 11 / NTFS without making cold starts feel laggy.
+    std::thread::sleep(Duration::from_millis(700));
+}
+
 /// One-shot migration from the legacy auto-installer location
 /// (`~/.local/bin\closedmesh.exe`, used by 0.1.40-0.1.74) to the
 /// canonical Windows runtime path (`%LOCALAPPDATA%\closedmesh\bin\closedmesh.exe`,
@@ -908,6 +976,35 @@ fn wipe_legacy_runtime_dir_windows(dir: &Path) {
 /// to re-bootstrap the launchd agent. We do this on every launch so users
 /// always get the canonical mesh without ever running a terminal command.
 pub fn start_service_if_installed() {
+    // Windows: ALWAYS stop any running runtime first, before we touch
+    // anything else. Three reasons that bit users on 0.1.75:
+    //
+    //   1. Migration can't move `~/.local/bin\closedmesh.exe` while the
+    //      file is locked by a running process. v0.1.75 saw rename fail
+    //      → fall back to copy → file ended up at both paths → old
+    //      runtime kept logging "rpc-server.exe not found" forever
+    //      because nothing told it to restart.
+    //
+    //   2. The bounce branch in 0.1.75 was guarded by `if helpers_repaired`,
+    //      but a user who'd previously run install.ps1 already had
+    //      helpers in `%LOCALAPPDATA%\closedmesh\bin\` — so
+    //      `repair_missing_helpers` returned false, the bounce was
+    //      skipped, and the old running runtime kept going from the
+    //      legacy path despite the migration.
+    //
+    //   3. `schtasks /End` only signals; the wscript -> cmd ->
+    //      closedmesh.exe tree can outlive it for several seconds.
+    //      Belt-and-braces taskkill of orphans (closedmesh.exe,
+    //      rpc-server.exe, llama-server.exe by image name) ensures
+    //      the binary is unlocked by the time migration runs.
+    //
+    // The cost is one ~2 second restart on every desktop launch; the
+    // benefit is the runtime is always reading the latest config from
+    // the canonical install path. Fail-open: any individual command
+    // failing is fine, we just proceed.
+    #[cfg(target_os = "windows")]
+    stop_runtime_aggressively_windows();
+
     // Windows hygiene: the auto-installer in 0.1.40-0.1.74 dropped
     // closedmesh.exe into `~/.local/bin\` (a Linux convention applied
     // by accident — see `runtime_install_path` for the post-mortem).
@@ -970,37 +1067,15 @@ pub fn start_service_if_installed() {
                 }
             }
         }
-        // Windows mirror of the macOS bounce above. If we just laid
-        // down helpers and a `closedmesh.exe` started by the previous
-        // session is still running with no rpc-server on disk, it'll
-        // happily emit "rpc-server.exe not found" on every model load
-        // until the user signs out and back in (which is when the
-        // Scheduled Task's logon trigger would normally re-run it).
-        // Force-stop the current task so the upcoming `start_service`
-        // call below kicks off a fresh process tree that picks up the
-        // newly-installed helpers immediately.
-        #[cfg(target_os = "windows")]
-        if helpers_repaired {
-            eprintln!(
-                "[closedmesh] helpers: stopping current Scheduled Task so the new helpers \
-                 take effect on next start"
-            );
-            let _ = Command::new("schtasks")
-                .args(["/End", "/TN", SERVICE_NAME_WINDOWS])
-                .hide_console()
-                .output();
-            // schtasks /End is async (it just queues termination); give
-            // the wscript -> cmd -> closedmesh.exe tree a moment to
-            // actually exit before start_service launches a new one,
-            // otherwise the new task action runs while the old one is
-            // still teardown-in-progress and the Scheduled Task's
-            // default IgnoreNew multiple-instances policy silently
-            // drops it. Same fix we use in the bounceService path of
-            // app/api/control/models/startup/route.ts.
-            std::thread::sleep(Duration::from_millis(1500));
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        // Windows: the runtime was already stopped by
+        // `stop_runtime_aggressively_windows()` at the top of this
+        // function, so there's nothing to bounce here — the upcoming
+        // `register_windows_scheduled_task` + `start_service` calls
+        // will boot a fresh tree from the canonical bin path with
+        // whatever helpers are now in place. Just acknowledge the
+        // signal so unused-variable warnings stay quiet on non-mac
+        // platforms.
+        #[cfg(not(target_os = "macos"))]
         let _ = helpers_repaired;
 
         // Windows: register (or refresh) the Scheduled Task that turns

@@ -95,6 +95,42 @@
   Pop $0
   DetailPrint "[ClosedMesh] preinstall: taskkill closedmesh-node.exe -> $0"
 
+  ; The Rust runtime + its llama.cpp helpers. NEW in 0.1.76. The
+  ; Tauri `CheckIfAppIsRunning` macro only knows about the main exe
+  ; (ClosedMesh.exe) — it has no concept of the closedmesh.exe / 
+  ; rpc-server.exe / llama-server.exe trio that the Scheduled Task
+  ; spawns separately and that survives ClosedMesh.exe exiting.
+  ; Pre-0.1.76 the runtime kept running through every reinstall:
+  ;
+  ;   - locked `~/.local/bin\closedmesh.exe` so 0.1.75's migration
+  ;     to %LOCALAPPDATA%\closedmesh\bin couldn't move it,
+  ;   - kept emitting "rpc-server.exe not found" from the legacy
+  ;     path in the Activity panel, making it look like every fix
+  ;     we shipped had done nothing,
+  ;   - held GPU memory and TCP ports the new install would race.
+  ;
+  ; First stop the Scheduled Task gracefully, then taskkill the
+  ; image names. /T isn't needed (these don't have managed children)
+  ; but doesn't hurt. Image names are unique to us, so this can
+  ; never hit unrelated user processes.
+  nsExec::Exec 'schtasks /End /TN ClosedMesh'
+  Pop $0
+  DetailPrint "[ClosedMesh] preinstall: schtasks /End ClosedMesh -> $0"
+
+  Sleep 600
+
+  nsExec::Exec 'taskkill /F /T /IM llama-server.exe'
+  Pop $0
+  DetailPrint "[ClosedMesh] preinstall: taskkill llama-server.exe -> $0"
+
+  nsExec::Exec 'taskkill /F /T /IM rpc-server.exe'
+  Pop $0
+  DetailPrint "[ClosedMesh] preinstall: taskkill rpc-server.exe -> $0"
+
+  nsExec::Exec 'taskkill /F /T /IM closedmesh.exe'
+  Pop $0
+  DetailPrint "[ClosedMesh] preinstall: taskkill closedmesh.exe -> $0"
+
   Sleep 1500
   DetailPrint "[ClosedMesh] preinstall: ready to install"
 !macroend
@@ -117,6 +153,26 @@
   nsExec::Exec 'taskkill /F /IM closedmesh-node.exe'
   Pop $0
   DetailPrint "[ClosedMesh] preuninstall: taskkill closedmesh-node.exe -> $0"
+
+  ; Same runtime-trio kill as preinstall (see comment there for
+  ; why ClosedMesh.exe alone isn't enough).
+  nsExec::Exec 'schtasks /End /TN ClosedMesh'
+  Pop $0
+  DetailPrint "[ClosedMesh] preuninstall: schtasks /End ClosedMesh -> $0"
+
+  Sleep 600
+
+  nsExec::Exec 'taskkill /F /T /IM llama-server.exe'
+  Pop $0
+  DetailPrint "[ClosedMesh] preuninstall: taskkill llama-server.exe -> $0"
+
+  nsExec::Exec 'taskkill /F /T /IM rpc-server.exe'
+  Pop $0
+  DetailPrint "[ClosedMesh] preuninstall: taskkill rpc-server.exe -> $0"
+
+  nsExec::Exec 'taskkill /F /T /IM closedmesh.exe'
+  Pop $0
+  DetailPrint "[ClosedMesh] preuninstall: taskkill closedmesh.exe -> $0"
 
   Sleep 1500
   DetailPrint "[ClosedMesh] preuninstall: ready to uninstall"
