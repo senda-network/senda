@@ -2311,11 +2311,11 @@ fn build_windows_service_args(bin: &std::path::Path) -> String {
     format!("serve --auto --publish --mesh-name closedmesh{join_segment}{relays} --headless")
 }
 
-/// Returns the closedmesh-runtime argument string the currently
-/// installed Scheduled Task will pass to `closedmesh.exe`, or `None`
-/// if no .vbs launcher exists (the task isn't registered yet, or it's
-/// from a pre-VBS-launcher version of the desktop app, or the .vbs
-/// is from before the redirected-output rewrite).
+/// Returns the (binPath, argString) the currently installed Scheduled
+/// Task will pass to `closedmesh.exe`, or `None` if no .vbs launcher
+/// exists (the task isn't registered yet, or it's from a
+/// pre-VBS-launcher version of the desktop app, or the .vbs is from
+/// before the redirected-output rewrite).
 ///
 /// We can't read the task's Action.Arguments directly because as of
 /// the VBS-launcher refactor the task runs `wscript.exe //B //Nologo
@@ -2324,30 +2324,49 @@ fn build_windows_service_args(bin: &std::path::Path) -> String {
 /// because the VBS uses Chr(34) string concatenation to assemble
 /// quotes, which would force this side to mirror the same string-
 /// building logic. Instead the writers (install.ps1 and the
-/// REGISTER_TASK_PS sibling here) emit the canonical args string as
-/// a stable comment marker at the top of the file:
+/// REGISTER_TASK_PS sibling here) emit the canonical bin path and
+/// args string as stable comment markers at the top of the file:
 ///
+///     ' CLOSEDMESH_BIN: C:\Users\u\AppData\Local\closedmesh\bin\closedmesh.exe
 ///     ' CLOSEDMESH_ARGS: serve --auto --publish ... --headless
 ///
-/// This function just reads that line back. Robust against future
-/// changes to the runtime invocation as long as the marker stays.
+/// This function reads both lines back. Robust against future changes
+/// to the runtime invocation as long as the markers stay.
 ///
 /// Used to decide whether `register_windows_scheduled_task` actually
 /// needs to re-register: re-registering on every desktop launch would
 /// kill the running task (delete + create) and disconnect any in-flight
 /// inference. Same idempotency principle as the macOS plist self-heal.
+///
+/// CRITICAL: 0.1.75-0.1.77 only checked CLOSEDMESH_ARGS, not
+/// CLOSEDMESH_BIN. Migration moves closedmesh.exe from
+/// `~/.local/bin\` to `%LOCALAPPDATA%\closedmesh\bin\`, but the
+/// args string ("serve --auto ...") doesn't change with the path —
+/// so this function returned the OLD args, the comparison passed,
+/// re-registration was skipped, and the still-in-place VBS pointed
+/// `cmd` at a non-existent binary in the legacy dir. wscript exited
+/// silently, the runtime never started, and the dashboard's loading
+/// card vanished after a couple of seconds. Including the bin path
+/// in the comparison forces a re-register the moment migration
+/// changes the path.
 #[cfg(target_os = "windows")]
-fn current_windows_task_args(bin: &std::path::Path) -> Option<String> {
+fn current_windows_task_args(bin: &std::path::Path) -> Option<(String, String)> {
     let vbs_path = bin.parent()?.join("closedmesh-launch.vbs");
     let contents = std::fs::read_to_string(&vbs_path).ok()?;
 
-    const MARKER: &str = "' CLOSEDMESH_ARGS:";
-    let line = contents.lines().find(|l| l.starts_with(MARKER))?;
-    let args = line.trim_start_matches(MARKER).trim().to_string();
-    if args.is_empty() {
+    const BIN_MARKER: &str = "' CLOSEDMESH_BIN:";
+    const ARGS_MARKER: &str = "' CLOSEDMESH_ARGS:";
+
+    let bin_line = contents.lines().find(|l| l.starts_with(BIN_MARKER))?;
+    let args_line = contents.lines().find(|l| l.starts_with(ARGS_MARKER))?;
+
+    let bin_str = bin_line.trim_start_matches(BIN_MARKER).trim().to_string();
+    let args_str = args_line.trim_start_matches(ARGS_MARKER).trim().to_string();
+
+    if bin_str.is_empty() || args_str.is_empty() {
         None
     } else {
-        Some(args)
+        Some((bin_str, args_str))
     }
 }
 
@@ -2367,23 +2386,36 @@ fn current_windows_task_args(bin: &std::path::Path) -> Option<String> {
 fn register_windows_scheduled_task(bin: &std::path::Path) {
     let args = build_windows_service_args(bin);
 
-    // Skip the re-register if the task already matches. PowerShell
-    // canonicalizes the Arguments string slightly differently from how
-    // we feed it in (no leading whitespace, normalised internal spacing),
-    // so compare on a normalised form rather than byte-equal.
+    // Skip the re-register if both the bin path AND the args match
+    // what's already on disk. PowerShell canonicalizes the Arguments
+    // string slightly differently from how we feed it in (no leading
+    // whitespace, normalised internal spacing), so compare on a
+    // normalised form rather than byte-equal. Path comparison is
+    // case-insensitive (Windows file system convention) but
+    // whitespace-trimmed only — we don't want a "C:\Users\..." vs
+    // "C:/Users/..." mismatch to look identical.
     let normalised = |s: &str| {
         s.split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
             .to_lowercase()
     };
-    if let Some(existing) = current_windows_task_args(bin) {
-        if normalised(&existing) == normalised(&args) {
+    let bin_str = bin.display().to_string();
+    if let Some((existing_bin, existing_args)) = current_windows_task_args(bin) {
+        if existing_bin.eq_ignore_ascii_case(&bin_str)
+            && normalised(&existing_args) == normalised(&args)
+        {
             return;
         }
-        eprintln!(
-            "[closedmesh] scheduled task args changed; re-registering ({SERVICE_NAME_WINDOWS})"
-        );
+        if !existing_bin.eq_ignore_ascii_case(&bin_str) {
+            eprintln!(
+                "[closedmesh] scheduled task bin path changed: {existing_bin} -> {bin_str}; re-registering ({SERVICE_NAME_WINDOWS})"
+            );
+        } else {
+            eprintln!(
+                "[closedmesh] scheduled task args changed; re-registering ({SERVICE_NAME_WINDOWS})"
+            );
+        }
     } else {
         eprintln!(
             "[closedmesh] scheduled task '{SERVICE_NAME_WINDOWS}' not registered (or pre-VBS-launcher); creating it"
