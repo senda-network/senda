@@ -715,11 +715,67 @@ fn redirect_stderr_to_desktop_log() {
     std::mem::forget(f);
 }
 
-#[cfg(not(unix))]
+/// Windows equivalent: redirect stderr to %LOCALAPPDATA%\closedmesh\logs\
+/// desktop.log so the runtime auto-upgrade / repair_missing_helpers /
+/// ggml-org fallback paths leave forensic traces. A Tauri windowed app
+/// on Windows is started under the "windows" subsystem with no console
+/// allocated, which means GetStdHandle(STD_ERROR_HANDLE) returns
+/// INVALID_HANDLE_VALUE and every `eprintln!` silently fails. Pre-0.1.73
+/// we had no idea why a user's machine still had no rpc-server.exe
+/// after first launch — repair_missing_helpers might have run cleanly
+/// and reported success, or might have failed at the HTTPS download,
+/// and we couldn't tell. Now both go on disk and are inspectable at
+/// %LOCALAPPDATA%\closedmesh\logs\desktop.log.
+#[cfg(windows)]
 fn redirect_stderr_to_desktop_log() {
-    // TODO: Windows equivalent (CreateFile + SetStdHandle / _dup2 from msvcrt).
-    // Not blocking: 0.1.x desktop is overwhelmingly macOS-installed today.
+    use std::io::Write;
+    use std::os::windows::io::AsRawHandle;
+
+    let Some(dir) = mesh::default_log_dir() else {
+        return;
+    };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let path = dir.join("desktop.log");
+    let Ok(f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    else {
+        return;
+    };
+
+    let mut writer = &f;
+    let _ = writeln!(
+        writer,
+        "\n=== ClosedMesh desktop {} starting at {} (pid {}) ===",
+        env!("CARGO_PKG_VERSION"),
+        chrono_like_now(),
+        std::process::id(),
+    );
+    let _ = writer.flush();
+
+    // STD_ERROR_HANDLE = (DWORD)-12. SetStdHandle is in kernel32.
+    // Direct FFI keeps this self-contained without pulling in a
+    // 6 MiB windows-sys / windows crate just for two symbols.
+    const STD_ERROR_HANDLE: u32 = 0xFFFF_FFF4; // (DWORD)-12
+    extern "system" {
+        fn SetStdHandle(nStdHandle: u32, hHandle: *mut core::ffi::c_void) -> i32;
+    }
+    unsafe {
+        SetStdHandle(STD_ERROR_HANDLE, f.as_raw_handle() as *mut _);
+    }
+    // Same belt-and-braces as the Unix branch: leak the File so the
+    // HANDLE we just installed stays valid for the process lifetime.
+    // Memory cost is one File worth; the alternative (closing on drop)
+    // would leave SetStdHandle pointing at an invalid handle on the
+    // very next eprintln.
+    std::mem::forget(f);
 }
+
+#[cfg(not(any(unix, windows)))]
+fn redirect_stderr_to_desktop_log() {}
 
 /// `time` crate / `chrono` would both be heavier deps than this single
 /// timestamp justifies. We just want something human-readable for the

@@ -508,10 +508,171 @@ fn repair_missing_helpers(bin: &Path) -> bool {
     let moved = install_helpers_from_stage(&stage_dir, parent);
     let _ = std::fs::remove_dir_all(&stage_dir);
     eprintln!(
-        "[closedmesh] helpers: repair complete, {moved} file(s) installed in {}",
+        "[closedmesh] helpers: repair from runtime ZIP complete, {moved} file(s) installed in {}",
         parent.display()
     );
+
+    // Belt-and-braces: even after extracting the runtime ZIP, helpers
+    // can still be missing on Windows for two reasons we've actually
+    // hit in the wild:
+    //
+    //   1. The user is running a desktop release that pinned the
+    //      runtime asset name to something that 404s (pre-0.1.72
+    //      returned "closedmesh-windows-x86_64.zip" but only
+    //      "-cuda.zip" / "-vulkan.zip" exist) — install fails silently
+    //      and we have no rpc-server.exe.
+    //
+    //   2. The latest published runtime ZIP is from before
+    //      closedmesh-llm v0.66.4 (when scripts/release-closedmesh.ps1
+    //      started bundling helpers). The ZIP has only closedmesh.exe
+    //      + LICENSE; install_helpers_from_stage moves zero files.
+    //
+    // Both cases leave the user staring at "rpc-server.exe not found in
+    // C:\Users\…\AppData\Local\closedmesh\bin" on every model load.
+    // Fall back to llama.cpp's own official Windows release on
+    // ggml-org/llama.cpp — exactly what install.ps1 already does for
+    // the Setup-button install path. Pin to the same b9041 tag the
+    // runtime is built against (see closedmesh-llm/.deps/llama.cpp);
+    // protocol drift inside major llama.cpp releases is real and the
+    // helpers must speak the same one as closedmesh.exe.
+    if !helpers_present(parent) && cfg!(windows) {
+        eprintln!(
+            "[closedmesh] helpers: still missing after runtime ZIP extraction; \
+             falling back to ggml-org/llama.cpp b9041"
+        );
+        if repair_helpers_from_llama_cpp(parent) {
+            return true;
+        }
+    }
+
     moved > 0
+}
+
+/// Windows-only fallback: pull rpc-server.exe / llama-server.exe and
+/// the matching DLL set from llama.cpp's official Windows release on
+/// ggml-org/llama.cpp, then drop them into `parent`. Same pin and
+/// flavor selection as install.ps1::Install-LlamaCppHelpers — the two
+/// must stay in lockstep.
+#[cfg(windows)]
+fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
+    // Keep this in lockstep with public/install.ps1 ($LlamaCppTag) and
+    // closedmesh-llm/scripts/release-closedmesh.ps1 ($LlamaCppTag). The
+    // CI bundle and these two fallbacks all need to agree on the same
+    // llama.cpp commit so RPC and CLI protocol stay compatible with
+    // whatever closedmesh.exe was built against.
+    const LLAMA_CPP_TAG: &str = "b9041";
+
+    let flavor = match std::env::var("CLOSEDMESH_BACKEND")
+        .ok()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("cuda") => "cuda-12.4",
+        Some("cpu") => "cpu",
+        _ => "vulkan",
+    };
+    let asset = format!("llama-{LLAMA_CPP_TAG}-bin-win-{flavor}-x64.zip");
+    let url = format!(
+        "https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_CPP_TAG}/{asset}"
+    );
+
+    eprintln!("[closedmesh] helpers: ggml-org fallback fetching {url}");
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(180))
+        .redirects(8)
+        .build();
+    let resp = match agent.get(&url).call() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[closedmesh] helpers: ggml-org download failed: {e}");
+            return false;
+        }
+    };
+
+    let stage_dir = parent.join(".closedmesh.helpers-stage-llama");
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    if let Err(e) = std::fs::create_dir_all(&stage_dir) {
+        eprintln!("[closedmesh] helpers: ggml-org mkdir staging failed: {e}");
+        return false;
+    }
+    let archive = stage_dir.join(&asset);
+    let mut tmp_file = match std::fs::File::create(&archive) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!(
+                "[closedmesh] helpers: ggml-org create archive {} failed: {e}",
+                archive.display()
+            );
+            let _ = std::fs::remove_dir_all(&stage_dir);
+            return false;
+        }
+    };
+    if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
+        eprintln!("[closedmesh] helpers: ggml-org stream failed: {e}");
+        let _ = std::fs::remove_dir_all(&stage_dir);
+        return false;
+    }
+    drop(tmp_file);
+
+    if !extract_zip(&archive, &stage_dir) {
+        let _ = std::fs::remove_dir_all(&stage_dir);
+        return false;
+    }
+    let _ = std::fs::remove_file(&archive);
+
+    let moved = install_helpers_from_stage(&stage_dir, parent);
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    eprintln!(
+        "[closedmesh] helpers: ggml-org fallback installed {moved} file(s) in {}",
+        parent.display()
+    );
+
+    // CUDA flavor: the helpers in the llama-* zip linkage-depend on
+    // cudart_64_*.dll which ships in a separate cudart-* zip on the
+    // same release. Best-effort second fetch — if it fails, the user
+    // sees 0xC0000135 on first load and we tell them to switch to
+    // CLOSEDMESH_BACKEND=vulkan.
+    if flavor == "cuda-12.4" {
+        let cudart_asset = "cudart-llama-bin-win-cuda-12.4-x64.zip";
+        let cudart_url = format!(
+            "https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_CPP_TAG}/{cudart_asset}"
+        );
+        eprintln!("[closedmesh] helpers: ggml-org fallback fetching cudart from {cudart_url}");
+        if let Ok(resp) = agent.get(&cudart_url).call() {
+            let stage_dir = parent.join(".closedmesh.helpers-stage-cudart");
+            let _ = std::fs::remove_dir_all(&stage_dir);
+            if std::fs::create_dir_all(&stage_dir).is_ok() {
+                let archive = stage_dir.join(cudart_asset);
+                if let Ok(mut tmp_file) = std::fs::File::create(&archive) {
+                    if std::io::copy(&mut resp.into_reader(), &mut tmp_file).is_ok() {
+                        drop(tmp_file);
+                        if extract_zip(&archive, &stage_dir) {
+                            let _ = std::fs::remove_file(&archive);
+                            let cudart_moved = install_helpers_from_stage(&stage_dir, parent);
+                            eprintln!(
+                                "[closedmesh] helpers: ggml-org cudart installed {cudart_moved} file(s)"
+                            );
+                        }
+                    }
+                }
+                let _ = std::fs::remove_dir_all(&stage_dir);
+            }
+        } else {
+            eprintln!(
+                "[closedmesh] helpers: cudart download failed; \
+                 set CLOSEDMESH_BACKEND=vulkan if you hit 0xC0000135 on model load"
+            );
+        }
+    }
+
+    helpers_present(parent)
+}
+
+#[cfg(not(windows))]
+fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
+    false
 }
 
 /// Best-effort `closedmesh service start` on launch. Silently no-ops if
