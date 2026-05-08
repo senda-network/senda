@@ -105,6 +105,60 @@ type QuickStartPhase =
   | { kind: "done"; modelId: string }
   | { kind: "failed"; modelId: string; error: string };
 
+// Persist the moment we first noticed the runtime was loading model `id`,
+// keyed by id so two consecutive startup-model swaps don't collide.
+// Used by ModelLoadingCard so its elapsed-time counter survives navigation
+// to /models or /settings (which unmounts DashboardPage and so a useRef
+// would reset to null on remount).
+//
+// 24 h staleness guard: if we still find a stamp from yesterday's
+// session (runtime crashed mid-load, machine slept, browser tab closed
+// before the load finished), reset rather than show "loading for 14h22m".
+const LOAD_STARTED_KEY_PREFIX = "closedmesh:loadingStartedAt:";
+const LOAD_STARTED_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function readLoadingStartedAt(modelId: string): number | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LOAD_STARTED_KEY_PREFIX + modelId);
+    if (!raw) return null;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (Date.now() - n > LOAD_STARTED_MAX_AGE_MS) {
+      window.localStorage.removeItem(LOAD_STARTED_KEY_PREFIX + modelId);
+      return null;
+    }
+    return n;
+  } catch {
+    return null;
+  }
+}
+
+function ensureLoadingStartedAt(modelId: string): number {
+  const existing = readLoadingStartedAt(modelId);
+  if (existing !== null) return existing;
+  const now = Date.now();
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(LOAD_STARTED_KEY_PREFIX + modelId, String(now));
+    } catch {
+      /* private mode / quota — fall through, we just lose persistence this
+         session; the in-memory return value still gives the loading card a
+         stable starting point for THIS render cycle. */
+    }
+  }
+  return now;
+}
+
+function clearLoadingStartedAt(modelId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(LOAD_STARTED_KEY_PREFIX + modelId);
+  } catch {
+    /* see ensure: best-effort. */
+  }
+}
+
 const BACKEND_LABEL: Record<string, string> = {
   metal: "Apple Metal",
   cuda: "NVIDIA CUDA",
@@ -134,10 +188,15 @@ export default function DashboardPage() {
   const [readyCardModelId, setReadyCardModelId] = useState<string | null>(null);
   const prevLoadedHere = useRef<string[]>([]);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Track when we first entered the "loading" state so the timer in
-  // ModelLoadingCard survives navigation away and back (remounting resets
-  // useState but a ref on the parent persists for the page's lifetime).
-  const loadingStartedAt = useRef<number | null>(null);
+  // (Loading-start timestamps are persisted in localStorage instead of
+  // a ref. A ref only survives renders within one component lifetime;
+  // the moment the user navigated to Models / Settings / Mesh and
+  // back, DashboardPage unmounted, the ref reset to null, and on the
+  // next render we wrote Date.now() into it — so the loading card's
+  // counter restarted from 0:00 every time you switched tabs even
+  // though the runtime had been loading for minutes. localStorage,
+  // keyed by model id, survives navigation AND tab refresh and lets
+  // us reflect the actual elapsed load time.)
   // Guard so we only auto-trigger the quick-start download once per mount,
   // even if conditions momentarily flip back (e.g. during the startup
   // config refresh cycle).
@@ -514,10 +573,15 @@ export default function DashboardPage() {
     }
   }, [loadedHere]);
 
-  // Reset the loading-start timestamp once a model comes up so if the
-  // runtime is bounced later the timer starts fresh.
+  // Reset the loading-start timestamp once a model actually serves so a
+  // subsequent unload/reload starts the counter from 0 rather than
+  // resuming yesterday's elapsed clock. Clears every loaded id, not
+  // just the one in startup[0], because the runtime may serve a model
+  // we never explicitly waited on (e.g. user manually loaded one via
+  // the CLI) and leaving its stamp around would survive into the next
+  // load attempt.
   useEffect(() => {
-    if (loadedHere.length > 0) loadingStartedAt.current = null;
+    for (const id of loadedHere) clearLoadingStartedAt(id);
   }, [loadedHere]);
 
   // Drop the "ready" success banner the instant the service goes away.
@@ -641,11 +705,9 @@ export default function DashboardPage() {
             readyCardModelId !== (startup?.[0]?.model ?? null) && (
               <ModelLoadingCard
                 startupModelId={startup?.[0]?.model ?? "unknown"}
-                startedAt={(() => {
-                  if (loadingStartedAt.current === null)
-                    loadingStartedAt.current = Date.now();
-                  return loadingStartedAt.current;
-                })()}
+                startedAt={ensureLoadingStartedAt(
+                  startup?.[0]?.model ?? "unknown",
+                )}
                 meshModel={
                   meshModels.models.find(
                     (m) => m.name === (startup?.[0]?.model ?? ""),
