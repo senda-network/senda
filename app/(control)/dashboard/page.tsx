@@ -691,7 +691,7 @@ export default function DashboardPage() {
           )}
 
           {!showQuickStart &&
-            running &&
+            !stopped &&
             startupConfigured &&
             loadedHere.length === 0 &&
             // Suppress "Loading…" while the success card is still up for
@@ -703,11 +703,29 @@ export default function DashboardPage() {
             // 12 s auto-clear, so if the unload is real this card will
             // reappear once the success banner times out.
             readyCardModelId !== (startup?.[0]?.model ?? null) && (
+              // We deliberately DO NOT gate this on `running`. The runtime
+              // bounces multiple times during a fresh model load — the
+              // first model load hot-restarts the launchd/scheduled-task
+              // unit to pick up the new startup config; on Windows the
+              // service can also exit and respawn while llama.cpp helpers
+              // are getting unzipped or migrated. If we hide the loading
+              // card every time `running` flips to false the user sees
+              // "appearing and disappearing every few seconds" instead
+              // of a single steady "Loading model X…" progress card with
+              // an internal "Restarting the runtime…" sub-message.
+              //
+              // Once a model is set as the startup model (startupConfigured)
+              // the user's intent is unambiguous: keep the card up until
+              // either the model loads (loadedHere fills in) OR the user
+              // explicitly stops the service (stopped is true). The card
+              // itself surfaces the "Something might be wrong" copy after
+              // ~150s if the load never completes.
               <ModelLoadingCard
                 startupModelId={startup?.[0]?.model ?? "unknown"}
                 startedAt={ensureLoadingStartedAt(
                   startup?.[0]?.model ?? "unknown",
                 )}
+                runtimeRunning={running}
                 meshModel={
                   meshModels.models.find(
                     (m) => m.name === (startup?.[0]?.model ?? ""),
@@ -1287,11 +1305,19 @@ function QuickStartCard({
 function ModelLoadingCard({
   startupModelId,
   startedAt,
+  runtimeRunning,
   meshModel,
   selfHostname,
 }: {
   startupModelId: string;
   startedAt: number;
+  /** True iff the local runtime service is currently up. The card
+   * deliberately stays mounted even when this flips to false (the
+   * runtime bounces during fresh loads / migrations / version
+   * upgrades) — we just swap the phase copy to "Waiting for runtime
+   * to come back up…" so the user gets continuous feedback instead
+   * of a card that appears and disappears every few seconds. */
+  runtimeRunning: boolean;
   /** Live planner snapshot. When the runtime is in `WaitingForCapacity`
    * the time-based phase text below is a lie — nothing's actually loading,
    * the planner is parked waiting for peers. We override the phase copy
@@ -1334,6 +1360,15 @@ function ModelLoadingCard({
       fit.eligiblePeerCount <= 1
         ? `Pooled ${fit.pooledVramGb.toFixed(1)} of ${fit.neededVramGb.toFixed(1)} GB so far (only ${here} contributing). Invite a friend or spin up another machine on this mesh — the runtime will load the model the moment pooled capacity crosses the threshold.`
         : `Pooled ${fit.pooledVramGb.toFixed(1)} of ${fit.neededVramGb.toFixed(1)} GB across ${fit.eligiblePeerCount} peers. Add another contributor to cross the threshold.`;
+  } else if (!runtimeRunning) {
+    // Runtime crashed, bounced, or is being upgraded. The startup
+    // model is still configured so we know the user wants it loaded
+    // — keep the card up with a "waiting" message instead of
+    // disappearing. The card auto-disappears once `loadedHere` fills
+    // in or the user explicitly stops the service from the header.
+    phaseLabel = "Waiting for the runtime to come back up…";
+    hint =
+      "The local runtime is restarting (config change, helper install, or version upgrade). It usually comes back within a few seconds; the model will start loading the moment it does.";
   } else if (elapsed < 8) {
     phaseLabel = "Restarting the runtime…";
     hint = "Bouncing the launchd unit so it picks up the new config.";
