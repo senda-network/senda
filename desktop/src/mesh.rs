@@ -444,6 +444,74 @@ fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
     moved
 }
 
+/// Download the latest closedmesh-llm release bundle for this platform,
+/// extract helper binaries/DLLs into `parent` (next to `closedmesh.exe`).
+/// Returns how many files were installed.
+fn fetch_and_install_helpers_from_runtime_zip(parent: &Path) -> usize {
+    let Some(asset) = runtime_asset_name() else {
+        return 0;
+    };
+    let url = format!("{RUNTIME_RELEASE_BASE}/{asset}");
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(120))
+        .redirects(8)
+        .build();
+    let resp = match agent.get(&url).call() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[closedmesh] helpers: download {url} failed: {e}");
+            return 0;
+        }
+    };
+
+    let stage_dir = parent.join(".closedmesh.helpers-stage");
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    if let Err(e) = std::fs::create_dir_all(&stage_dir) {
+        eprintln!("[closedmesh] helpers: mkdir staging failed: {e}");
+        return 0;
+    }
+    let archive = stage_dir.join(&asset);
+    let mut tmp_file = match std::fs::File::create(&archive) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!(
+                "[closedmesh] helpers: create archive {} failed: {e}",
+                archive.display()
+            );
+            let _ = std::fs::remove_dir_all(&stage_dir);
+            return 0;
+        }
+    };
+    if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
+        eprintln!("[closedmesh] helpers: stream failed: {e}");
+        let _ = std::fs::remove_dir_all(&stage_dir);
+        return 0;
+    }
+    drop(tmp_file);
+    let extracted_ok = if asset.ends_with(".tar.gz") {
+        extract_tar_gz(&archive, &stage_dir)
+    } else if asset.ends_with(".zip") {
+        extract_zip(&archive, &stage_dir)
+    } else {
+        eprintln!("[closedmesh] helpers: unknown archive type for {asset}");
+        false
+    };
+    if !extracted_ok {
+        let _ = std::fs::remove_dir_all(&stage_dir);
+        return 0;
+    }
+    let _ = std::fs::remove_file(&archive);
+
+    let moved = install_helpers_from_stage(&stage_dir, parent);
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    eprintln!(
+        "[closedmesh] helpers: repair from runtime ZIP complete, {moved} file(s) installed in {}",
+        parent.display()
+    );
+    moved
+}
+
 /// Download the latest runtime tarball, extract just the helpers, and
 /// install them next to `bin`. Used to repair installs that have a
 /// `closedmesh` binary in place (from `install.sh` or a hand-fetched
@@ -468,99 +536,16 @@ fn repair_missing_helpers(bin: &Path) -> bool {
         return false;
     }
 
-    // Windows: try ggml-org/llama.cpp's official Windows release FIRST.
-    // It's the most reliable source — a fixed b9041 tag the runtime
-    // was built against, with a complete bundle (rpc-server.exe,
-    // llama-server.exe, every ggml-*.dll, optionally cudart). The
-    // runtime ZIP path used to be unreliable for Windows users:
-    //   - pre-0.66.4 didn't bundle helpers at all (just closedmesh.exe)
-    //   - 0.66.4+ bundles them, but the ZIP is 70+ MB and can fail
-    //     mid-download on flaky networks while ggml-org's smaller,
-    //     CDN-fronted release succeeds
-    // Either way, pulling the canonical helpers from upstream is
-    // strictly safer than gambling on whatever the runtime shipped.
-    // The runtime ZIP path stays as a fallback for users who somehow
-    // can't reach github.com/ggml-org but can reach github.com/closedmesh.
-    if cfg!(windows) {
-        eprintln!(
-            "[closedmesh] helpers: missing in {}; trying ggml-org/llama.cpp first (most reliable)",
-            parent.display()
-        );
-        if repair_helpers_from_llama_cpp(parent) {
-            eprintln!("[closedmesh] helpers: ggml-org/llama.cpp installation succeeded");
-            return true;
-        }
-        eprintln!(
-            "[closedmesh] helpers: ggml-org/llama.cpp installation failed; \
-             falling back to runtime ZIP"
-        );
-    }
-
+    // Fetch the ClosedMesh runtime ZIP first so `rpc-server.exe` /
+    // `llama-server.exe` and the `ggml-*.dll` fan-out stay version-matched
+    // with the bundle we shipped. Historical note: we used to try ggml-org
+    // before the runtime ZIP — wrong ordering when the ZIP carries the
+    // canonical helper set for that release.
     eprintln!(
         "[closedmesh] helpers: missing in {}; fetching latest runtime bundle",
         parent.display()
     );
-    let Some(asset) = runtime_asset_name() else {
-        return false;
-    };
-    let url = format!("{RUNTIME_RELEASE_BASE}/{asset}");
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(120))
-        .redirects(8)
-        .build();
-    let resp = match agent.get(&url).call() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("[closedmesh] helpers: download {url} failed: {e}");
-            return false;
-        }
-    };
-
-    let stage_dir = parent.join(".closedmesh.helpers-stage");
-    let _ = std::fs::remove_dir_all(&stage_dir);
-    if let Err(e) = std::fs::create_dir_all(&stage_dir) {
-        eprintln!("[closedmesh] helpers: mkdir staging failed: {e}");
-        return false;
-    }
-    let archive = stage_dir.join(&asset);
-    let mut tmp_file = match std::fs::File::create(&archive) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!(
-                "[closedmesh] helpers: create archive {} failed: {e}",
-                archive.display()
-            );
-            let _ = std::fs::remove_dir_all(&stage_dir);
-            return false;
-        }
-    };
-    if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
-        eprintln!("[closedmesh] helpers: stream failed: {e}");
-        let _ = std::fs::remove_dir_all(&stage_dir);
-        return false;
-    }
-    drop(tmp_file);
-    let extracted_ok = if asset.ends_with(".tar.gz") {
-        extract_tar_gz(&archive, &stage_dir)
-    } else if asset.ends_with(".zip") {
-        extract_zip(&archive, &stage_dir)
-    } else {
-        eprintln!("[closedmesh] helpers: unknown archive type for {asset}");
-        false
-    };
-    if !extracted_ok {
-        let _ = std::fs::remove_dir_all(&stage_dir);
-        return false;
-    }
-    let _ = std::fs::remove_file(&archive);
-
-    let moved = install_helpers_from_stage(&stage_dir, parent);
-    let _ = std::fs::remove_dir_all(&stage_dir);
-    eprintln!(
-        "[closedmesh] helpers: repair from runtime ZIP complete, {moved} file(s) installed in {}",
-        parent.display()
-    );
+    let moved = fetch_and_install_helpers_from_runtime_zip(parent);
 
     // Belt-and-braces: even after extracting the runtime ZIP, helpers
     // can still be missing on Windows for two reasons we've actually
@@ -579,12 +564,7 @@ fn repair_missing_helpers(bin: &Path) -> bool {
     //
     // Both cases leave the user staring at "rpc-server.exe not found in
     // C:\Users\…\AppData\Local\closedmesh\bin" on every model load.
-    // Fall back to llama.cpp's own official Windows release on
-    // ggml-org/llama.cpp — exactly what install.ps1 already does for
-    // the Setup-button install path. Pin to the same b9041 tag the
-    // runtime is built against (see closedmesh-llm/.deps/llama.cpp);
-    // protocol drift inside major llama.cpp releases is real and the
-    // helpers must speak the same one as closedmesh.exe.
+    // Last resort: ggml-org's stock helpers (same pin as install.ps1).
     if !helpers_present(parent) && cfg!(windows) {
         eprintln!(
             "[closedmesh] helpers: still missing after runtime ZIP extraction; \
@@ -1080,6 +1060,7 @@ pub fn start_service_if_installed() {
         // only ships the `closedmesh` binary, not the helpers) or
         // whose previous auto-upgrade swapped `closedmesh` without
         // touching the helpers (the bug shipped in 0.1.40-0.1.43).
+        //
         let helpers_repaired = repair_missing_helpers(&bin);
 
         // If we just laid down helpers a previously-broken runtime is
