@@ -14,7 +14,11 @@ type StoredCatalog = {
   fetchedAt: string;
 };
 
-const LS_KEY = "closedmesh:catalog-cache:v1";
+// Bumped v1 → v2 (May 2026) when the ~17–20 GB pool-friendly tier was
+// added. The TTL below means a v1 client could otherwise sit on its stale
+// catalog for up to an hour after each /api/catalog change; bumping the
+// key forces a one-shot invalidation so new models show up immediately.
+const LS_KEY = "closedmesh:catalog-cache:v2";
 // The canonical catalog lives on the public site. The desktop app's
 // bundled controller fetches it directly from the browser — no local
 // proxy — so adding a new model is just `vercel --prod`.
@@ -48,6 +52,20 @@ function writeStored(value: StoredCatalog): void {
 }
 
 /**
+ * Canonical display order: ascending memory footprint, ties broken by
+ * model name. We sort here (not in `MODEL_CATALOG` or the API) so the
+ * order is the same whether the catalog came from the bundle, the
+ * localStorage cache, or a fresh `/api/catalog` fetch — every consumer
+ * of `useCatalog` gets it for free.
+ */
+function sortCatalog(catalog: CatalogModel[]): CatalogModel[] {
+  return [...catalog].sort((a, b) => {
+    if (a.minVramGb !== b.minVramGb) return a.minVramGb - b.minVramGb;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/**
  * Pull the model catalog from `/api/catalog` so the desktop app picks up
  * new models without waiting for a release.
  *
@@ -69,9 +87,9 @@ export function useCatalog(): {
   }>(() => {
     const stored = readStored();
     if (stored && stored.catalog.length > 0) {
-      return { catalog: stored.catalog, source: "cached" };
+      return { catalog: sortCatalog(stored.catalog), source: "cached" };
     }
-    return { catalog: MODEL_CATALOG, source: "bundled" };
+    return { catalog: sortCatalog(MODEL_CATALOG), source: "bundled" };
   });
 
   useEffect(() => {
@@ -92,7 +110,7 @@ export function useCatalog(): {
           catalog: data.catalog,
           fetchedAt: new Date().toISOString(),
         });
-        setState({ catalog: data.catalog, source: "remote" });
+        setState({ catalog: sortCatalog(data.catalog), source: "remote" });
       } catch {
         // offline / closedmesh.com down — keep whatever we already have
       }

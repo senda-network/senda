@@ -29,7 +29,7 @@
 export type CatalogModel = {
   id: string;
   name: string;
-  family: "qwen" | "llama" | "mistral" | "phi" | "gemma" | "deepseek";
+  family: "qwen" | "llama" | "mistral" | "phi" | "gemma" | "deepseek" | "glm";
   sizeGb: number;
   /**
    * Usable GPU-allocatable memory the runtime needs to serve this
@@ -129,6 +129,51 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minVramGb: 12,
     description:
       "Reasoning model distilled from DeepSeek-R1 onto a Qwen 14B base. Thinks step-by-step before answering — trades latency for stronger math and code.",
+  },
+  {
+    id: "Gemma-3-27B-it-Q4_K_M",
+    name: "Gemma 3 · 27B",
+    family: "gemma",
+    sizeGb: 17,
+    minVramGb: 20,
+    description:
+      "Google Gemma 3 27B — strong all-around reasoning. Fits on a 24 GB GPU or a 28 GB+ Mac, or pools across two mid-range contributors (e.g. an 18 GB Mac + an 8 GB GPU at the bare minimum).",
+  },
+  {
+    id: "Qwen3-30B-A3B-Q4_K_M",
+    name: "Qwen 3 · 30B A3B (MoE)",
+    family: "qwen",
+    sizeGb: 17.3,
+    minVramGb: 20,
+    description:
+      "Mixture-of-experts: 30B total, ~3B active per token, 128 experts top-8. ClosedMesh splits by expert with zero per-token cross-node traffic — pools well across two contributors as long as each can hold the shared trunk (~6 GB) plus its expert shard.",
+  },
+  {
+    id: "GLM-4.7-Flash-Q4_K_M",
+    name: "GLM 4.7 · Flash (MoE)",
+    family: "glm",
+    sizeGb: 18,
+    minVramGb: 20,
+    description:
+      "Mixture-of-experts: 30B total, ~3B active per token, 64 experts top-4. The smallest min-experts-per-node of any MoE in the catalog, so it pools well across asymmetric nodes — an 18 GB Mac + an 8 GB laptop GPU is enough. Fast inference, tool calling.",
+  },
+  {
+    id: "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M",
+    name: "Qwen 3 Coder · 30B A3B (MoE)",
+    family: "qwen",
+    sizeGb: 18.6,
+    minVramGb: 22,
+    description:
+      "Coding-specialised mixture-of-experts — same architecture as Qwen 3 30B A3B but post-trained for agentic coding and tool use. Drop-in upgrade from Qwen 2.5 Coder 7B when you have a 24 GB+ GPU or two contributors to pool.",
+  },
+  {
+    id: "GLM-4-32B-0414-Q4_K_M",
+    name: "GLM 4 · 32B",
+    family: "glm",
+    sizeGb: 19.7,
+    minVramGb: 24,
+    description:
+      "GLM 4 32B — strong dense generalist with solid tool calling. Same hardware envelope as Qwen 3 32B: 24 GB GPU, 36 GB+ Mac, or two mid-range contributors pooling.",
   },
   {
     id: "Mixtral-8x7B-Instruct-v0.1-Q4_K_M",

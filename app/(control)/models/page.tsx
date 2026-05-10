@@ -51,6 +51,7 @@ const FAMILY_LABEL: Record<CatalogModel["family"], string> = {
   phi: "Phi",
   gemma: "Gemma",
   deepseek: "DeepSeek",
+  glm: "GLM",
 };
 
 const FAMILY_TINT: Record<CatalogModel["family"], string> = {
@@ -60,6 +61,7 @@ const FAMILY_TINT: Record<CatalogModel["family"], string> = {
   phi: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
   gemma: "border-amber-400/40 bg-amber-400/10 text-amber-300",
   deepseek: "border-cyan-400/40 bg-cyan-400/10 text-cyan-300",
+  glm: "border-indigo-400/40 bg-indigo-400/10 text-indigo-300",
 };
 
 export default function ModelsPage() {
