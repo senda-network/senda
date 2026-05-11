@@ -743,8 +743,8 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
 /// our GUI so they don't need the PID filter, but adding it costs
 /// nothing and makes the code uniform.
 #[cfg(target_os = "windows")]
-fn stop_runtime_aggressively_windows() {
-    eprintln!("[closedmesh] startup: stopping any running runtime before migration / repair");
+fn stop_runtime_aggressively_windows(log_context: &str) {
+    eprintln!("[closedmesh] {log_context}: stopping any running runtime");
 
     let _ = Command::new("schtasks")
         .args(["/End", "/TN", SERVICE_NAME_WINDOWS])
@@ -766,7 +766,7 @@ fn stop_runtime_aggressively_windows() {
             .output();
         match out {
             Ok(o) if o.status.success() => {
-                eprintln!("[closedmesh] startup: taskkill {image} (pid != {self_pid}) -> killed");
+                eprintln!("[closedmesh] {log_context}: taskkill {image} (pid != {self_pid}) -> killed");
             }
             Ok(_) => {
                 // Exit code is non-zero when there's nothing to kill —
@@ -774,7 +774,7 @@ fn stop_runtime_aggressively_windows() {
                 // worth surfacing.
             }
             Err(e) => {
-                eprintln!("[closedmesh] startup: taskkill {image} spawn failed: {e}");
+                eprintln!("[closedmesh] {log_context}: taskkill {image} spawn failed: {e}");
             }
         }
     }
@@ -1016,7 +1016,7 @@ pub fn start_service_if_installed() {
     // the canonical install path. Fail-open: any individual command
     // failing is fine, we just proceed.
     #[cfg(target_os = "windows")]
-    stop_runtime_aggressively_windows();
+    stop_runtime_aggressively_windows("startup");
 
     // Windows hygiene: the auto-installer in 0.1.40-0.1.74 dropped
     // closedmesh.exe into `~/.local/bin\` (a Linux convention applied
@@ -1974,10 +1974,27 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     // Stop the service so launchd / SCM releases its handle on the
     // current binary. POSIX rename-over-running-binary is technically
     // legal (the kernel keeps the old inode alive for the running
-    // process) but Windows holds an exclusive lock; doing the same
-    // dance everywhere keeps the code simple.
-    stop_service();
-    std::thread::sleep(Duration::from_secs(2));
+    // process) but Windows holds an exclusive lock.
+    //
+    // On Windows the gentle `closedmesh service stop` (= `schtasks /End`)
+    // is not enough by itself: it kills the wscript wrapper but the
+    // wscript -> cmd -> closedmesh.exe -> {blobstore plugin, rpc-server,
+    // llama-server} subtree gets reparented and keeps holding an
+    // exclusive section handle on closedmesh.exe (the plugin
+    // subprocess is itself another `closedmesh.exe` instance, so the
+    // file is mapped twice). The rename below then fails with
+    // ERROR_ACCESS_DENIED. Use the same belt-and-braces stop the
+    // startup path uses: schtasks /End, then `taskkill /F /T /IM` for
+    // every closedmesh-family image (with a `PID ne <self>` filter so
+    // the GUI doesn't kill itself), then a settle sleep so NTFS
+    // releases the handles before we rename.
+    #[cfg(target_os = "windows")]
+    stop_runtime_aggressively_windows("runtime upgrade");
+    #[cfg(not(target_os = "windows"))]
+    {
+        stop_service();
+        std::thread::sleep(Duration::from_secs(2));
+    }
 
     if let Err(e) = std::fs::rename(&new_bin, &dest) {
         eprintln!(
@@ -1992,9 +2009,9 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
             latest: Some(latest_str.clone()),
             error: format!(
                 "couldn't replace the running runtime binary at {}: {e}. \
-                 On Windows this usually means the old binary is still locked by a process \
-                 (scheduled task didn't stop in time). The old binary is still in place \
-                 and the service was restarted.",
+                 On Windows this usually means another process is still holding the file open \
+                 (antivirus real-time scan, Search Indexer, or a runtime child we didn't reach). \
+                 The old binary is still in place and the service was restarted.",
                 dest.display()
             ),
         };
