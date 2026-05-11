@@ -44,11 +44,30 @@ function backendBadgeColor(backend: string): string {
   }
 }
 
-function NodeRow({ node }: { node: NodeSummary }) {
+function NodeRow({
+  node,
+  latestVersion,
+}: {
+  node: NodeSummary;
+  /** Highest runtime version observed across the mesh in this snapshot.
+   * Used to flag peers running an older build with a small "outdated"
+   * pill, matching the same affordance on the public /status page so the
+   * desktop app and the website never disagree about who's behind. */
+  latestVersion: string | null;
+}) {
   const cap = node.capability;
   const subtitle = [formatVendor(cap.vendor), `${cap.vramGb || node.vramGb} GB`]
     .filter(Boolean)
     .join(" · ");
+  // "outdated" only fires when we both have a peer-reported version AND a
+  // mesh-wide max to compare against. compareVersions returns negative
+  // when this node's version is lower than `latestVersion`. We never
+  // flag a peer outdated just because its version is null (older
+  // runtimes that don't report version simply get no chip).
+  const isOutdated =
+    node.version !== null &&
+    latestVersion !== null &&
+    compareVersions(node.version, latestVersion) < 0;
   return (
     <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] py-2 last:border-b-0 last:pb-0 first:pt-0">
       <div className="min-w-0 flex-1">
@@ -65,6 +84,22 @@ function NodeRow({ node }: { node: NodeSummary }) {
         <div className="font-mono text-[10px] text-[var(--fg-muted)]">
           {subtitle}
         </div>
+        {node.version && (
+          <div
+            className={
+              "mt-0.5 font-mono text-[10px] " +
+              (isOutdated ? "text-amber-300" : "text-[var(--fg-muted)]")
+            }
+            title={
+              isOutdated && latestVersion
+                ? `Running v${node.version}. Latest seen in this mesh is v${latestVersion}. The desktop app auto-upgrades the runtime within ~6 hours of launch, so this should self-heal soon.`
+                : `Runtime v${node.version}`
+            }
+          >
+            runtime v{node.version}
+            {isOutdated ? " · outdated" : ""}
+          </div>
+        )}
         {node.servingModels.length > 0 && (
           <div className="mt-1 truncate font-mono text-[10px] text-[var(--fg-muted)]">
             {node.servingModels.join(", ")}
@@ -81,6 +116,42 @@ function NodeRow({ node }: { node: NodeSummary }) {
       </span>
     </div>
   );
+}
+
+/**
+ * Three-way semver compare on the major.minor.patch triplet, tolerant of
+ * `-rc1` / `-beta.2` suffixes (everything after the first non-digit in a
+ * segment is dropped). Returns negative if `a < b`, 0 if equal, positive
+ * if `a > b`. We intentionally don't import a semver lib for this — the
+ * dropdown is rendered every 8 s while the menu is open, and dragging
+ * in `semver` for three numeric compares would bloat the controller
+ * sidecar bundle. Mirrors `compareVersions` in `app/(public)/status/page.tsx`.
+ */
+function compareVersions(a: string, b: string): number {
+  const parse = (v: string) =>
+    v
+      .split(".")
+      .slice(0, 3)
+      .map((s) => parseInt(s.replace(/[^0-9].*$/, ""), 10) || 0);
+  const A = parse(a);
+  const B = parse(b);
+  for (let i = 0; i < 3; i++) {
+    const av = A[i] ?? 0;
+    const bv = B[i] ?? 0;
+    if (av !== bv) return av - bv;
+  }
+  return 0;
+}
+
+/** Highest runtime version observed across the supplied nodes. Returns
+ *  null when no peer is reporting a version (older runtimes only). */
+function maxVersion(nodes: NodeSummary[]): string | null {
+  let best: string | null = null;
+  for (const n of nodes) {
+    if (!n.version) continue;
+    if (!best || compareVersions(n.version, best) > 0) best = n.version;
+  }
+  return best;
 }
 
 /** Drop entry-node-shaped peers; same rationale as on the Mesh page. */
@@ -142,9 +213,16 @@ export function StatusPill() {
             <span>Contributors</span>
             <span>{status.nodes.length}</span>
           </div>
-          {status.nodes.map((n) => (
-            <NodeRow key={n.id} node={n} />
-          ))}
+          {(() => {
+            // Compute the mesh-wide "latest" once per render and pass it
+            // into every row so we don't recompute the max on every NodeRow
+            // mount — and so peers can't disagree about whether the same
+            // version is "outdated" mid-list.
+            const latest = maxVersion(status.nodes);
+            return status.nodes.map((n) => (
+              <NodeRow key={n.id} node={n} latestVersion={latest} />
+            ));
+          })()}
         </div>
       )}
     </div>

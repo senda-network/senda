@@ -70,6 +70,40 @@ type UpdateDownloadResp =
   | { ok: true; path: string; opened: boolean; message: string }
   | { ok: false; message: string };
 
+/**
+ * Runtime auto-upgrade status surfaced by the desktop Rust shell via the
+ * controller sidecar (see `app/api/control/runtime-upgrade/route.ts`).
+ *
+ * The Rust upgrade loop writes a small JSON state file on every outcome
+ * (`upgraded`, `up_to_date`, `failed`). The dashboard polls it so the
+ * user can see at a glance:
+ *
+ *   - what runtime version is installed locally right now,
+ *   - whether the loop is currently mid-check / mid-swap,
+ *   - the last completed swap (if any), so we can pop a one-shot
+ *     "Runtime updated 0.66.13 → 0.66.14" success card.
+ *
+ * `null` shaped responses are returned when the sidecar can't find the
+ * state file (fresh install before the loop has run, headless / non-
+ * desktop deployment, etc); the UI just hides the runtime version line
+ * in that case rather than pretending we don't know.
+ */
+type RuntimeUpgradeResp =
+  | {
+      ok: true;
+      installedVersion: string | null;
+      latestVersion: string | null;
+      checkedAt: string | null;
+      lastOutcome: "upgraded" | "up_to_date" | "failed" | null;
+      checking: boolean;
+      lastUpgrade: {
+        from: string;
+        to: string;
+        at: string;
+      } | null;
+    }
+  | { ok: false; message: string };
+
 type StartupModel = { model: string; ctxSize?: number };
 type StartupResp =
   | {
@@ -182,6 +216,18 @@ export default function DashboardPage() {
   const [quickStart, setQuickStart] = useState<QuickStartPhase>({ kind: "idle" });
   const [update, setUpdate] = useState<UpdateCheckResp | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState<boolean>(false);
+  const [runtimeUpgrade, setRuntimeUpgrade] = useState<RuntimeUpgradeResp | null>(
+    null,
+  );
+  const [runtimeUpgradeBusy, setRuntimeUpgradeBusy] = useState<boolean>(false);
+  // The success card pops the moment we observe a `lastUpgrade.at` that
+  // is newer than the one we last surfaced. We persist the last-seen
+  // timestamp in localStorage so a dashboard refresh (or a tab switch
+  // that unmounts this page) doesn't repop a card the user already
+  // saw 30 minutes ago.
+  const [runtimeUpgradeCardFor, setRuntimeUpgradeCardFor] = useState<
+    null | { from: string; to: string }
+  >(null);
   // Track loaded models from the previous status poll so we can surface
   // a one-shot "Ready" card the moment a model transitions from
   // "configured but loading" to "actually serving".
@@ -261,16 +307,65 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const refreshRuntimeUpgrade = useCallback(async () => {
+    try {
+      const res = await fetch("/api/control/runtime-upgrade", {
+        cache: "no-store",
+      });
+      const data = (await res.json()) as RuntimeUpgradeResp;
+      setRuntimeUpgrade(data);
+    } catch {
+      // controller off — runtime-version line just stays hidden
+    }
+  }, []);
+
+  /**
+   * Ask the desktop shell to run a runtime upgrade check immediately
+   * (instead of waiting for the 6h poll). Drops a request file the
+   * Rust upgrade loop picks up within ~5s. We optimistically flip the
+   * busy state so the button reads "Checking…" right away — the
+   * actual `checking: true` state file write follows once the loop
+   * wakes up.
+   */
+  const requestRuntimeUpgradeCheck = useCallback(async () => {
+    setRuntimeUpgradeBusy(true);
+    try {
+      await fetch("/api/control/runtime-upgrade", { method: "POST" });
+      // Poll the state file at a slightly faster cadence for ~60s so
+      // we surface the outcome (upgraded / up_to_date / failed) as soon
+      // as the loop is done, rather than waiting up to 30s for the
+      // background poll to come around.
+      let ticks = 0;
+      const id = setInterval(async () => {
+        ticks += 1;
+        await refreshRuntimeUpgrade();
+        if (ticks >= 20) clearInterval(id);
+      }, 3_000);
+    } catch {
+      // best-effort; the periodic poller will catch up
+    } finally {
+      // Release the visual lock after a short window so the user can
+      // re-trigger if something genuinely failed silently. The real
+      // `checking` state from the file takes over after that.
+      setTimeout(() => setRuntimeUpgradeBusy(false), 8_000);
+    }
+  }, [refreshRuntimeUpgrade]);
+
   useEffect(() => {
     refresh();
     refreshRepair();
     refreshStartup();
     refreshLocalModels();
     refreshUpdate();
+    refreshRuntimeUpgrade();
     // Refresh control status every 4s (cheap), startup config + local
     // models every 12s (read disk on each call, less critical).
     // Update check is hourly — releases land at most once a day, and
     // the upstream API is rate-limited.
+    // Runtime upgrade state is polled every 30s: that's frequent enough
+    // to catch a background swap shortly after it completes (so the
+    // success toast feels live), and rare enough that reading a small
+    // JSON file from disk every tick is nothing.
     refreshTimer.current = setInterval(() => {
       refresh();
     }, 4000);
@@ -279,12 +374,50 @@ export default function DashboardPage() {
       refreshLocalModels();
     }, 12_000);
     const updateTick = setInterval(refreshUpdate, 60 * 60 * 1000);
+    const runtimeUpgradeTick = setInterval(refreshRuntimeUpgrade, 30_000);
     return () => {
       if (refreshTimer.current) clearInterval(refreshTimer.current);
       clearInterval(slowTick);
       clearInterval(updateTick);
+      clearInterval(runtimeUpgradeTick);
     };
-  }, [refresh, refreshRepair, refreshStartup, refreshLocalModels, refreshUpdate]);
+  }, [
+    refresh,
+    refreshRepair,
+    refreshStartup,
+    refreshLocalModels,
+    refreshUpdate,
+    refreshRuntimeUpgrade,
+  ]);
+
+  /**
+   * Watch `lastUpgrade.at` and pop a one-shot success card when it
+   * advances past whatever we last surfaced. We persist the seen
+   * timestamp in localStorage (not just a ref) so a navigation away
+   * and back doesn't repop the same card, AND so closing the tab
+   * mid-upgrade still lets the card appear once on next load — both
+   * UX directions matter (don't nag; don't drop the celebratory
+   * moment either).
+   *
+   * Keyed on the upgrade timestamp rather than the version tuple
+   * because a fast cluster of releases (0.66.13 -> 0.66.14 -> 0.66.15
+   * over an hour) needs to flip the card for each one, not coalesce.
+   */
+  useEffect(() => {
+    if (!runtimeUpgrade || !runtimeUpgrade.ok) return;
+    const last = runtimeUpgrade.lastUpgrade;
+    if (!last) return;
+    try {
+      const seen = localStorage.getItem("closedmesh:runtime-upgrade-seen");
+      if (seen === last.at) return;
+      setRuntimeUpgradeCardFor({ from: last.from, to: last.to });
+      localStorage.setItem("closedmesh:runtime-upgrade-seen", last.at);
+    } catch {
+      // private mode — surface the card for this session, accept that
+      // we may show it again on next launch; better than losing it.
+      setRuntimeUpgradeCardFor({ from: last.from, to: last.to });
+    }
+  }, [runtimeUpgrade]);
 
   const runRepair = useCallback(async () => {
     setBusy("repair");
@@ -678,7 +811,18 @@ export default function DashboardPage() {
             startupIds={new Set((startup ?? []).map((s) => s.model))}
             onStart={() => act("start")}
             onStop={() => act("stop")}
+            runtimeUpgrade={runtimeUpgrade}
+            runtimeUpgradeBusy={runtimeUpgradeBusy}
+            onRuntimeUpgradeCheck={requestRuntimeUpgradeCheck}
           />
+
+          {runtimeUpgradeCardFor && (
+            <RuntimeUpgradeToast
+              from={runtimeUpgradeCardFor.from}
+              to={runtimeUpgradeCardFor.to}
+              onDismiss={() => setRuntimeUpgradeCardFor(null)}
+            />
+          )}
 
           {showQuickStart && recommendation && (
             <QuickStartCard
@@ -929,6 +1073,9 @@ function ThisNodeCard({
   startupIds,
   onStart,
   onStop,
+  runtimeUpgrade,
+  runtimeUpgradeBusy,
+  onRuntimeUpgradeCheck,
 }: {
   self: NodeSummary | null;
   running: boolean;
@@ -945,6 +1092,14 @@ function ThisNodeCard({
   startupIds: Set<string>;
   onStart: () => void;
   onStop: () => void;
+  /** Background runtime auto-upgrade state, polled from the controller.
+   *  Null while loading; `ok:false` shapes mean the controller couldn't
+   *  read the Rust shell's state file (older desktop builds, headless,
+   *  etc) — in those cases we hide the line entirely rather than show
+   *  a half-broken affordance. */
+  runtimeUpgrade: RuntimeUpgradeResp | null;
+  runtimeUpgradeBusy: boolean;
+  onRuntimeUpgradeCheck: () => void;
 }) {
   const cap = self?.capability;
   const backend = cap ? BACKEND_LABEL[cap.backend] ?? cap.backend : null;
@@ -1068,6 +1223,26 @@ function ThisNodeCard({
         />
       </div>
 
+      <RuntimeVersionRow
+        // Pull the installed version from the auto-upgrade state file
+        // (authoritative for the local runtime) and fall back to
+        // self-node's reported version. Either should agree, but the
+        // state file is what `try_upgrade_runtime` actually probed via
+        // `closedmesh --version`, so prefer it when present.
+        installed={
+          (runtimeUpgrade?.ok ? runtimeUpgrade.installedVersion : null) ??
+          self?.version ??
+          null
+        }
+        latest={runtimeUpgrade?.ok ? runtimeUpgrade.latestVersion : null}
+        lastOutcome={runtimeUpgrade?.ok ? runtimeUpgrade.lastOutcome : null}
+        checking={
+          (runtimeUpgrade?.ok ? runtimeUpgrade.checking : false) ||
+          runtimeUpgradeBusy
+        }
+        onCheck={onRuntimeUpgradeCheck}
+      />
+
       {loaded.length > 0 && (
         <div className="relative mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2.5">
           <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
@@ -1093,6 +1268,175 @@ function ThisNodeCard({
           </ul>
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * Compact "Runtime vX.Y.Z" line that lives below the Hardware/Memory
+ * stats grid on ThisNodeCard. Renders nothing when we have no version
+ * data at all (the dashboard's first paint, before the controller has
+ * pulled state from disk) so we never flash an empty pill.
+ *
+ * When the local install is behind the latest published runtime we
+ * surface an amber "(latest vX.Y.Z)" hint so the user sees the gap at
+ * a glance — and pair it with a "Check now" button so they don't have
+ * to wait the 6h auto-upgrade interval for the swap. While a check
+ * (or the actual download/swap) is in flight we render a "Checking…"
+ * label and disable the button.
+ */
+function RuntimeVersionRow({
+  installed,
+  latest,
+  lastOutcome,
+  checking,
+  onCheck,
+}: {
+  installed: string | null;
+  latest: string | null;
+  lastOutcome: "upgraded" | "up_to_date" | "failed" | null;
+  checking: boolean;
+  onCheck: () => void;
+}) {
+  if (!installed && !latest) return null;
+  // Behind-latest detection mirrors the public /status page's
+  // compareVersions: parse the major.minor.patch triplet, drop any
+  // suffix per segment. We deliberately treat "no latest known yet"
+  // (controller still reading the state file) as "not behind" so the
+  // amber treatment doesn't flicker on first paint.
+  const behind =
+    !!installed &&
+    !!latest &&
+    compareSemverTriplet(installed, latest) < 0;
+  return (
+    <div className="relative mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
+          Runtime
+        </div>
+        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span
+            className={
+              "font-mono text-sm " +
+              (behind ? "text-amber-300" : "text-[var(--fg)]")
+            }
+          >
+            v{installed ?? "?"}
+          </span>
+          {latest && behind && (
+            <span className="font-mono text-[11px] text-amber-200/80">
+              latest v{latest}
+            </span>
+          )}
+          {latest && !behind && installed && (
+            <span className="font-mono text-[11px] text-emerald-300/80">
+              up to date
+            </span>
+          )}
+          {lastOutcome === "failed" && !checking && (
+            <span
+              className="font-mono text-[11px] text-rose-300"
+              title="The last auto-upgrade attempt failed. Try the check-now button to retry sooner than the 6h auto-cadence."
+            >
+              last check failed
+            </span>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={onCheck}
+        disabled={checking}
+        title={
+          checking
+            ? "Checking now…"
+            : "Re-probe GitHub for a newer runtime. Skips the 6h auto-upgrade timer."
+        }
+        className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1.5 text-[11px] font-medium text-[var(--fg-muted)] transition hover:border-[var(--accent)]/40 hover:text-[var(--fg)] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {checking ? "Checking…" : "Check for update"}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Bare-metal semver triplet compare with rc-suffix tolerance. Same
+ * implementation as `compareVersions` in StatusPill / public-status —
+ * we keep the duplicate intentional rather than dragging a shared
+ * helper into a top-level lib that has no other compelling user,
+ * because the controller sidecar bundles every reachable module and
+ * the dashboard already imports plenty.
+ */
+function compareSemverTriplet(a: string, b: string): number {
+  const parse = (v: string) =>
+    v
+      .split(".")
+      .slice(0, 3)
+      .map((s) => parseInt(s.replace(/[^0-9].*$/, ""), 10) || 0);
+  const A = parse(a);
+  const B = parse(b);
+  for (let i = 0; i < 3; i++) {
+    const av = A[i] ?? 0;
+    const bv = B[i] ?? 0;
+    if (av !== bv) return av - bv;
+  }
+  return 0;
+}
+
+/**
+ * One-shot success card the dashboard pops the moment the desktop's
+ * upgrade loop completes a runtime swap. Sits between the "This
+ * machine" card and the rest of the dashboard so it's impossible to
+ * miss but doesn't shove the loaded-model state offscreen. Dismissable
+ * — and even if the user navigates away the timestamp we wrote to
+ * localStorage keeps this from re-popping on next mount.
+ */
+function RuntimeUpgradeToast({
+  from,
+  to,
+  onDismiss,
+}: {
+  from: string;
+  to: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-emerald-400/40 bg-emerald-400/5 p-5">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(60% 100% at 0% 0%, rgba(52,211,153,0.10), transparent 70%)",
+        }}
+      />
+      <div className="relative flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 max-w-2xl items-start gap-3">
+          <span
+            aria-hidden
+            className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.7)]"
+          />
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-emerald-300">
+              Runtime upgraded
+            </div>
+            <div className="mt-0.5 font-mono text-sm text-[var(--fg)]">
+              v{from} → v{to}
+            </div>
+            <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
+              The desktop app swapped the runtime binary in the background and
+              restarted the service. You may have seen this machine flicker
+              through &quot;loading&quot; for a moment — that was the bounce.
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1.5 text-[11px] font-medium text-[var(--fg-muted)] transition hover:text-[var(--fg)]"
+        >
+          Dismiss
+        </button>
+      </div>
     </section>
   );
 }

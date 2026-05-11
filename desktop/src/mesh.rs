@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Extension trait: hide the Windows console window on every child we spawn.
 ///
@@ -1214,14 +1214,260 @@ const RUNTIME_UPGRADE_FAILURE_BACKOFF: &[Duration] = &[
 /// triggered the same long sleep.
 enum UpgradeOutcome {
     /// Installed runtime is already at least as new as the latest
-    /// release. The next attempt can wait the full steady-state
-    /// interval.
-    UpToDate,
-    /// Successfully replaced the runtime binary; new path returned.
-    Upgraded(PathBuf),
+    /// release. The `installed` and `latest` versions are echoed back
+    /// so the caller can persist them to the dashboard state file
+    /// without re-probing.
+    UpToDate {
+        installed: String,
+        latest: String,
+    },
+    /// Successfully replaced the runtime binary; new path returned
+    /// along with the version we upgraded from / to. The dashboard
+    /// uses the (from, to) pair to pop a one-shot success toast.
+    Upgraded {
+        path: PathBuf,
+        from: String,
+        to: String,
+    },
     /// The check (or download / verify / swap) failed. The caller
-    /// should retry sooner than steady state.
-    Failed,
+    /// should retry sooner than steady state. We carry the installed
+    /// version (when we got that far) so the dashboard can still
+    /// show the user what they're running while we keep retrying.
+    Failed {
+        installed: Option<String>,
+        latest: Option<String>,
+    },
+}
+
+/// JSON state file the desktop upgrade loop writes to the platform
+/// log directory after every check outcome. Read by the controller
+/// sidecar's `GET /api/control/runtime-upgrade` endpoint, which the
+/// dashboard polls every 30 s to surface:
+///
+///   - the installed runtime version (so the user can stop wondering
+///     "is the upgrade even happening?"),
+///   - the latest published version when we last successfully probed
+///     GitHub,
+///   - whether a check / swap is currently in flight,
+///   - the most-recent completed swap (drives the dashboard's
+///     "Runtime upgraded X -> Y" toast).
+///
+/// `camelCase` because the Node-side route expects matching field
+/// names; using serde's `rename_all` is cheaper than maintaining two
+/// shapes. We bump `schema_version` whenever an existing field's
+/// meaning changes so the controller can ignore stale state files
+/// from older builds rather than render confused / wrong UI.
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeUpgradeState {
+    schema_version: u32,
+    /// ISO-8601 UTC timestamp of the most recent `try_upgrade_runtime`
+    /// completion. Independent of `last_upgrade.at` (which is the most
+    /// recent *successful swap*) — `checked_at` advances on every
+    /// outcome, including no-ops and failures.
+    checked_at: Option<String>,
+    installed_version: Option<String>,
+    latest_version: Option<String>,
+    /// "upgraded" | "up_to_date" | "failed" | null. Mirrors the
+    /// UpgradeOutcome variants. Null only on the very first state
+    /// write (before any check has completed) so the dashboard can
+    /// show "Checking…" without misclassifying the absence of a
+    /// previous result as a failure.
+    last_outcome: Option<&'static str>,
+    /// True while `try_upgrade_runtime` is mid-flight. The loop flips
+    /// this on before calling the function and back off (along with
+    /// the result) when it returns. The dashboard reads this to
+    /// disable the manual "Check now" button and render a "Checking…"
+    /// label so two clicks don't queue two checks.
+    checking: bool,
+    /// Most-recent successful swap, or null if the loop has never
+    /// upgraded anything on this install. Persists across desktop app
+    /// restarts so a user who closed their laptop mid-upgrade still
+    /// sees the success card the next time they open the dashboard.
+    last_upgrade: Option<RuntimeUpgradeEvent>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeUpgradeEvent {
+    from: String,
+    to: String,
+    /// ISO-8601 UTC timestamp.
+    at: String,
+}
+
+/// Schema version pinned for the JSON state file. Bumped whenever a
+/// field's meaning changes incompatibly so the Node controller can
+/// skip stale files written by an older desktop build rather than
+/// render a half-broken UI.
+const RUNTIME_UPGRADE_STATE_SCHEMA_VERSION: u32 = 1;
+
+/// Basename of the JSON state file written into [`default_log_dir`].
+/// Must match `STATE_FILE_BASENAME` in
+/// `app/api/control/runtime-upgrade/route.ts`.
+const RUNTIME_UPGRADE_STATE_BASENAME: &str = "runtime-upgrade-state.json";
+
+/// Basename of the "wake up and check now" flag file the dashboard
+/// drops to interrupt the loop's long sleep. Must match
+/// `REQUEST_FILE_BASENAME` in
+/// `app/api/control/runtime-upgrade/route.ts`.
+const RUNTIME_UPGRADE_REQUEST_BASENAME: &str = "runtime-upgrade-request.flag";
+
+/// How often the interruptible sleep polls for the request file. 5 s
+/// keeps the dashboard's "Check now" feel responsive without flooding
+/// the disk with stat calls during a 6 h idle. Anything finer would
+/// be wasted: a manual upgrade check itself takes 1–60 s, so 5 s of
+/// click-to-start latency is dominated by the work that follows.
+const RUNTIME_UPGRADE_REQUEST_POLL: Duration = Duration::from_secs(5);
+
+fn runtime_upgrade_state_path() -> Option<PathBuf> {
+    default_log_dir().map(|d| d.join(RUNTIME_UPGRADE_STATE_BASENAME))
+}
+
+fn runtime_upgrade_request_path() -> Option<PathBuf> {
+    default_log_dir().map(|d| d.join(RUNTIME_UPGRADE_REQUEST_BASENAME))
+}
+
+/// Format `SystemTime::now()` as `YYYY-MM-DDTHH:MM:SSZ`. We already
+/// have a hand-rolled formatter in `main.rs::chrono_like_now` for the
+/// session-start banner; duplicating ~15 lines of civil-from-days
+/// math here is cheaper than crossing the module boundary or pulling
+/// in `chrono` / `time` for a single timestamp. If a third caller
+/// shows up, lift this into a shared helper module.
+fn iso8601_now() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let days = secs / 86_400;
+    let secs_in_day = secs % 86_400;
+    let hh = secs_in_day / 3600;
+    let mm = (secs_in_day % 3600) / 60;
+    let ss = secs_in_day % 60;
+    let z = days as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i32 + (era * 400) as i32;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+}
+
+/// Atomically replace the runtime-upgrade state file with `state`'s
+/// JSON encoding. Best-effort: every failure is logged and swallowed
+/// because state visibility is a UX nicety, not a correctness
+/// requirement — the upgrade itself proceeds regardless.
+///
+/// We write to a sibling tempfile first and rename over the target so
+/// a controller-side `fs.readFile` racing with our write either sees
+/// the previous fully-formed state or the next fully-formed state,
+/// never a torn intermediate. Without this, the dashboard would
+/// occasionally read an empty / half-written file and pop a "couldn't
+/// read state" error mid-tick.
+fn write_runtime_upgrade_state(state: &RuntimeUpgradeState) {
+    let Some(path) = runtime_upgrade_state_path() else {
+        return;
+    };
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    if let Err(e) = std::fs::create_dir_all(parent) {
+        eprintln!(
+            "[closedmesh] runtime upgrade: state dir create {} failed: {e}",
+            parent.display()
+        );
+        return;
+    }
+    let body = match serde_json::to_string_pretty(state) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[closedmesh] runtime upgrade: state serialize failed: {e}");
+            return;
+        }
+    };
+    // tempfile suffix includes pid + a sub-second component so two
+    // concurrent writers from different desktop processes (single-
+    // instance guard notwithstanding, dev runs and uninstall-in-flight
+    // scenarios can briefly overlap) don't clobber each other's
+    // intermediate files.
+    let tmp = parent.join(format!(
+        ".{}.{}.{}.tmp",
+        RUNTIME_UPGRADE_STATE_BASENAME,
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    ));
+    if let Err(e) = std::fs::write(&tmp, body.as_bytes()) {
+        eprintln!(
+            "[closedmesh] runtime upgrade: state tmp write {} failed: {e}",
+            tmp.display()
+        );
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &path) {
+        eprintln!(
+            "[closedmesh] runtime upgrade: state rename {} -> {} failed: {e}",
+            tmp.display(),
+            path.display()
+        );
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+
+/// True iff the dashboard has dropped a "check now" request flag and
+/// we should break out of the current sleep. Consuming side: removes
+/// the flag file so the next sleep cycle doesn't see it again — the
+/// removal is also best-effort because the controller's POST is
+/// idempotent (it'll just re-drop the file the next time the user
+/// clicks the button).
+fn consume_runtime_upgrade_request() -> bool {
+    let Some(path) = runtime_upgrade_request_path() else {
+        return false;
+    };
+    match std::fs::metadata(&path) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&path);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Sleep up to `total` while polling for the dashboard's manual
+/// "check now" request flag every [`RUNTIME_UPGRADE_REQUEST_POLL`].
+/// Returns `true` if a request was observed (caller should re-check
+/// immediately), `false` if the full duration elapsed without one.
+///
+/// We deliberately use `Instant` for elapsed timing rather than a
+/// sum-of-sleeps counter: laptops suspend, system clocks jump, and
+/// a wall-clock comparison would wake the loop hours early after a
+/// resume. Monotonic time gives us "actually `total` of CPU-runtime
+/// elapsed" regardless of suspends, which is what the upgrade
+/// cadence cares about.
+fn wait_for_upgrade_request_or(total: Duration) -> bool {
+    let started = Instant::now();
+    while started.elapsed() < total {
+        if consume_runtime_upgrade_request() {
+            return true;
+        }
+        let remaining = total.saturating_sub(started.elapsed());
+        let chunk = remaining.min(RUNTIME_UPGRADE_REQUEST_POLL);
+        if chunk.is_zero() {
+            break;
+        }
+        std::thread::sleep(chunk);
+    }
+    // Final check after the last sleep so a request dropped in the
+    // last sliver of the interval isn't missed and bumped to the
+    // next cycle.
+    consume_runtime_upgrade_request()
 }
 
 /// GitHub "latest release" landing page. We send a no-redirect GET and
@@ -1248,29 +1494,129 @@ const RUNTIME_LATEST_PAGE: &str = "https://github.com/closedmesh/closedmesh-llm/
 fn spawn_runtime_upgrade_loop(bin: PathBuf) {
     std::thread::spawn(move || {
         let mut current = bin;
+        // First state write: read the installed version (best-effort)
+        // so the dashboard has something to display before the initial
+        // 30 s delay elapses and we get our first probe. Empty `latest`
+        // and `last_outcome` are correct here — we haven't checked yet.
+        let initial_installed =
+            installed_runtime_version(&current).as_ref().map(fmt_version);
+        let mut last_upgrade: Option<RuntimeUpgradeEvent> = None;
+        write_runtime_upgrade_state(&RuntimeUpgradeState {
+            schema_version: RUNTIME_UPGRADE_STATE_SCHEMA_VERSION,
+            checked_at: None,
+            installed_version: initial_installed.clone(),
+            latest_version: None,
+            last_outcome: None,
+            checking: false,
+            last_upgrade: None,
+        });
+
         std::thread::sleep(RUNTIME_UPGRADE_INITIAL_DELAY);
         // Index into `RUNTIME_UPGRADE_FAILURE_BACKOFF`; reset to None on
         // any non-`Failed` outcome so the next miss starts the backoff
         // schedule from the beginning instead of from wherever the last
         // failure cluster left off.
         let mut backoff_idx: Option<usize> = None;
+        // Cache the installed version we last successfully read so the
+        // "checking…" state file write during the in-flight probe can
+        // show *something* even when `installed_runtime_version` itself
+        // is slow to return (a CLI invocation pulling a cold binary off
+        // disk can take a couple seconds on a freshly-booted laptop).
+        let mut last_known_installed = initial_installed;
+        let mut last_known_latest: Option<String> = None;
+
         loop {
+            // Phase 1: announce "checking" so the dashboard can lock its
+            // "Check now" button and render a busy state. We use the
+            // *last known* installed/latest pair rather than re-running
+            // the CLI because (a) we'd just call it again inside
+            // try_upgrade_runtime, and (b) "what version is installed"
+            // doesn't change between the start of one check and the
+            // start of the next unless we're the one upgrading it.
+            write_runtime_upgrade_state(&RuntimeUpgradeState {
+                schema_version: RUNTIME_UPGRADE_STATE_SCHEMA_VERSION,
+                checked_at: None,
+                installed_version: last_known_installed.clone(),
+                latest_version: last_known_latest.clone(),
+                last_outcome: None,
+                checking: true,
+                last_upgrade: last_upgrade.clone(),
+            });
+
             let outcome = try_upgrade_runtime(&current);
-            let next_sleep = match outcome {
-                UpgradeOutcome::Upgraded(p) => {
+
+            // Phase 2: persist the outcome. Each variant tells us
+            // something different about what versions are now known.
+            let now_iso = iso8601_now();
+            match &outcome {
+                UpgradeOutcome::Upgraded { path, from, to } => {
+                    current = path.clone();
+                    last_known_installed = Some(to.clone());
+                    last_known_latest = Some(to.clone());
+                    last_upgrade = Some(RuntimeUpgradeEvent {
+                        from: from.clone(),
+                        to: to.clone(),
+                        at: now_iso.clone(),
+                    });
+                    write_runtime_upgrade_state(&RuntimeUpgradeState {
+                        schema_version: RUNTIME_UPGRADE_STATE_SCHEMA_VERSION,
+                        checked_at: Some(now_iso),
+                        installed_version: last_known_installed.clone(),
+                        latest_version: last_known_latest.clone(),
+                        last_outcome: Some("upgraded"),
+                        checking: false,
+                        last_upgrade: last_upgrade.clone(),
+                    });
+                }
+                UpgradeOutcome::UpToDate { installed, latest } => {
+                    last_known_installed = Some(installed.clone());
+                    last_known_latest = Some(latest.clone());
+                    write_runtime_upgrade_state(&RuntimeUpgradeState {
+                        schema_version: RUNTIME_UPGRADE_STATE_SCHEMA_VERSION,
+                        checked_at: Some(now_iso),
+                        installed_version: last_known_installed.clone(),
+                        latest_version: last_known_latest.clone(),
+                        last_outcome: Some("up_to_date"),
+                        checking: false,
+                        last_upgrade: last_upgrade.clone(),
+                    });
+                }
+                UpgradeOutcome::Failed { installed, latest } => {
+                    if let Some(v) = installed {
+                        last_known_installed = Some(v.clone());
+                    }
+                    if let Some(v) = latest {
+                        last_known_latest = Some(v.clone());
+                    }
+                    write_runtime_upgrade_state(&RuntimeUpgradeState {
+                        schema_version: RUNTIME_UPGRADE_STATE_SCHEMA_VERSION,
+                        checked_at: Some(now_iso),
+                        installed_version: last_known_installed.clone(),
+                        latest_version: last_known_latest.clone(),
+                        last_outcome: Some("failed"),
+                        checking: false,
+                        last_upgrade: last_upgrade.clone(),
+                    });
+                }
+            }
+
+            // Phase 3: pick the right sleep duration. Identical logic
+            // to before the state-file refactor; only the variant
+            // patterns changed shape.
+            let next_sleep = match &outcome {
+                UpgradeOutcome::Upgraded { .. } => {
                     eprintln!(
                         "[closedmesh] runtime upgrade: success; sleeping {:?} before next check",
                         RUNTIME_UPGRADE_INTERVAL
                     );
-                    current = p;
                     backoff_idx = None;
                     RUNTIME_UPGRADE_INTERVAL
                 }
-                UpgradeOutcome::UpToDate => {
+                UpgradeOutcome::UpToDate { .. } => {
                     backoff_idx = None;
                     RUNTIME_UPGRADE_INTERVAL
                 }
-                UpgradeOutcome::Failed => {
+                UpgradeOutcome::Failed { .. } => {
                     let next_idx = match backoff_idx {
                         Some(i) => i + 1,
                         None => 0,
@@ -1298,7 +1644,18 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
                     }
                 }
             };
-            std::thread::sleep(next_sleep);
+            // Phase 4: sleep, but wake immediately if the user clicked
+            // "Check for update now" on the dashboard. The flag file
+            // exists for at most a few seconds; consuming it here both
+            // breaks the wait and ensures the next iteration doesn't
+            // re-trigger off a stale flag.
+            if wait_for_upgrade_request_or(next_sleep) {
+                eprintln!(
+                    "[closedmesh] runtime upgrade: manual check requested; \
+                     waking from {:?} sleep early",
+                    next_sleep
+                );
+            }
         }
     });
 }
@@ -1336,20 +1693,31 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
             "[closedmesh] runtime upgrade: could not read installed version from {}",
             bin.display()
         );
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: None,
+            latest: None,
+        };
     };
+    let installed_str = fmt_version(&installed);
     let Some(latest) = latest_runtime_version() else {
         // `latest_runtime_version` already logs the specific failure
-        // mode (DNS, redirect parse, etc).
-        return UpgradeOutcome::Failed;
+        // mode (DNS, redirect parse, etc). We still know the installed
+        // version though, so surface it to the dashboard.
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str),
+            latest: None,
+        };
     };
+    let latest_str = fmt_version(&latest);
     if !version_lt(&installed, &latest) {
-        return UpgradeOutcome::UpToDate;
+        return UpgradeOutcome::UpToDate {
+            installed: installed_str,
+            latest: latest_str,
+        };
     }
     eprintln!(
         "[closedmesh] runtime upgrade available: {} -> {}; staging download",
-        fmt_version(&installed),
-        fmt_version(&latest),
+        installed_str, latest_str,
     );
 
     let Some(asset) = runtime_asset_name() else {
@@ -1358,27 +1726,45 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
              skipping (this is a build-time configuration, not a transient failure)"
         );
         // Not really `Failed` in the retry-soon sense — there's nothing
-        // for us to retry. But the steady-state cadence is the right
-        // place for unsupported platforms too, so map to UpToDate.
-        return UpgradeOutcome::UpToDate;
+        // for us to retry on this platform, ever. The steady-state
+        // cadence is the right place to park, so we report this as
+        // `UpToDate` from the loop's perspective. We deliberately
+        // collapse `latest` to `installed` here so the dashboard's
+        // "behind latest" pill does NOT light up amber on unsupported
+        // platforms — the user can't do anything about it and a
+        // permanent amber "outdated" warning would be noise. Logged
+        // (above) so we still see the gap during post-mortems.
+        return UpgradeOutcome::UpToDate {
+            installed: installed_str.clone(),
+            latest: installed_str,
+        };
     };
     let Some(dest) = runtime_install_path() else {
         eprintln!("[closedmesh] runtime upgrade: could not resolve install path");
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str),
+            latest: Some(latest_str),
+        };
     };
     let Some(parent) = dest.parent() else {
         eprintln!(
             "[closedmesh] runtime upgrade: install path {} has no parent",
             dest.display()
         );
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str),
+            latest: Some(latest_str),
+        };
     };
 
     let stage_dir = parent.join(format!(".closedmesh.upgrade-{}", fmt_version(&latest)));
     let _ = std::fs::remove_dir_all(&stage_dir);
     if let Err(e) = std::fs::create_dir_all(&stage_dir) {
         eprintln!("[closedmesh] runtime upgrade: mkdir staging failed: {e}");
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str.clone()),
+            latest: Some(latest_str.clone()),
+        };
     }
 
     let url = format!("{RUNTIME_RELEASE_BASE}/{asset}");
@@ -1392,7 +1778,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         Err(e) => {
             eprintln!("[closedmesh] runtime upgrade: download {url} failed: {e}");
             let _ = std::fs::remove_dir_all(&stage_dir);
-            return UpgradeOutcome::Failed;
+            return UpgradeOutcome::Failed {
+            installed: Some(installed_str.clone()),
+            latest: Some(latest_str.clone()),
+        };
         }
     };
 
@@ -1405,13 +1794,19 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
                 archive.display()
             );
             let _ = std::fs::remove_dir_all(&stage_dir);
-            return UpgradeOutcome::Failed;
+            return UpgradeOutcome::Failed {
+            installed: Some(installed_str.clone()),
+            latest: Some(latest_str.clone()),
+        };
         }
     };
     if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
         eprintln!("[closedmesh] runtime upgrade: stream failed: {e}");
         let _ = std::fs::remove_dir_all(&stage_dir);
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str.clone()),
+            latest: Some(latest_str.clone()),
+        };
     }
     drop(tmp_file);
 
@@ -1425,7 +1820,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     };
     if !extracted_ok {
         let _ = std::fs::remove_dir_all(&stage_dir);
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str.clone()),
+            latest: Some(latest_str.clone()),
+        };
     }
     let _ = std::fs::remove_file(&archive);
 
@@ -1441,7 +1839,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
             new_bin.display()
         );
         let _ = std::fs::remove_dir_all(&stage_dir);
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str.clone()),
+            latest: Some(latest_str.clone()),
+        };
     }
 
     #[cfg(unix)]
@@ -1475,7 +1876,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
             fmt_version(&latest),
         );
         let _ = std::fs::remove_dir_all(&stage_dir);
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str.clone()),
+            latest: Some(latest_str.clone()),
+        };
     }
 
     // Stop the service so launchd / SCM releases its handle on the
@@ -1494,7 +1898,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         );
         let _ = std::fs::remove_dir_all(&stage_dir);
         start_service();
-        return UpgradeOutcome::Failed;
+        return UpgradeOutcome::Failed {
+            installed: Some(installed_str.clone()),
+            latest: Some(latest_str.clone()),
+        };
     }
 
     // Refresh the llama.cpp helpers (`rpc-server-*`, `llama-server-*`,
@@ -1554,7 +1961,11 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     #[cfg(not(target_os = "macos"))]
     start_service();
 
-    UpgradeOutcome::Upgraded(dest)
+    UpgradeOutcome::Upgraded {
+        path: dest,
+        from: installed_str,
+        to: latest_str,
+    }
 }
 
 /// Run `bin --version` and parse the first semver-shaped token. Returns

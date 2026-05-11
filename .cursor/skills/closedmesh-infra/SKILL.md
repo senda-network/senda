@@ -75,6 +75,8 @@ Current version: check `desktop/Cargo.toml`.
 
 This means **shipping a runtime release is the actual fix-distribution mechanism for installed users** — within 6 h of launch they get it. Desktop app updates are still click-through-installer because we lack signing infra.
 
+**Upgrade-state surface for the dashboard** (added in desktop v0.1.83): the silent auto-upgrade was historically invisible from the dashboard — there was no way to tell from the UI whether the runtime was updating, whether a check had failed, or what version was even installed. The loop now writes a small JSON state file `runtime-upgrade-state.json` into `default_log_dir()` (`~/Library/Logs/closedmesh/` on macOS, `~/.local/state/closedmesh/` on Linux, `%APPDATA%\closedmesh\logs\` on Windows) after every check outcome, with `{ installedVersion, latestVersion, checkedAt, lastOutcome, checking, lastUpgrade }`. Consumed by `app/api/control/runtime-upgrade/route.ts` (GET) and rendered on the dashboard's "This machine" card. The same endpoint accepts POST to drop a `runtime-upgrade-request.flag` sibling file the Rust loop polls every 5 s while sleeping — that's how the dashboard's "Check for update now" button skips the 6 h auto-cadence. The basenames must match between the Rust shell (`RUNTIME_UPGRADE_STATE_BASENAME` / `RUNTIME_UPGRADE_REQUEST_BASENAME` in `mesh.rs`) and the Node route (`STATE_FILE_BASENAME` / `REQUEST_FILE_BASENAME` in the route module) — change one without the other and the dashboard silently degrades to "no upgrade state".
+
 Releases are triggered by **`workflow_dispatch`** — NOT a tag push (the workflow creates the tag itself).
 
 ```bash
@@ -209,6 +211,7 @@ The entry node previously ran with `--auto --publish --mesh-name closedmesh`. Th
 | `desktop/src/mesh.rs` | `FALLBACK_JOIN_TOKEN` — update when entry node identity changes |
 | `desktop/Cargo.toml` + `desktop/tauri.conf.json` | App version (must stay in sync) |
 | `app/api/status/route.ts` | Public `/api/status` — aggregates mesh node + model data |
+| `app/api/control/runtime-upgrade/route.ts` | Reads/writes runtime auto-upgrade state shared with the Rust shell |
 | `app/components/MeshLiveStatus.tsx` | Header status pill → links to `/status` |
 | `app/(public)/status/page.tsx` | Live mesh status page |
 | `closedmesh-llm/docker/entrypoint.sh` | Docker container startup, reads all env vars |
