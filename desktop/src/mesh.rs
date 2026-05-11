@@ -1675,7 +1675,7 @@ const ENTRY_STATUS_URL: &str = "https://mesh.closedmesh.com/api/status";
 ///   ssh ubuntu@3.210.30.58 'docker logs mesh-entry 2>&1 | \
 ///       grep -oE "Invite created.*: \S+" | tail -1 | awk "{print \$NF}"'
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjY2ZmFkNDNhMmZhZWRmMzIwMGZjN2M3YjU4NTVjMzIwZWRjMmY4ZjA0OGU2OTM1ZDIyZjljODkwMjFkNmQwM2EiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjQ2OTMzIn1dfQ";
+const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjkzNDI5M2QxNGNiZDFjYmMxNTc4MTUwZmVlMTQ1OTEyZDlhYjZlNDg5MDA3YjQ1N2Y1NGQ0NDFjNDc1MmI1YTgiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjQ3MzU1In1dfQ";
 
 /// Public Iroh relays we explicitly hand to the runtime via `--relay`.
 ///
