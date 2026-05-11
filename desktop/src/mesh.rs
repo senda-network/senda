@@ -1232,10 +1232,16 @@ enum UpgradeOutcome {
     /// The check (or download / verify / swap) failed. The caller
     /// should retry sooner than steady state. We carry the installed
     /// version (when we got that far) so the dashboard can still
-    /// show the user what they're running while we keep retrying.
+    /// show the user what they're running while we keep retrying,
+    /// plus a short human-readable reason so the dashboard can render
+    /// "last check failed: HTTP 404 on closedmesh-windows-x86_64-vulkan.zip"
+    /// instead of leaving the user (and us) guessing through the log.
+    /// Reason strings are short (single sentence ish) and intended for
+    /// direct UI display.
     Failed {
         installed: Option<String>,
         latest: Option<String>,
+        error: String,
     },
 }
 
@@ -1285,6 +1291,14 @@ struct RuntimeUpgradeState {
     /// restarts so a user who closed their laptop mid-upgrade still
     /// sees the success card the next time they open the dashboard.
     last_upgrade: Option<RuntimeUpgradeEvent>,
+    /// Human-readable reason for the most-recent Failed outcome.
+    /// Cleared back to `None` after any successful check so a stale
+    /// error from a previous attempt doesn't keep haunting the
+    /// dashboard once we've recovered. Set on every Failed outcome so
+    /// the user can see whether "last check failed" is a 404, a
+    /// network blip, a permissions problem, or something else without
+    /// digging through `~/Library/Logs/closedmesh/desktop.log`.
+    last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1509,6 +1523,7 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
             last_outcome: None,
             checking: false,
             last_upgrade: None,
+            last_error: None,
         });
 
         std::thread::sleep(RUNTIME_UPGRADE_INITIAL_DELAY);
@@ -1541,6 +1556,11 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
                 last_outcome: None,
                 checking: true,
                 last_upgrade: last_upgrade.clone(),
+                // Preserve `last_error` through the in-flight "checking"
+                // state so a stale-error pill doesn't flicker off-then-on
+                // when the user clicks "Check now". Cleared on the next
+                // successful outcome below.
+                last_error: None,
             });
 
             let outcome = try_upgrade_runtime(&current);
@@ -1566,6 +1586,10 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
                         last_outcome: Some("upgraded"),
                         checking: false,
                         last_upgrade: last_upgrade.clone(),
+                        // Clear any stale failure reason — a successful
+                        // swap means whatever was wrong before isn't
+                        // wrong now.
+                        last_error: None,
                     });
                 }
                 UpgradeOutcome::UpToDate { installed, latest } => {
@@ -1579,9 +1603,19 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
                         last_outcome: Some("up_to_date"),
                         checking: false,
                         last_upgrade: last_upgrade.clone(),
+                        // Same as Upgraded: a clean "up to date" check
+                        // means the previous failure is no longer
+                        // relevant. Clearing here also handles the
+                        // happy-path recovery from a flaky network /
+                        // GitHub 5xx the next time the loop runs.
+                        last_error: None,
                     });
                 }
-                UpgradeOutcome::Failed { installed, latest } => {
+                UpgradeOutcome::Failed {
+                    installed,
+                    latest,
+                    error,
+                } => {
                     if let Some(v) = installed {
                         last_known_installed = Some(v.clone());
                     }
@@ -1596,6 +1630,7 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
                         last_outcome: Some("failed"),
                         checking: false,
                         last_upgrade: last_upgrade.clone(),
+                        last_error: Some(error.clone()),
                     });
                 }
             }
@@ -1696,6 +1731,11 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: None,
             latest: None,
+            error: format!(
+                "couldn't read installed runtime version from {} (binary missing, broken, \
+                 or doesn't respond to --version)",
+                bin.display()
+            ),
         };
     };
     let installed_str = fmt_version(&installed);
@@ -1706,6 +1746,9 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str),
             latest: None,
+            error: "couldn't probe GitHub for the latest runtime release \
+                    (network down, DNS failure, or GitHub 5xx). Will retry."
+                .to_string(),
         };
     };
     let latest_str = fmt_version(&latest);
@@ -1744,6 +1787,8 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str),
             latest: Some(latest_str),
+            error: "couldn't resolve the runtime install path on this platform."
+                .to_string(),
         };
     };
     let Some(parent) = dest.parent() else {
@@ -1754,6 +1799,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str),
             latest: Some(latest_str),
+            error: format!(
+                "runtime install path {} has no parent directory (filesystem layout looks wrong).",
+                dest.display()
+            ),
         };
     };
 
@@ -1764,6 +1813,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str.clone()),
             latest: Some(latest_str.clone()),
+            error: format!(
+                "couldn't create the upgrade staging directory {}: {e}",
+                stage_dir.display()
+            ),
         };
     }
 
@@ -1778,10 +1831,24 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         Err(e) => {
             eprintln!("[closedmesh] runtime upgrade: download {url} failed: {e}");
             let _ = std::fs::remove_dir_all(&stage_dir);
+            // Stringify ureq errors specifically — Status(404, _) is the
+            // signature failure mode for an asset name the release
+            // pipeline doesn't actually ship (the Windows / vulkan
+            // mismatch fixed in 0.1.84). Calling out the HTTP status
+            // and the exact URL lets us spot that pattern from the
+            // dashboard without digging through desktop.log.
+            let reason = match &e {
+                ureq::Error::Status(code, _) => format!(
+                    "GitHub returned HTTP {code} for {asset}. The release pipeline may not \
+                     publish this asset for your platform — file an issue with this message."
+                ),
+                _ => format!("download of {asset} failed: {e}"),
+            };
             return UpgradeOutcome::Failed {
-            installed: Some(installed_str.clone()),
-            latest: Some(latest_str.clone()),
-        };
+                installed: Some(installed_str.clone()),
+                latest: Some(latest_str.clone()),
+                error: reason,
+            };
         }
     };
 
@@ -1795,9 +1862,14 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
             );
             let _ = std::fs::remove_dir_all(&stage_dir);
             return UpgradeOutcome::Failed {
-            installed: Some(installed_str.clone()),
-            latest: Some(latest_str.clone()),
-        };
+                installed: Some(installed_str.clone()),
+                latest: Some(latest_str.clone()),
+                error: format!(
+                    "couldn't open staging file {} for write: {e} \
+                     (disk full, permissions, or antivirus quarantine?)",
+                    archive.display()
+                ),
+            };
         }
     };
     if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
@@ -1806,6 +1878,9 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str.clone()),
             latest: Some(latest_str.clone()),
+            error: format!(
+                "download of {asset} aborted mid-stream: {e} (connection dropped or timed out)."
+            ),
         };
     }
     drop(tmp_file);
@@ -1823,6 +1898,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str.clone()),
             latest: Some(latest_str.clone()),
+            error: format!(
+                "couldn't extract {asset} (corrupted archive, missing `tar` on Windows, \
+                 or unsupported archive format)."
+            ),
         };
     }
     let _ = std::fs::remove_file(&archive);
@@ -1842,6 +1921,9 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str.clone()),
             latest: Some(latest_str.clone()),
+            error: format!(
+                "extracted archive doesn't contain {exe_name} (asset/platform mismatch?)."
+            ),
         };
     }
 
@@ -1879,6 +1961,13 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str.clone()),
             latest: Some(latest_str.clone()),
+            error: format!(
+                "staged binary reports version {:?} but we expected {}. GitHub may have \
+                 redirected /releases/latest to a tag whose assets aren't fully uploaded yet \
+                 — will retry.",
+                actual.as_ref().map(fmt_version),
+                latest_str,
+            ),
         };
     }
 
@@ -1901,6 +1990,13 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         return UpgradeOutcome::Failed {
             installed: Some(installed_str.clone()),
             latest: Some(latest_str.clone()),
+            error: format!(
+                "couldn't replace the running runtime binary at {}: {e}. \
+                 On Windows this usually means the old binary is still locked by a process \
+                 (scheduled task didn't stop in time). The old binary is still in place \
+                 and the service was restarted.",
+                dest.display()
+            ),
         };
     }
 
@@ -3126,6 +3222,23 @@ fn runtime_asset_name() -> Option<String> {
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
         Some("closedmesh-linux-aarch64.tar.gz".to_string())
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        // The closedmesh-llm release pipeline currently publishes ONLY the
+        // CUDA Windows .zip (linux ships cpu/cuda/rocm/vulkan; macOS ships
+        // a single Metal build; Windows is the odd one out). Defaulting
+        // to "vulkan" here meant every Windows auto-upgrade attempt since
+        // 0.1.40 hit a GitHub 404 on `closedmesh-windows-x86_64-vulkan.zip`
+        // and the loop silently stayed on whatever runtime the user
+        // originally installed via install.ps1 / WiX (which had its own
+        // resolution logic and always landed on the cuda zip). The
+        // dashboard surfaced this as "last check failed" on 0.1.83+,
+        // which is finally how we noticed.
+        //
+        // Pin to "cuda" as the default until the runtime release pipeline
+        // starts publishing vulkan / cpu zips for Windows. CLOSEDMESH_BACKEND
+        // still wins when set explicitly, so anyone wanting to test an
+        // experimental flavor (once published) can opt in via env. Revisit
+        // once `closedmesh-windows-x86_64-{cpu,vulkan}.zip` show up in
+        // /releases/latest.
         let flavor = match std::env::var("CLOSEDMESH_BACKEND")
             .ok()
             .map(|v| v.trim().to_ascii_lowercase())
@@ -3133,7 +3246,8 @@ fn runtime_asset_name() -> Option<String> {
         {
             Some("cuda") => "cuda",
             Some("cpu") => "cpu",
-            _ => "vulkan",
+            Some("vulkan") => "vulkan",
+            _ => "cuda",
         };
         Some(format!("closedmesh-windows-x86_64-{flavor}.zip"))
     } else {

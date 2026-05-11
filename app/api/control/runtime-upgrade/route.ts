@@ -93,6 +93,13 @@ type StateFile = {
     to: string;
     at: string;
   } | null;
+  /**
+   * Human-readable reason for the most recent Failed outcome. Added in
+   * desktop 0.1.84 alongside the Windows asset-name fix — older
+   * desktops won't write this field, so treat absence as "we don't
+   * know why; check desktop.log".
+   */
+  lastError?: string | null;
 };
 
 type GetResp =
@@ -104,6 +111,7 @@ type GetResp =
       lastOutcome: "upgraded" | "up_to_date" | "failed" | null;
       checking: boolean;
       lastUpgrade: { from: string; to: string; at: string } | null;
+      lastError: string | null;
     }
   | { ok: false; message: string };
 
@@ -146,6 +154,7 @@ export async function GET() {
         lastOutcome: null,
         checking: false,
         lastUpgrade: null,
+        lastError: null,
       });
     }
     return NextResponse.json<GetResp>({
@@ -176,6 +185,7 @@ export async function GET() {
     lastOutcome: parsed.lastOutcome ?? null,
     checking: parsed.checking ?? false,
     lastUpgrade: parsed.lastUpgrade ?? null,
+    lastError: parsed.lastError ?? null,
   });
 }
 

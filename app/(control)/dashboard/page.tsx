@@ -101,6 +101,15 @@ type RuntimeUpgradeResp =
         to: string;
         at: string;
       } | null;
+      /**
+       * Short human-readable reason for the most-recent Failed outcome.
+       * Surfaced inline under the runtime row so users (and we, in
+       * support threads) don't have to spelunk in desktop.log to learn
+       * *why* the auto-upgrade is failing. Null for fresh installs,
+       * successful checks, or desktops older than 0.1.84 that didn't
+       * write this field.
+       */
+      lastError?: string | null;
     }
   | { ok: false; message: string };
 
@@ -1236,6 +1245,9 @@ function ThisNodeCard({
         }
         latest={runtimeUpgrade?.ok ? runtimeUpgrade.latestVersion : null}
         lastOutcome={runtimeUpgrade?.ok ? runtimeUpgrade.lastOutcome : null}
+        lastError={
+          runtimeUpgrade?.ok ? runtimeUpgrade.lastError ?? null : null
+        }
         checking={
           (runtimeUpgrade?.ok ? runtimeUpgrade.checking : false) ||
           runtimeUpgradeBusy
@@ -1289,12 +1301,26 @@ function RuntimeVersionRow({
   installed,
   latest,
   lastOutcome,
+  lastError,
   checking,
   onCheck,
 }: {
   installed: string | null;
   latest: string | null;
   lastOutcome: "upgraded" | "up_to_date" | "failed" | null;
+  /**
+   * Human-readable reason from the Rust upgrade loop's most-recent
+   * Failed outcome. When present we render it directly under the
+   * version line so users see *why* the check failed (a 404 on a
+   * missing release asset reads very differently from a network
+   * timeout, and the support burden of "share your desktop.log"
+   * goes to zero once this is visible inline).
+   *
+   * `null` for any of: fresh install with no checks yet, the last
+   * check succeeded, or a desktop older than 0.1.84 that didn't
+   * emit this field.
+   */
+  lastError: string | null;
   checking: boolean;
   onCheck: () => void;
 }) {
@@ -1308,6 +1334,7 @@ function RuntimeVersionRow({
     !!installed &&
     !!latest &&
     compareSemverTriplet(installed, latest) < 0;
+  const showError = lastOutcome === "failed" && !checking && !!lastError;
   return (
     <div className="relative mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2.5">
       <div className="min-w-0 flex-1">
@@ -1336,12 +1363,29 @@ function RuntimeVersionRow({
           {lastOutcome === "failed" && !checking && (
             <span
               className="font-mono text-[11px] text-rose-300"
-              title="The last auto-upgrade attempt failed. Try the check-now button to retry sooner than the 6h auto-cadence."
+              title={
+                lastError ??
+                "The last auto-upgrade attempt failed. Try the check-now button to retry sooner than the 6h auto-cadence."
+              }
             >
               last check failed
             </span>
           )}
         </div>
+        {showError && (
+          // Inline failure reason. Kept on a separate line so a long
+          // error (a stringified ureq::Error::Status, a Windows
+          // antivirus message) wraps cleanly instead of pushing the
+          // "Check for update" button off the row. Plain text — we
+          // never render Rust-side strings as HTML / markdown to keep
+          // the surface area for injection-style bugs at zero.
+          <div
+            className="mt-1.5 max-w-full whitespace-pre-wrap break-words text-[11px] leading-snug text-rose-200/80"
+            title={lastError ?? undefined}
+          >
+            {lastError}
+          </div>
+        )}
       </div>
       <button
         onClick={onCheck}
