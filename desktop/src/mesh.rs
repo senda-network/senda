@@ -2678,6 +2678,15 @@ pub fn keep_running_after_quit() -> bool {
 /// needs them via the script's own `param(...)` block. Idempotency
 /// (delete-before-register) is intentional and called from the Rust
 /// caller only when args genuinely changed.
+///
+/// IMPORTANT: keep this raw string ASCII-only. We `std::fs::write` it
+/// to disk (no BOM emitted) and then run it via `powershell.exe -File`,
+/// which on Windows PowerShell 5.1 decodes BOM-less .ps1 files as the
+/// system ANSI codepage. UTF-8 bytes for non-ASCII chars then get
+/// re-decoded byte-by-byte; an em-dash's trailing 0x94 byte becomes
+/// U+201D (a smart double-quote) which PowerShell normalizes to `"` and
+/// uses as a string terminator. The same bug bit `public/install.ps1`
+/// (see the leading comment block in that file) - keep both in sync.
 #[cfg(target_os = "windows")]
 const REGISTER_TASK_PS: &str = r#"param(
     [Parameter(Mandatory=$true)][string]$BinPath,
@@ -2716,14 +2725,14 @@ Start-Sleep -Milliseconds 400
 # schtasks writes to stderr when the task doesn't exist (the expected
 # case on the very first install). Under $ErrorActionPreference =
 # 'Stop' that stderr write becomes a terminating NativeCommandError
-# even though `2>$null` should have eaten it — wrap in try/catch so
+# even though `2>$null` should have eaten it - wrap in try/catch so
 # a missing prior task is silently OK.
 try { schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null } catch { }
 
 # Generate a tiny VBScript that CreateProcess()'s closedmesh.exe with
 # no console window AND redirects its stdout/stderr to log files,
 # then blocks until it exits. See public/install.ps1::Write-LaunchVbs
-# for the rationale (mirrored verbatim — keep the two in sync).
+# for the rationale (mirrored verbatim - keep the two in sync).
 #
 # Two problems solved at once:
 #
@@ -2752,11 +2761,11 @@ $logFileStderr = Join-Path $logDir 'stderr.log'
 # the dashboard downloaded and vice-versa. The runtime CLI's own
 # resolver falls back to `$HOME/.cache/huggingface/hub`, but on Windows
 # `HOME` is unset and the resolver collapses to `./.cache/huggingface/hub`
-# — i.e. relative to whichever process's CWD launched it. Two launch
+# - i.e. relative to whichever process's CWD launched it. Two launch
 # contexts (the Scheduled Task running with USERPROFILE as CWD vs the
 # bundled Node controller running with %LOCALAPPDATA%\ClosedMesh as CWD)
 # produced two different cache dirs, so a model the user downloaded via
-# the dashboard ended up invisible to the startup-loading task —
+# the dashboard ended up invisible to the startup-loading task -
 # which silently re-downloaded a 33 GB file from scratch. Setting the
 # env var explicitly here pins the location regardless of who launches
 # the task. Mirror in main.rs::pin_huggingface_cache_dir.

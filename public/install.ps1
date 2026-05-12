@@ -1,4 +1,18 @@
-# ClosedMesh installer — Windows x86_64.
+# ClosedMesh installer - Windows x86_64.
+#
+# KEEP THIS FILE ASCII-ONLY. Windows PowerShell 5.1 reads .ps1 files
+# with no BOM using the system ANSI codepage (Windows-1252 on en-US
+# systems). UTF-8 sequences for non-ASCII chars get re-decoded byte by
+# byte; in particular an em-dash (U+2014, UTF-8 bytes 0xE2 0x80 0x94)
+# ends on byte 0x94, which CP1252 maps to U+201D - a smart double-
+# quote, which PowerShell then normalizes to a regular ASCII double
+# quote for string parsing. If that synthetic close-quote lands inside
+# a "..."-quoted string, the parser terminates the string mid-line and
+# brace tracking unravels from there; users running this script via
+# the desktop app's Setup button (which spawns `powershell.exe -File
+# install.ps1`) saw a cascade of "Missing closing }" errors at every
+# open brace below the offending line. The `iwr | iex` path doesn't
+# hit this because HTTP decoding hands iex a proper UTF-8 string.
 #
 #   iwr -useb https://closedmesh.com/install.ps1 | iex
 #   iwr -useb https://closedmesh.com/install.ps1 | iex; closedmesh-install -Service
@@ -90,10 +104,10 @@ function Write-LaunchVbs {
     #
     # 1. closedmesh.exe is a console-subsystem binary. When a
     #    Scheduled Task with LogonType=Interactive runs it directly,
-    #    Windows always allocates a console — and on Win11 the user's
+    #    Windows always allocates a console - and on Win11 the user's
     #    default terminal handler (Windows Terminal) opens a visible
     #    tab titled with the binary's path. The runtime also paints a
-    #    TUI status board ("Running llama.cpp instances…") in that
+    #    TUI status board ("Running llama.cpp instances...") in that
     #    tab. Looks exactly like the desktop app spawned a stray dev
     #    terminal on every login.
     #
@@ -101,7 +115,7 @@ function Write-LaunchVbs {
     #    to the void (Scheduled Task allocates a console and never
     #    captures it). The dashboard's Activity page reads these
     #    streams from disk, so on Windows it stayed permanently
-    #    empty — a friend who set a startup model and waited for it
+    #    empty - a friend who set a startup model and waited for it
     #    to load saw "no activity, no errors" because the runtime
     #    was logging to /dev/null.
     #
@@ -143,10 +157,10 @@ function Write-LaunchVbs {
     # bundled Node controller, in particular) all agree on where
     # models live. The runtime CLI's own resolver falls back to
     # `$HOME/.cache/huggingface/hub`, but on Windows `HOME` is unset
-    # and that fallback collapses to `./.cache/huggingface/hub` —
-    # whichever process's CWD launched the runtime. Two CWDs ⇒ two
-    # caches ⇒ a model the user "downloaded" via the dashboard is
-    # invisible to the startup-loading task ⇒ the runtime silently
+    # and that fallback collapses to `./.cache/huggingface/hub` -
+    # whichever process's CWD launched the runtime. Two CWDs => two
+    # caches => a model the user "downloaded" via the dashboard is
+    # invisible to the startup-loading task => the runtime silently
     # restarts a multi-GB download on every "make this my startup
     # model" click. Setting the env var here pins it. Mirror in
     # desktop/src/mesh.rs::REGISTER_TASK_PS and main.rs.
@@ -211,7 +225,7 @@ function Detect-Backend {
         if ($v.AdapterRAM -gt 0) { return 'vulkan' }
     }
 
-    Write-Warn2 'No GPU detected — falling back to Vulkan flavor (CPU-only path TBD on Windows).'
+    Write-Warn2 'No GPU detected - falling back to Vulkan flavor (CPU-only path TBD on Windows).'
     return 'vulkan'
 }
 
@@ -277,7 +291,7 @@ function Download-Binary {
         # Windows ZIP is self-contained: closedmesh.exe + rpc-server.exe
         # + llama-server.exe + the full ggml-*.dll fan-out (and on the
         # cuda flavor, cudart_64_*.dll). Pre-this-commit Copy-Item only
-        # touched closedmesh.exe and discarded the helpers — so a user
+        # touched closedmesh.exe and discarded the helpers - so a user
         # who upgraded straight from a release that ALSO had only
         # closedmesh.exe would still see "rpc-server.exe not found".
         # Install-LlamaCppHelpers below remains as a fallback for
@@ -313,7 +327,7 @@ function Add-PathHint {
 # `git -C closedmesh-llm/.deps/llama.cpp describe --tags`). The user's
 # rpc-server.exe / llama-server.exe must speak the same RPC and CLI
 # protocol as the closedmesh.exe in this bundle, and llama.cpp does
-# break protocol inside major releases — so keeping the two in lockstep
+# break protocol inside major releases - so keeping the two in lockstep
 # matters more than chasing the latest llama.cpp build.
 $LlamaCppTag = 'b9041'
 
@@ -326,9 +340,9 @@ $LlamaCppTag = 'b9041'
 # closedmesh.exe and skips the llama.cpp bundle (`scripts/release-
 # closedmesh.ps1` ships closedmesh.exe + LICENSE + the task XML, end of
 # list). So the runtime ZIP genuinely doesn't contain rpc-server.exe or
-# llama-server.exe — without this fallback the runtime fails every
+# llama-server.exe - without this fallback the runtime fails every
 # model load with "rpc-server.exe not found in
-# C:\Users\…\AppData\Local\closedmesh\bin", which is exactly what
+# C:\Users\...\AppData\Local\closedmesh\bin", which is exactly what
 # 0.1.70 users saw. Long-term fix is on the runtime side; until that
 # lands, this installer pulls the matching binaries directly from
 # llama.cpp's official Windows releases.
@@ -431,9 +445,9 @@ function Install-LlamaCppHelpers {
 
         # Drop every shipped DLL next to the helpers. Both rpc-server
         # and llama-server depend on a fan-out of ggml-*.dll variants
-        # (ggml-base, ggml-cpu-<isa>, ggml-vulkan / ggml-cuda, …) that
+        # (ggml-base, ggml-cpu-<isa>, ggml-vulkan / ggml-cuda, ...) that
         # they LoadLibrary at runtime. Missing any one of them surfaces
-        # as an opaque exit code 0xC0000135 with no stderr — easier to
+        # as an opaque exit code 0xC0000135 with no stderr - easier to
         # just install the whole DLL set.
         $dllSrcDir = $rpcSrc.DirectoryName
         Get-ChildItem -Path $dllSrcDir -Filter '*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object {
@@ -465,7 +479,7 @@ function Install-LlamaCppHelpers {
                     }
                 }
             } catch {
-                Write-Warn2 "Could not fetch $cudartAsset — CUDA models may fail to load with 0xC0000135."
+                Write-Warn2 "Could not fetch $cudartAsset - CUDA models may fail to load with 0xC0000135."
                 Write-Warn2 "Manually install the CUDA 12.4 runtime if that happens, or set CLOSEDMESH_BACKEND=vulkan."
             }
         }
@@ -493,7 +507,7 @@ function Install-ScheduledTaskUnit {
     # (the expected case on a fresh install). Under
     # $ErrorActionPreference = 'Stop' that stderr write becomes a
     # terminating NativeCommandError even though `2>$null` should have
-    # eaten it — wrap in try/catch so a missing task is silently OK.
+    # eaten it - wrap in try/catch so a missing task is silently OK.
     try { schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null } catch { }
 
     # `serve --auto --publish --mesh-name closedmesh ...` discovers and
@@ -505,7 +519,7 @@ function Install-ScheduledTaskUnit {
     # `--join-url` is preferred (the runtime re-fetches the token on
     # every restart so an entry-node key rotation doesn't strand
     # installs), but we only embed it when the installed CLI actually
-    # understands the flag — closedmesh-llm < v0.65.0 crashloops with
+    # understands the flag - closedmesh-llm < v0.65.0 crashloops with
     # `error: unexpected argument '--join-url'`. For older CLIs we
     # embed a literal `--join <token>` fetched at install-time instead.
     $supportsJoinUrl = $false
