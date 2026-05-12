@@ -40,6 +40,24 @@ The only two allowed repos:
 | Reverse proxy on Lightsail | **Caddy** (host, not Docker) | port 443 → container port 9337 |
 | Mesh entry node process | **Docker** container `mesh-entry` on Lightsail | image `mesh-entry:latest` |
 
+## Debugging this user's Mac is debugging YOUR workspace — DO NOT delegate
+
+**The user runs the desktop app on this same Mac. Your `Shell` tool runs on this same Mac.** When debugging the local desktop runtime, llama-server, rpc-server, or anything that emits files under `~/.closedmesh/`, **YOU read them yourself.** Never paste a `tail`/`grep`/`cat` snippet and ask the user to run it and paste back — that doubles latency, breaks flow, and (correctly) infuriates them.
+
+Specifically, you have direct access to:
+
+- `~/.closedmesh/runtime/<pid>/logs/llama-server-<port>.log` — per-llama-server stdout+stderr; contains launch argv, the Metal/CUDA fit decisions, and the actual `Compute error` / OOM details when inference fails.
+- `~/.closedmesh/runtime/<pid>/logs/rpc-server-<port>.log` — per-rpc-server stdout+stderr; check this when a pipeline split fails because the worker side isn't responding.
+- `~/.closedmesh/runtime/<pid>/pidfiles/*.json` — full argv snippet, child pid, owner pid for every spawned subprocess.
+- `~/.cache/closedmesh/splits/<model>/<n>-nodes/node-*.gguf` — per-node split shards, sized by the planner.
+- `~/.cache/closedmesh/...` and `~/Library/Application Support/closedmesh/...` — caches and config.
+- `ps -axo pid,etime,command | grep closedmesh` — full argv of the currently running runtime, llama-server, and rpc-server processes.
+- `~/Library/LaunchAgents/com.closedmesh.*.plist` — the launchd plist that autostarts the runtime; this is where service-level CLI flags live (e.g. `--max-vram`).
+
+The single exception: when the user is reporting visible behavior in the desktop UI ("the Models page shows X, the dot is yellow"), trust their description rather than re-deriving it from filesystem state. That is faster.
+
+**Same rule applies to the entry node:** SSH yourself, don't ask. You have the key (`~/.ssh/closedmesh-deploy_ed25519`) and the host (`ubuntu@3.210.30.58`).
+
 ---
 
 ## Deploy flows
