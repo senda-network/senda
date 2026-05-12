@@ -94,34 +94,6 @@ export const MODEL_CATALOG: CatalogModel[] = [
       "Coding-specialized 7B. Pair it with the OpenAI-compatible endpoint to use ClosedMesh as a local backend for editors and agents.",
   },
   {
-    id: "Mistral-7B-Instruct-Q4_K_M",
-    name: "Mistral · 7B Instruct",
-    family: "mistral",
-    sizeGb: 4.5,
-    minVramGb: 6,
-    description:
-      "Lighter on memory than other 8B models with strong instruction-following. Good for laptops without a discrete GPU.",
-  },
-  {
-    id: "Phi-3-mini-4k-Q4_K_M",
-    name: "Phi-3 mini · 4K",
-    family: "phi",
-    sizeGb: 2.5,
-    minVramGb: 4,
-    description:
-      "Microsoft's compact model. Punches above its weight, runs on CPU-only mesh nodes.",
-    cpuOk: true,
-  },
-  {
-    id: "Gemma-2-9B-it-Q4_K_M",
-    name: "Gemma 2 · 9B",
-    family: "gemma",
-    sizeGb: 5.5,
-    minVramGb: 10,
-    description:
-      "Google's 9B with strong multilingual + reasoning chops. A bit chunkier than 8B class.",
-  },
-  {
     id: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M",
     name: "DeepSeek R1 Distill · Qwen 14B",
     family: "deepseek",
@@ -174,24 +146,6 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minVramGb: 24,
     description:
       "GLM 4 32B — strong dense generalist with solid tool calling. Same hardware envelope as Qwen 3 32B: 24 GB GPU, 36 GB+ Mac, or two mid-range contributors pooling.",
-  },
-  {
-    id: "Mixtral-8x7B-Instruct-v0.1-Q4_K_M",
-    name: "Mixtral · 8x7B Instruct",
-    family: "mistral",
-    sizeGb: 26,
-    minVramGb: 32,
-    description:
-      "Mistral's mixture-of-experts: 47B params, ~13B active per token. Won't fit solo on a 32 GB Mac (~24 GB usable to Metal); needs a 48 GB+ Mac, a 32 GB GPU, or two-to-three pooled contributors.",
-  },
-  {
-    id: "Mixtral-8x7B-Instruct-v0.1-Q5_K_M",
-    name: "Mixtral · 8x7B Instruct (Q5_K_M)",
-    family: "mistral",
-    sizeGb: 33,
-    minVramGb: 38,
-    description:
-      "Same Mixtral 8x7B at a higher quant — noticeably crisper than Q4 with only a few extra GB of weights. Sits right at the edge of a 48 GB Mac's Metal budget, comfortable on a 64 GB+ Mac, or pool a 32 GB + 18 GB pair as the bare minimum (Metal allows ~24 + ~13 = ~37 GB combined — tight but possible at short context).",
   },
   {
     id: "Qwen3-32B-Q4_K_M",

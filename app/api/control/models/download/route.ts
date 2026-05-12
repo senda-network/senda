@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { statfs } from "node:fs/promises";
+import { homedir } from "node:os";
 import { findClosedmeshBin, isPublic } from "../../_lib";
 
 export const runtime = "nodejs";
@@ -23,10 +25,70 @@ export const dynamic = "force-dynamic";
  * The `progress` event is parsed out of the CLI's progress bar lines on
  * a best-effort basis so the dashboard can render a real bar instead of
  * a stream of unintelligible carriage returns.
+ *
+ * ── Disk-space pre-flight ──
+ *
+ * The runtime CLI doesn't fail fast when the target volume can't fit
+ * the model — `hf_hub` keeps writing to its temp file until the kernel
+ * returns ENOSPC mid-stream, by which point the user has watched the
+ * progress bar slowly stall to ~0 KB/s with no surfaced error. Pre-0.1.x
+ * we'd just see "Download failed (exit 1)" buried under hundreds of
+ * lines of resumed-download chatter.
+ *
+ * The dashboard knows the model's expected size from the catalog before
+ * it even opens this socket, so it POSTs `sizeBytes` along with `id`.
+ * We `statfs` the home directory (which is where `~/.cache/huggingface/`
+ * lives on every supported platform; XDG override edge cases fall back
+ * to whatever space the CLI itself sees) and bail with a 507 + actionable
+ * message if free space < `sizeBytes * 1.1` (the 10% headroom covers
+ * resumed-download temp files, .incomplete sidecars, GGUF index updates,
+ * and the brief window where llama.cpp's split tool may keep both the
+ * source and a derived shard on disk simultaneously).
+ *
+ * Mid-stream we ALSO grep for the kernel-level ENOSPC signature in
+ * stderr so a user who manages to start a download with just-enough
+ * space and then runs out partway through gets the same clear error
+ * message instead of a generic "exit 1".
  */
-type Body = { id?: string };
+type Body = { id?: string; sizeBytes?: number };
 
 const ALLOWED_ID = /^[A-Za-z0-9._\-]{1,128}$/;
+
+/** Tolerance multiplier on top of the model's nominal GGUF size. */
+const DISK_HEADROOM = 1.1;
+
+function formatBytes(b: number): string {
+  if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(1)} GB`;
+  if (b >= 1024 ** 2) return `${(b / 1024 ** 2).toFixed(0)} MB`;
+  return `${b} B`;
+}
+
+/**
+ * Best-effort free-space query against the volume containing `path`.
+ * Returns null when `statfs` isn't available (older Node versions, some
+ * Windows configurations) — the caller treats that as "skip pre-flight"
+ * rather than blocking the download.
+ */
+async function freeBytesAt(path: string): Promise<number | null> {
+  try {
+    const s = await statfs(path);
+    return Number(s.bavail) * Number(s.bsize);
+  } catch {
+    return null;
+  }
+}
+
+const NO_SPACE_PATTERNS = [
+  /no space left on device/i,
+  /os error 28\b/i, // POSIX ENOSPC
+  /error 112\b/i, // Win32 ERROR_DISK_FULL
+  /there is not enough space on the disk/i,
+  /enospc/i,
+];
+
+function looksLikeNoSpace(text: string): boolean {
+  return NO_SPACE_PATTERNS.some((re) => re.test(text));
+}
 
 export async function POST(req: Request) {
   if (isPublic) {
@@ -53,6 +115,27 @@ export async function POST(req: Request) {
     );
   }
 
+  // Pre-flight disk-space check. Only runs when the client passes a
+  // hint (catalog rows always do; the orphan / custom-model path may
+  // not). Skipping is safe: the worst case is we fall back to the
+  // pre-existing mid-stream ENOSPC detection below.
+  if (
+    typeof body.sizeBytes === "number" &&
+    Number.isFinite(body.sizeBytes) &&
+    body.sizeBytes > 0
+  ) {
+    const free = await freeBytesAt(homedir());
+    if (free !== null) {
+      const needed = Math.ceil(body.sizeBytes * DISK_HEADROOM);
+      if (free < needed) {
+        return jsonErr(
+          507,
+          `Not enough disk space to download ${id}. Need about ${formatBytes(needed)} but only ${formatBytes(free)} is free on this volume. Free up some space (or pick a smaller model) and try again.`,
+        );
+      }
+    }
+  }
+
   const bin = await findClosedmeshBin();
   if (!bin) {
     return jsonErr(404, "closedmesh binary not found on this machine.");
@@ -76,12 +159,18 @@ export async function POST(req: Request) {
         windowsHide: true,
       });
 
+      // Track the most recent ENOSPC signature so we can rewrite the
+      // final `done` event with a meaningful message instead of letting
+      // the dashboard show a generic "Download failed (exit 1)".
+      let noSpaceLine: string | null = null;
+
       const handle = (chunk: string, kind: "stdout" | "stderr") => {
         // The CLI's progress bar uses \r to redraw a single line; split
         // on either CR or LF so we capture each redraw as its own event.
         for (const raw of chunk.split(/\r|\n/)) {
           const line = raw.trim();
           if (!line) continue;
+          if (looksLikeNoSpace(line)) noSpaceLine = line;
           send({ kind, text: line });
           const progress = parseProgress(line);
           if (progress) send({ kind: "progress", ...progress });
@@ -97,6 +186,12 @@ export async function POST(req: Request) {
         controller.close();
       });
       child.on("close", (code) => {
+        if (noSpaceLine && code !== 0) {
+          send({
+            kind: "error",
+            message: `Ran out of disk space while downloading ${id}. Free up space on the volume holding ~/.cache/huggingface and try again. (CLI: ${noSpaceLine})`,
+          });
+        }
         send({ kind: "done", ok: code === 0, code: code ?? -1 });
         controller.close();
       });

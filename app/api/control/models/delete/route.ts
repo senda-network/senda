@@ -12,12 +12,85 @@ export const dynamic = "force-dynamic";
  * and the mesh-managed usage record cleanup; we just forward the parsed
  * JSON result up to the dashboard.
  *
- * If the model is currently in memory (loaded by the runtime) the file
- * deletion still succeeds — the running process keeps serving from its
- * mmap'd handle until restart. That's the expected POSIX behaviour and
- * matches what `closedmesh models cleanup` does for batch removals, so
- * we don't try to be cleverer than the CLI here.
+ * ── Windows file-locking gotcha ──
+ *
+ * On macOS / Linux you can `unlink` a file that another process has
+ * mmap'd: the directory entry disappears immediately, the running
+ * process keeps serving from its open handle, and disk space is
+ * reclaimed when the last handle closes. The CLI relied on that
+ * behaviour and `closedmesh models delete` would happily complete
+ * regardless of whether the runtime had the GGUF loaded.
+ *
+ * Windows does NOT have unlink-while-open semantics for regular file
+ * handles. If the runtime has the model mmap'd (which it does whenever
+ * llama-server is serving it), `std::fs::remove_file` returns
+ * ERROR_SHARING_VIOLATION (32) and the CLI exits with an opaque
+ * `os error 32` chain. Worse: the dashboard surfaces that as a generic
+ * "Delete failed" toast and the user has no idea what went wrong.
+ *
+ * Mitigation here: before we shell out to the CLI, ask the runtime to
+ * unload the model via its admin API (`DELETE /api/runtime/models/{id}`).
+ * That drops the llama-server child, which in turn drops the mmap
+ * handle, after which `remove_file` succeeds on every platform. The
+ * unload call is best-effort — if it fails (model wasn't loaded, runtime
+ * is offline, network blip) we still proceed to the CLI delete because
+ * the file might be deletable anyway (e.g. it was never loaded since the
+ * last service restart).
+ *
+ * The proper fix lives in `closedmesh-llm` (`models/delete.rs` should
+ * unload from the local runtime registry before calling `remove_file`)
+ * and is tracked in the corresponding runtime issue. This controller
+ * mitigation lets us ship the dashboard fix without waiting on a runtime
+ * release.
  */
+
+const ADMIN_URL = (
+  process.env.CLOSEDMESH_ADMIN_URL ??
+  process.env.MESH_CONSOLE_URL ??
+  "http://127.0.0.1:3131"
+).trim();
+const RUNTIME_TOKEN = (process.env.CLOSEDMESH_RUNTIME_TOKEN ?? "").trim();
+
+/**
+ * Best-effort unload of `id` from the local runtime so the GGUF mmap
+ * handle is released before we try to delete the file. Returns silently
+ * on any failure — the caller treats unload as a hint, not a contract.
+ */
+async function unloadFromRuntime(id: string): Promise<void> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5_000);
+  try {
+    await fetch(
+      `${ADMIN_URL}/api/runtime/models/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+        cache: "no-store",
+        signal: ctrl.signal,
+        headers: RUNTIME_TOKEN
+          ? { Authorization: `Bearer ${RUNTIME_TOKEN}` }
+          : undefined,
+      },
+    );
+  } catch {
+    // Runtime unreachable or refused — proceed to the CLI delete anyway.
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Detects the Windows sharing-violation signature in the CLI's error
+ * output so we can rewrite it into something the user can act on
+ * ("close the loaded model first") instead of leaking `os error 32`.
+ */
+function looksLikeWindowsFileLock(text: string): boolean {
+  const blob = text.toLowerCase();
+  return (
+    blob.includes("os error 32") ||
+    blob.includes("being used by another process") ||
+    blob.includes("sharing violation")
+  );
+}
 
 const ALLOWED_ID = /^[A-Za-z0-9._\-]{1,128}$/;
 
@@ -71,18 +144,27 @@ export async function POST(req: Request) {
     );
   }
 
+  // Release any active mmap on the model file before touching disk.
+  // See the file header for why this matters on Windows. macOS and
+  // Linux don't need it, but the call is cheap and idempotent so we
+  // always make it — keeps the code path the same on every platform
+  // and prevents an unloaded-on-Mac / locked-on-Windows bug class.
+  await unloadFromRuntime(id);
+
   // Big GGUFs (40 GB+) take a few seconds to unlink on a slow disk; the
   // default 8 s in `runClosedmesh` is too tight. 60 s is generous enough
   // to cover any realistic case while still failing loudly if the CLI
   // hangs.
   const result = await runClosedmesh(bin, ["models", "delete", id, "--yes", "--json"], 60_000);
   if (!result.ok) {
+    const rawError =
+      result.stderr || result.stdout || `closedmesh models delete exited ${result.code}`;
+    const message =
+      process.platform === "win32" && looksLikeWindowsFileLock(rawError)
+        ? `${id} is still in use by the running mesh service. Stop it from the dashboard (or run \`closedmesh service stop\`) and try again.`
+        : rawError;
     return NextResponse.json(
-      {
-        ok: false,
-        message:
-          result.stderr || result.stdout || `closedmesh models delete exited ${result.code}`,
-      },
+      { ok: false, message },
       { status: 500 },
     );
   }

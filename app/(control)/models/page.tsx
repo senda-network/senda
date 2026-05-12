@@ -8,27 +8,15 @@ import { useMeshStatus, type MeshModel } from "../../lib/use-mesh-status";
 import { useMeshModels } from "../../lib/use-mesh-models";
 import { modelIdsMatch, normalizeModelId } from "../../lib/model-id";
 import { LiveLaunchState } from "../../components/LiveLaunchState";
+import {
+  useDownloads,
+  type DownloadState,
+} from "../../lib/downloads-context";
 
 type LocalModel = { id: string; sizeBytes: number | null };
 type ListResp =
   | { ok: true; models: LocalModel[] }
   | { ok: false; message: string; models: LocalModel[] };
-
-type DownloadEvent =
-  | { kind: "stdout" | "stderr"; text: string }
-  | { kind: "progress"; percent: number; bytes: number; total: number }
-  | { kind: "done"; ok: boolean; code: number }
-  | { kind: "error"; message: string };
-
-type DownloadState = {
-  id: string;
-  phase: "running" | "done" | "failed";
-  percent: number;
-  bytes: number;
-  total: number;
-  lastLine: string;
-  error?: string;
-};
 
 type StartupModel = {
   model: string;
@@ -70,9 +58,7 @@ export default function ModelsPage() {
   const { catalog } = useCatalog();
   const [local, setLocal] = useState<LocalModel[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-  const [downloads, setDownloads] = useState<Record<string, DownloadState>>(
-    {},
-  );
+  const { downloads, startDownload, setOnComplete } = useDownloads();
   const [startup, setStartup] = useState<StartupModel[]>([]);
   const [startupBusy, setStartupBusy] = useState<string | null>(null);
   const [startupToast, setStartupToast] = useState<string | null>(null);
@@ -211,107 +197,21 @@ export default function ModelsPage() {
     [refreshLocal],
   );
 
-  const startDownload = useCallback(
-    async (id: string) => {
-      setDownloads((d) => ({
-        ...d,
-        [id]: {
-          id,
-          phase: "running",
-          percent: 0,
-          bytes: 0,
-          total: 0,
-          lastLine: "starting…",
-        },
-      }));
-
-      const res = await fetch("/api/control/models/download", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-
-      if (!res.ok || !res.body) {
-        let message = `request returned ${res.status}`;
-        try {
-          const err = (await res.json()) as { message?: string };
-          message = err.message ?? message;
-        } catch {
-          // body is the stream — already consumed
-        }
-        setDownloads((d) => ({
-          ...d,
-          [id]: { ...d[id], phase: "failed", error: message },
-        }));
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let okFinal: boolean | null = null;
-      // Same rationale as the dashboard QuickStart flow: when the runtime
-      // CLI exits non-zero its diagnostic line is on stderr, not in any
-      // log file the dashboard otherwise tails. Capture it so we can show
-      // a real error instead of "Download failed (exit 1)".
-      let lastStderr: string | null = null;
-      let lastAnyLine: string | null = null;
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n");
-        buffer = parts.pop() ?? "";
-        for (const part of parts) {
-          const line = part.trim();
-          if (!line) continue;
-          let ev: DownloadEvent;
-          try {
-            ev = JSON.parse(line) as DownloadEvent;
-          } catch {
-            continue;
-          }
-          if (ev.kind === "stdout" || ev.kind === "stderr") {
-            lastAnyLine = ev.text;
-            if (ev.kind === "stderr") lastStderr = ev.text;
-          }
-          setDownloads((d) => {
-            const cur = d[id];
-            if (!cur) return d;
-            const next: DownloadState = { ...cur };
-            if (ev.kind === "progress") {
-              next.percent = ev.percent;
-              next.bytes = ev.bytes;
-              next.total = ev.total;
-            } else if (ev.kind === "stdout" || ev.kind === "stderr") {
-              next.lastLine = ev.text;
-            } else if (ev.kind === "done") {
-              next.phase = ev.ok ? "done" : "failed";
-              next.percent = ev.ok ? 100 : next.percent;
-              if (!ev.ok) {
-                next.error =
-                  lastStderr ??
-                  lastAnyLine ??
-                  `Download failed (exit ${ev.code}).`;
-              }
-              okFinal = ev.ok;
-            } else if (ev.kind === "error") {
-              next.phase = "failed";
-              next.error = ev.message;
-              okFinal = false;
-            }
-            return { ...d, [id]: next };
-          });
-        }
-      }
-
-      if (okFinal) {
-        await refreshLocal();
-      }
-    },
-    [refreshLocal],
-  );
+  // The actual download lifecycle lives in `<DownloadsProvider>` (see
+  // `app/lib/downloads-context.tsx`) so progress survives navigation
+  // between control routes. This page just registers a one-shot
+  // on-complete callback that fires the local-list refresh whenever a
+  // download finishes successfully — even if the user is currently on a
+  // different page when that happens, the next mount of ModelsPage picks
+  // up the freshly-installed model from `refreshLocal()` immediately
+  // rather than waiting for the 8 s poll.
+  useEffect(() => {
+    setOnComplete((id) => {
+      void id;
+      void refreshLocal();
+    });
+    return () => setOnComplete(null);
+  }, [refreshLocal, setOnComplete]);
 
   // Match catalog ids against the runtime's installed-model ids using a
   // normalized form (case-folded, dots/underscores collapsed to dashes,
@@ -500,7 +400,9 @@ export default function ModelsPage() {
                       local?.find((lm) => modelIdsMatch(lm.id, m.id))
                         ?.sizeBytes ?? null
                     }
-                    onDownload={() => startDownload(m.id)}
+                    onDownload={() =>
+                      startDownload(m.id, Math.round(m.sizeGb * 1024 ** 3))
+                    }
                     onSetStartup={(opts) => setStartupModel(m.id, opts)}
                     onDelete={() => deleteModel(m.id)}
                   />
@@ -573,7 +475,9 @@ export default function ModelsPage() {
                     startupEntryFor(m.id)?.forceSplit === true
                   }
                   startupBusy={startupBusy === m.id}
-                  onDownload={() => startDownload(m.id)}
+                  onDownload={() =>
+                    startDownload(m.id, Math.round(m.sizeGb * 1024 ** 3))
+                  }
                   onSetStartup={(opts) => setStartupModel(m.id, opts)}
                 />
               ))}
@@ -1157,13 +1061,21 @@ function MeshFitDetail({
 
 /**
  * "Run on the mesh" per-model toggle. Visible on the downloaded + startup
- * row so the user can opt the model into pipeline-parallel mode (writes
- * `force_split = true` to its `[[models]]` block).
+ * row so the user can opt the model into pooled-serve mode.
  *
- * Gated to MoE models that would split below the viability floor described
- * in `closedmesh-llm/closedmesh/docs/MoE_SPLIT_REPORT.md` — splitting MoEs
- * with too few experts per shard produces garbage output, so we'd rather
- * surface the constraint than let users foot-gun.
+ * Treat this as a black-box On/Off from the user's POV: implementation
+ * details (pipeline-vs-expert split, the `force_split` config field, the
+ * MoE experts-per-shard viability floor) are NOT surfaced here. If the
+ * mesh can't currently serve the model in pooled mode, the toggle is
+ * disabled with one short user-facing reason and that's it — no jargon,
+ * no file paths, no protocol-level explanation.
+ *
+ * The disabled-with-reason path still uses the same internal heuristic
+ * that previously rendered as a multi-line explainer (MoE expert count
+ * vs proposed shards), but the user-visible text is just "Won't run on
+ * this mesh yet". The detailed why-not lives in the runtime issue tracker
+ * because it's a runtime limitation we expect to fix, not a permanent
+ * user constraint.
  */
 function RunOnMeshToggle({
   model,
@@ -1178,27 +1090,23 @@ function RunOnMeshToggle({
   busy: boolean;
   onChange: (next: boolean) => void;
 }) {
-  // Heuristic MoE viability floor: report says shards with fewer than ~64
-  // experts produce coherent output. We use the runtime's reported expert
-  // count when available (more accurate than the catalog), or skip the
-  // gate when we don't know the shape of the model yet.
   const expertCount = meshModel?.expertCount ?? null;
   const eligiblePeers = meshModel?.meshFit?.eligiblePeerCount ?? 1;
   const proposedShards = Math.max(2, eligiblePeers);
   const expertsPerShard =
     expertCount && proposedShards > 0 ? expertCount / proposedShards : null;
-  const moeUnsafe =
+  const meshCannotServe =
     meshModel?.moe === true &&
     expertsPerShard !== null &&
     expertsPerShard < 64;
 
-  const explainer = moeUnsafe
-    ? `MoE models need at least ~64 experts per shard for coherent output. With the current mesh (${proposedShards} shards × ${expertCount ?? "?"} experts) this would split into ${expertsPerShard?.toFixed(0) ?? "?"} experts per shard — too low.`
+  const explainer = meshCannotServe
+    ? "Won't run on this mesh yet — needs more contributors to split safely."
     : forceSplit
-      ? "On: this model launches pipeline-parallel even when one box could fit it solo."
-      : "Off: the runtime decides per-launch (solo when possible, split when required).";
+      ? "On — runs across the mesh whenever it's loaded."
+      : "Off — runs solo when one machine can fit it.";
 
-  const disabled = busy || moeUnsafe;
+  const disabled = busy || meshCannotServe;
 
   return (
     <div className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)]/60 px-3 py-2.5">
@@ -1208,12 +1116,6 @@ function RunOnMeshToggle({
         </div>
         <div className="mt-0.5 max-w-md text-[11px] text-[var(--fg-muted)]">
           {explainer}
-        </div>
-        <div className="mt-1 text-[10px] text-[var(--fg-muted)]/80">
-          Touches{" "}
-          <span className="font-mono">force_split = true</span> in{" "}
-          <span className="font-mono">~/.closedmesh/config.toml</span> for
-          this model.
         </div>
       </div>
       <button
