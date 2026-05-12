@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatMessage } from "./ChatMessage";
 import { MeshAwareNote } from "./MeshAwareNote";
 import { MeshUnderprovisionedNote } from "./MeshUnderprovisionedNote";
+import { ModelSelector } from "./ModelSelector";
 import { apiUrl } from "../lib/runtime-target";
 
 const SESSION_KEY = "closedmesh:threadId";
@@ -80,8 +81,19 @@ export function ChatExperience({
   const [threadId, setThreadId] = useState<string | null>(null);
   const [hydratedMessages, setHydratedMessages] = useState<UIMessage[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(
+    undefined,
+  );
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Mirror `selectedModel` into a ref so the transport — created once via
+  // useMemo — can read the latest pick on every send without being torn
+  // down and re-instantiated each time the dropdown changes (which would
+  // also trigger a re-mount of the streaming connection).
+  const selectedModelRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    selectedModelRef.current = selectedModel;
+  }, [selectedModel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -96,7 +108,20 @@ export function ChatExperience({
   }, []);
 
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: apiUrl("/api/chat") }),
+    () =>
+      new DefaultChatTransport({
+        api: apiUrl("/api/chat"),
+        // `body` is a `Resolvable<object>`, so a function is invoked once
+        // per send. We read through `selectedModelRef` rather than closing
+        // over `selectedModel` directly — the transport is memoized with
+        // an empty dep list, so a stable closure here means the user's
+        // most recent dropdown choice always wins, even if they change
+        // it mid-stream and resend.
+        body: () => {
+          const model = selectedModelRef.current;
+          return model ? { model } : {};
+        },
+      }),
     [],
   );
 
@@ -229,6 +254,12 @@ export function ChatExperience({
 
       <footer className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)]/85 backdrop-blur">
         <div className={centered ? "mx-auto max-w-3xl px-4 py-4" : "px-4 py-4"}>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <ModelSelector
+              value={selectedModel}
+              onChange={setSelectedModel}
+            />
+          </div>
           <form
             onSubmit={submit}
             className="flex items-end gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-2 focus-within:border-[var(--accent)]/60"
