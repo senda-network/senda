@@ -254,12 +254,6 @@ export function ChatExperience({
 
       <footer className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)]/85 backdrop-blur">
         <div className={centered ? "mx-auto max-w-3xl px-4 py-4" : "px-4 py-4"}>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <ModelSelector
-              value={selectedModel}
-              onChange={setSelectedModel}
-            />
-          </div>
           <form
             onSubmit={submit}
             className="flex items-end gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-2 focus-within:border-[var(--accent)]/60"
@@ -277,6 +271,10 @@ export function ChatExperience({
               placeholder="Ask anything…"
               rows={1}
               className="max-h-[200px] flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] leading-relaxed text-[var(--fg)] placeholder:text-[var(--fg-muted)] focus:outline-none"
+            />
+            <ModelSelector
+              value={selectedModel}
+              onChange={setSelectedModel}
             />
             {isStreaming ? (
               <button
