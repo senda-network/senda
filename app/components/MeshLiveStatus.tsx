@@ -17,6 +17,11 @@ type StatusNode = {
    * intent to load; `capability.loadedModels` is the hosted-only
    * subset that actually proves readiness. */
   servingModels?: string[];
+  /** Pipeline-parallel split-group membership, when the node is part
+   * of one. The fit check below pools VRAM across split members so
+   * we don't say "waiting for capacity" when two contributors are in
+   * an active split that, together, comfortably holds the model. */
+  splitGroup?: { totalGroupVramGb?: number } | null;
 };
 
 type Status = {
@@ -123,12 +128,23 @@ export function MeshLiveStatus({
                 (m) => normalizeModelId(m.id) === normalizeModelId(id),
               );
               if (!catalog) return true; // unknown model — give it the benefit of the doubt
+              // When this node is in a pipeline split, the relevant
+              // capacity is the GROUP's pooled VRAM, not the single-host
+              // VRAM. Skipping this made the header pill say "waiting for
+              // capacity" any time a split was bringing up a model that
+              // didn't fit on either node alone — which is the canonical
+              // reason to split in the first place.
+              const groupVram = n.splitGroup?.totalGroupVramGb ?? 0;
               const hostVram = Math.min(
                 n.vramGb || Number.POSITIVE_INFINITY,
                 n.capability?.vramGb || Number.POSITIVE_INFINITY,
               );
-              if (!Number.isFinite(hostVram) || hostVram <= 0) return true;
-              return catalog.minVramGb - hostVram <= 0.5;
+              const effectiveVram = Math.max(
+                groupVram,
+                Number.isFinite(hostVram) ? hostVram : 0,
+              );
+              if (effectiveVram <= 0) return true;
+              return catalog.minVramGb - effectiveVram <= 0.5;
             });
             setHeadlineState(anyFittingLoad ? "loading" : "awaiting");
           }

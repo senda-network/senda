@@ -99,9 +99,23 @@ function warmingUpVerdict(node: NodeSummary): WarmingVerdict | null {
   // total. The conservative number is what actually constrains
   // llama-server's allocator, so it's what we should compare against
   // the catalog's minVramGb.
-  const hostVramGb = Math.min(
+  //
+  // When the node is in a pipeline-parallel split, the model is
+  // intentionally NOT supposed to fit on a single host — the whole
+  // point of the split is to pool VRAM across `splitGroup.peerIds`.
+  // Use the group's pooled total if it's the larger number, so a
+  // legitimate split-mode load doesn't get rendered as
+  // "underprovisioned · awaiting capacity" with a "Share your machine"
+  // CTA when in fact the mesh has plenty of capacity and the worker
+  // just hasn't finished bringing its layers up yet.
+  const soloVramGb = Math.min(
     node.vramGb || Number.POSITIVE_INFINITY,
     node.capability?.vramGb || Number.POSITIVE_INFINITY,
+  );
+  const groupVramGb = node.splitGroup?.totalGroupVramGb ?? 0;
+  const hostVramGb = Math.max(
+    groupVramGb,
+    Number.isFinite(soloVramGb) ? soloVramGb : 0,
   );
   if (!Number.isFinite(hostVramGb) || hostVramGb <= 0) {
     return { kind: "unknown", modelId, displayName: display };

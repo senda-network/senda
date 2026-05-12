@@ -284,13 +284,26 @@ function normalizeMoeShard(
   };
 }
 
-function summarizeCapability(cap: RuntimeCapability | undefined): NodeCapabilitySummary {
+/**
+ * `hostedOverride` is the peer's top-level `hosted_models` list. We accept it
+ * as an override because the runtime's `capability.loaded_models` is observably
+ * unreliable for pipeline_host peers — it stays empty even after the host's
+ * `hosted_models` has flipped on (which is the runtime's `llama_ready` gate).
+ * That mismatch made the public status page render Mac as "Loading" while it
+ * was genuinely serving Qwen3-30B as a pipeline host. The local self-node
+ * path already treats `hosted_models` as authoritative (see
+ * `inferLocalCapability`); peers should be treated the same way.
+ */
+function summarizeCapability(
+  cap: RuntimeCapability | undefined,
+  hostedOverride?: string[] | null,
+): NodeCapabilitySummary {
   return {
     backend: cap?.backend ?? "unknown",
     vendor: cap?.vendor ?? "none",
     computeClass: cap?.compute_class ?? "lo",
     vramGb: Math.round(((cap?.vram_total_mb ?? 0) / 1024) * 10) / 10,
-    loadedModels: cap?.loaded_models ?? [],
+    loadedModels: hostedOverride ?? cap?.loaded_models ?? [],
   };
 }
 
@@ -431,7 +444,7 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
       ...(peer.serving_models ?? []),
       ...(peer.hosted_models ?? []),
     ].filter((m, i, arr) => arr.indexOf(m) === i),
-    capability: summarizeCapability(peer.capability),
+    capability: summarizeCapability(peer.capability, peer.hosted_models),
     version: peer.version ?? null,
     splitRole: normalizeSplitRole(peer.split_role),
     splitGroup: normalizeSplitGroup(peer.split_group),
