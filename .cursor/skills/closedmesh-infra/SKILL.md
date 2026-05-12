@@ -56,6 +56,18 @@ Specifically, you have direct access to:
 
 The single exception: when the user is reporting visible behavior in the desktop UI ("the Models page shows X, the dot is yellow"), trust their description rather than re-deriving it from filesystem state. That is faster.
 
+### Heads-up: editing the launchd plist by hand is fragile
+
+Manual edits to `~/Library/LaunchAgents/dev.closedmesh.closedmesh.plist` get reverted by the desktop GUI's self-heal loop in `desktop/src/mesh.rs` (the `Rewrites ~/Library/LaunchAgents/dev.closedmesh.closedmesh.plist` function), and `launchctl bootout` returns `5: Input/output error` if any session has an open reference. The reliable sequence to apply a plist override is:
+
+1. `pkill -9 -f /Applications/ClosedMesh.app/Contents/MacOS/closedmesh` — kill the GUI app first; otherwise it rewrites the plist mid-edit.
+2. `launchctl bootout gui/$(id -u)/dev.closedmesh.closedmesh` — accept that this may fail with EIO, just inspect `launchctl list | grep closedmesh` to see if the agent is still loaded.
+3. If still loaded, `kill -TERM <pid>` the running `closedmesh serve` — KeepAlive fails to respawn (because we just booted out) and the agent unloads.
+4. Edit the plist, then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.closedmesh.closedmesh.plist`.
+5. Verify with `ps -axo command | grep "/closedmesh serve"` that the new flag is in argv.
+
+For one-off llama-server-level fixes (per-launch CLI flag overrides), the saner path is a shell-script shim at `~/.local/bin/llama-server-metal` (rename the real binary to `.real` and exec through the shim). Survives the desktop GUI's self-heal because the GUI doesn't touch `~/.local/bin/`. **But** the auto-upgrader replaces `~/.local/bin/llama-server-metal` on every runtime release, so any shim is a strictly temporary workaround until the underlying issue is fixed in the runtime.
+
 **Same rule applies to the entry node:** SSH yourself, don't ask. You have the key (`~/.ssh/closedmesh-deploy_ed25519`) and the host (`ubuntu@3.210.30.58`).
 
 ---
