@@ -6,7 +6,7 @@ import { PublicHeader } from "../components/PublicHeader";
 export const metadata: Metadata = {
   title: "ClosedMesh — your private LLM, on hardware people own",
   description:
-    "A peer-to-peer mesh of contributed machines, running open-weight models. No third-party API in the middle. Use the chat or run a node.",
+    "A peer-to-peer mesh that runs open-weight models end-to-end on the hardware contributors already own — Apple Silicon Macs and GPU boxes — with no third-party AI provider in the middle. Use the chat or run a node.",
 };
 
 /**

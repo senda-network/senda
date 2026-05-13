@@ -6,7 +6,7 @@ import { MeshLiveStats } from "../../components/MeshLiveStats";
 export const metadata: Metadata = {
   title: "How ClosedMesh works",
   description:
-    "One collective computer made of every machine that joins. A peer-to-peer mesh of contributed hardware running open-weight models — pool memory, run bigger models than any single box can hold, no third-party API in the middle.",
+    "One collective computer made of every machine that joins. A peer-to-peer mesh that runs open-weight models end-to-end on the hardware contributors already own — Apple Silicon Macs, NVIDIA / AMD / Intel GPU boxes — with no third-party AI provider in the middle.",
 };
 
 export default function AboutPage() {
@@ -58,12 +58,16 @@ export default function AboutPage() {
                 </span>
               </h1>
               <p className="mt-5 max-w-2xl text-pretty text-base leading-relaxed text-[var(--fg-muted)] sm:text-lg">
-                ClosedMesh pools memory and compute from contributors&apos;
-                hardware to run open-weight models — including ones too big
-                for any single laptop or workstation. Chat from
-                closedmesh.com or the desktop app, no install required. Add
-                a node from any capable machine and unlock more capacity for
-                the swarm. No third-party AI provider in the middle.
+                ClosedMesh runs open-weight models end-to-end on the
+                hardware contributors already own. An M-series Mac with
+                36–128 GB of unified memory is genuinely capable of
+                serving 30B–70B parameter models at full quality; the
+                mesh&apos;s job is to find the best peer for each session
+                and pair two peers via speculative decoding when one
+                peer isn&apos;t enough. Chat from closedmesh.com or the
+                desktop app, no install required. Add a node from any
+                capable machine to grow capacity for the swarm. No
+                third-party AI provider in the middle.
               </p>
             </div>
 
@@ -76,10 +80,13 @@ export default function AboutPage() {
 
             <div className="flex flex-wrap items-center gap-3 text-[12px]">
               <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                Pool memory across boxes
+                Apple Silicon native
               </span>
               <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                Models bigger than any one machine
+                Replication-first
+              </span>
+              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
+                Speculative decoding across peers
               </span>
               <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
                 OpenAI-compatible runtime
@@ -126,10 +133,11 @@ export default function AboutPage() {
               title="ClosedMesh LLM"
               subtitle="The peer-to-peer engine that serves the chat."
               points={[
-                "Runs on machines volunteered to the mesh — laptops, workstations, on-prem boxes.",
-                "Pipeline parallelism for dense models that don't fit on one machine.",
-                "MoE expert sharding for Mixture-of-Experts models — zero cross-node inference traffic.",
-                "Capability-aware routing: requests only go to nodes that can actually serve them.",
+                "Runs on machines volunteered to the mesh — Apple Silicon Macs, NVIDIA / AMD / Intel GPU boxes, on-prem workstations.",
+                "Replication-first: a model that fits on one peer runs there end-to-end, full quality, zero per-token network overhead.",
+                "Speculative decoding across two peers — small fast draft + larger verifier — for the mid-tier where one peer isn't enough.",
+                "Capability-aware routing: requests only go to peers that can actually serve them.",
+                "Pipeline-split and MoE expert-shard available as a power-user fallback for models that don't fit any single peer.",
               ]}
               footer={
                 <a
@@ -181,7 +189,7 @@ export default function AboutPage() {
             <NumberedStep
               n={3}
               title="Compute peers"
-              body="Volunteered nodes running ClosedMesh LLM. Auto-routes around offline ones, handles dense models split across several peers, MoE models sharded by expert."
+              body="Volunteered nodes running ClosedMesh LLM serve each session end-to-end on whichever peer fits the model. Auto-routes around offline ones; can pair two peers via speculative decoding for the mid-tier."
             />
           </div>
         </div>
@@ -205,12 +213,12 @@ export default function AboutPage() {
               body="Prompts go to a peer running an open-weight model on hardware that someone in the mesh owns. No OpenAI, Anthropic or Google in the loop — nothing to revoke, no provider terms to read."
             />
             <Feature
-              title="Heterogeneous hardware"
-              body="An M-series Mac, an RTX 4090 box and a Vulkan laptop happily serve the same conversation. Each node advertises its capability; the router only sends work it can actually run."
+              title="Apple Silicon is the hero"
+              body="M-series unified memory turns a $2.5–4.5k laptop into a 30B–70B-capable inference box at speeds same-price Windows GPU setups can't match. CUDA / ROCm / Vulkan boxes happily join too — each shines at different model sizes."
             />
             <Feature
-              title="Models bigger than one box"
-              body="Dense models split across nodes by layer (pipeline parallelism). MoE models split by expert with zero cross-node inference traffic."
+              title="Speculative decoding across peers"
+              body="Two peers cooperate per session — a small fast draft proposes 4–8 tokens, a larger verifier accepts them in one batched pass. The network hop amortises across many tokens, both peers earn for the same session."
             />
             <Feature
               title="OpenAI-compatible"

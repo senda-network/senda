@@ -178,6 +178,21 @@ export type NodeSummary = {
    */
   moeShard: MoeShard | null;
   /**
+   * True when this node is the elected `pipeline_host` for a model but
+   * one or more peers in `splitGroup.peerIds` is not yet `state="serving"`.
+   * In that case the node is structurally unable to fulfil inference for
+   * the model — the workers haven't loaded their layer ranges — and the
+   * route layer overrides `state` to `"loading"` and clears
+   * `capability.loadedModels` so downstream consumers (the public status
+   * page, the chat catalog, the SDK) don't mistake intent for capability.
+   *
+   * The pre-override `serving_models` list is preserved on `servingModels`
+   * so the UI can still say "trying to load DeepSeek-R1-Distill-70B,
+   * waiting on 2 workers". Always `false` for solo serves and standby
+   * nodes; only meaningful when `splitRole === "pipeline_host"`.
+   */
+  pipelineDegraded: boolean;
+  /**
    * Self-audit snapshot from the node's mesh-visibility loop. Mirrors
    * `closedmesh::mesh::visibility::MeshVisibilitySnapshot`. Present
    * only for the self node today (the only node we have a local
@@ -524,6 +539,10 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     splitRole: normalizeSplitRole(peer.split_role),
     splitGroup: normalizeSplitGroup(peer.split_group),
     moeShard: normalizeMoeShard(peer.moe_shard),
+    // Set in the post-processing pass `applyPipelineHealthGate`. We
+    // can't decide it here because we need the full peer list to know
+    // whether the workers have come up.
+    pipelineDegraded: false,
     // Peers don't include their own audit snapshot in the gossip-shaped
     // RuntimePeer payload — only the self-emitter does. Null here means
     // "we have no audit information about this peer", which the UI
@@ -567,6 +586,7 @@ export function reportToInvisibleNode(report: StoredPeerReport): NodeSummary {
     splitRole: null,
     splitGroup: null,
     moeShard: null,
+    pipelineDegraded: false,
     meshVisibility: report.meshVisibility,
   };
 }
@@ -669,6 +689,7 @@ function buildNodes(
     splitRole: normalizeSplitRole(rt.my_split_role),
     splitGroup: normalizeSplitGroup(rt.my_split_group),
     moeShard: normalizeMoeShard(rt.my_moe_shard),
+    pipelineDegraded: false,
     meshVisibility: normalizeMeshVisibility(rt.mesh_visibility),
   });
 
@@ -692,6 +713,104 @@ function buildNodes(
   addPeers(entry?.peers);
 
   return nodes;
+}
+
+/**
+ * Pipeline-parallel split is "healthy" iff every member of the
+ * split_group is itself in `state="serving"`. Until then, the elected
+ * pipeline_host has no functional inference path — its workers haven't
+ * loaded their layer ranges, so any chat request to that model would
+ * fall through to a llama.cpp error or hang.
+ *
+ * The runtime as of v0.66.17 still flips the host's state to "serving"
+ * the moment its own portion of the model is up, even if its workers
+ * are stuck loading 8 GB worth of a 70B model on a Laptop 4070 (which
+ * is never going to finish). That made the public `/status` page
+ * advertise e.g. "LYU · 16 GB VRAM · serving DeepSeek-R1-Distill-70B"
+ * for hours while every actual inference request would 503. This
+ * post-processing pass fixes the lie at the API surface so the
+ * website, the SDK consumer, and any future client get a truthful
+ * snapshot regardless of what the runtime reports.
+ *
+ * Two effects when a host's pipeline is degraded:
+ *
+ *   1. The host's `state` is downgraded from `"serving"` to `"loading"`
+ *      and `capability.loadedModels` is cleared. The page treats those
+ *      signals exactly like a normal still-loading peer, so the
+ *      "Available machines" list no longer shows it as functional.
+ *
+ *   2. The model is removed from the top-level `models` catalog if no
+ *      other healthy host (solo or split-with-all-workers-up) is
+ *      serving it. That makes the headline "N models available"
+ *      number match what the chat layer can actually route.
+ */
+export function applyPipelineHealthGate(
+  nodes: NodeSummary[],
+  models: string[],
+): { nodes: NodeSummary[]; models: string[] } {
+  const shortId = (id: string) => id.slice(0, 10);
+  const stateById = new Map<string, string>();
+  for (const n of nodes) {
+    stateById.set(shortId(n.id), n.state);
+  }
+
+  const isPipelineHealthy = (node: NodeSummary): boolean => {
+    if (node.splitRole !== "pipeline_host" && node.splitRole !== "pipeline_worker") {
+      return true;
+    }
+    if (!node.splitGroup) return true;
+    // Honesty rule applied symmetrically to host and worker peers: a
+    // pipeline cohort is healthy iff EVERY member (this node included)
+    // is in `state="serving"`. The host-only check we shipped first
+    // missed the May 13 split-brain mode, where every peer was Worker
+    // / loading and there was no host at all — so the host-only branch
+    // was a no-op and the dashboard kept rendering the cohort as
+    // contributing layers. Cover both sides here so a worker that's
+    // attached to a never-elected host gets the same `pipelineDegraded`
+    // treatment as the host with stuck workers.
+    for (const memberShort of node.splitGroup.peerIds) {
+      const memberState = stateById.get(memberShort);
+      if (memberState !== "serving") return false;
+    }
+    return true;
+  };
+
+  // Walk nodes; downgrade unhealthy pipeline hosts AND workers. We
+  // keep the original `servingModels` list (it's the user-facing
+  // "trying to load X" signal) but blank `capability.loadedModels`
+  // because that field is the routability claim and a degraded
+  // pipeline can't route.
+  const gatedNodes: NodeSummary[] = nodes.map((n) => {
+    if (n.splitRole !== "pipeline_host" && n.splitRole !== "pipeline_worker") {
+      return n;
+    }
+    if (isPipelineHealthy(n)) return n;
+    return {
+      ...n,
+      state: n.state === "serving" ? "loading" : n.state,
+      capability: { ...n.capability, loadedModels: [] },
+      pipelineDegraded: true,
+    };
+  });
+
+  // Filter the catalog: keep a model only if at least one healthy
+  // serving host (solo or all-workers-up split) is hosting it. A model
+  // that ONLY appears via the `pipeline_host` of a degraded split is
+  // not actually serveable and shouldn't be in the catalog.
+  const reachable = new Set<string>();
+  for (const n of gatedNodes) {
+    if (n.state !== "serving") continue;
+    for (const m of n.capability.loadedModels) reachable.add(m);
+  }
+  const filteredModels = models.filter((m) => reachable.has(m));
+  // If filtering would empty the catalog but the raw runtime claimed
+  // some models, fall back to the raw list with a warning surface
+  // rather than displaying zero — this protects against the case
+  // where the runtime emits a usable model that we can't match
+  // against any node payload (older schema, network race, etc.).
+  const finalModels = filteredModels.length > 0 ? filteredModels : models.length > 0 && reachable.size === 0 ? [] : filteredModels;
+
+  return { nodes: gatedNodes, models: finalModels };
 }
 
 export async function OPTIONS(req: Request) {
@@ -777,8 +896,18 @@ export async function GET(req: Request) {
       const selfId = runtime?.node_id ?? "local";
       nodes = mergePeerReports(nodes, reports, selfId);
     }
-    const nodeCount = nodes.length || 1;
-    const status: Status = { online: true, nodeCount, models, nodes };
+    // Truth gate: a pipeline_host whose workers haven't all finished
+    // loading is not actually serving anything. Apply this AFTER
+    // peer-report merging so any nodes synthesised from reports (state
+    // = "unreachable") factor into the worker-readiness check.
+    const gated = applyPipelineHealthGate(nodes, models);
+    const nodeCount = gated.nodes.length || 1;
+    const status: Status = {
+      online: true,
+      nodeCount,
+      models: gated.models,
+      nodes: gated.nodes,
+    };
     return applyCors(req, NextResponse.json(status));
   } catch {
     const status: Status = {

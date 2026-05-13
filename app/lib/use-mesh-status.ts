@@ -120,6 +120,19 @@ export type NodeSummary = {
   splitGroup: SplitGroup | null;
   moeShard: MoeShard | null;
   /**
+   * True when this node was elected `pipeline_host` for a model but at
+   * least one peer in `splitGroup.peerIds` is not yet `state="serving"`.
+   * The `/api/status` route gates this server-side: when degraded it
+   * also overrides `state` to `"loading"` and clears
+   * `capability.loadedModels`, so any UI that just keys off `state` and
+   * `loadedModels` keeps working without changes. Surfaces tell the
+   * fuller story ("Awaiting workers") by reading this flag.
+   *
+   * Optional in the type because older clients / cached payloads may
+   * not have the field; treat `undefined` as `false`.
+   */
+  pipelineDegraded?: boolean;
+  /**
    * Self-audit result from this node's mesh-visibility loop. Present
    * only for the self node today (the only one that runs the audit
    * loop locally). Phase 4 will populate this for other nodes by

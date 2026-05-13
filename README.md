@@ -5,10 +5,17 @@ can run a node and add compute to the mesh.**
 
 ClosedMesh is one open mesh of laptops, workstations, and GPU boxes
 serving open-weight models. The chat UI runs in any browser; inference
-runs on a peer in the network. There's no central GPU cluster, no cloud
-provider account, no third-party AI API in the loop, and no signup —
-prompts are not tied to an identity, and the runtime is open source so
-what each peer can do is auditable.
+runs end-to-end on a peer in the network whose hardware fits the model.
+There's no central GPU cluster, no cloud provider account, no
+third-party AI API in the loop, and no signup — prompts are not tied
+to an identity, and the runtime is open source so what each peer can
+do is auditable.
+
+Apple Silicon is the hero hardware: an M-series Mac with 36–128 GB of
+unified memory turns a $2.5–4.5k laptop into a 30B–70B-capable
+inference box at speeds Windows GPU setups at the same price can't
+match. CUDA / ROCm / Vulkan boxes happily join too — the mesh routes
+each request to whichever peer can serve it best.
 
 This repo contains the chat surface — a Next.js app deployed at
 [closedmesh.com](https://closedmesh.com) and bundled inside the
@@ -59,9 +66,22 @@ controller proxies it to either the public mesh or the local runtime,
 depending on how it was launched.
 
 The router only dispatches a request to peers that can actually serve
-it. Dense models split across nodes by layer; MoE models split by
-expert with no cross-node inference traffic. Offline peers are routed
+it. **Full-quality replication is the default**: each model runs
+end-to-end on a single peer whose hardware fits it, so the per-token
+critical path stays inside one machine and never crosses the public
+internet. The mesh's job is to find the best peer for each session,
+not to stitch weights across slow links. Offline peers are routed
 around automatically.
+
+The runtime can also pair two peers per session via **speculative
+decoding** — a small fast draft peer proposes tokens that a larger
+verifier peer accepts in batched passes — which is the only multi-peer
+mode that pays off on residential WAN, because the network hop
+amortises across many tokens. Pipeline parallel and MoE expert
+sharding are still in the runtime as a power-user fallback for models
+that don't fit on any single peer (see
+[`closedmesh-llm`](https://github.com/closedmesh/closedmesh-llm)),
+but they are no longer the default route.
 
 ## Hardware support
 

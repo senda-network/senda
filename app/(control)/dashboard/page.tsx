@@ -698,12 +698,57 @@ export default function DashboardPage() {
 
   const selfVram = selfNode?.capability.vramGb ?? selfNode?.vramGb ?? 0;
   const selfBackend = selfNode?.capability.backend ?? "cpu";
-  const loadedHere = selfNode?.capability.loadedModels ?? [];
+  const loadedHereRaw = selfNode?.capability.loadedModels ?? [];
+  // Stability gate. The runtime's `hosted_models` flickers — it can briefly
+  // contain a model name during a single poll while llama-server is in the
+  // middle of bringing the GGUF up, then drop it again on the next poll if
+  // the worker side of a pipeline split fails to connect (the May 13
+  // split-brain mode). The old dashboard treated a single positive poll as
+  // proof of "Ready" and lit up ModelReadyCard, ContributionCard, and the
+  // "Currently loaded" list; a Mac stuck mid-deadlock would render a green
+  // "loaded and waiting for requests" card while every chat request 503'd.
+  // Require the model to appear in TWO consecutive polls before treating
+  // it as actually loaded. Polls are 8 s apart so the worst-case false-
+  // negative window is ~8 s, vs the false-positive window which was
+  // unbounded for the user's three-laptop setup.
+  const loadedKey = loadedHereRaw.slice().sort().join("|");
+  const lastPollLoadedHere = useRef<string[]>([]);
+  const loadedHere = loadedHereRaw.filter((m) =>
+    lastPollLoadedHere.current.includes(m),
+  );
+  useEffect(() => {
+    lastPollLoadedHere.current = loadedHereRaw;
+    // Intentionally key on stringified content, not array identity:
+    // /api/status returns a fresh array reference every poll even when
+    // the contents are unchanged, so [loadedHereRaw] would fire on every
+    // render and never give us the "stable across 2 distinct polls"
+    // semantics we want.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedKey]);
   const startupConfigured = (startup ?? []).length > 0;
+
+  // A NodeSummary view of self with `capability.loadedModels` collapsed
+  // to the stable set. ThisNodeCard / ContributionCard / nodeDisplayState
+  // all read from `capability.loadedModels`; passing the stable view makes
+  // every Ready-positive surface inherit the 2-poll gate. Falls through
+  // to `selfNode` directly when there's no peer or the node has no
+  // capability block, since those branches don't render the optimistic
+  // copy anyway.
+  const stableSelfNode: NodeSummary | null = selfNode
+    ? {
+        ...selfNode,
+        capability: {
+          ...selfNode.capability,
+          loadedModels: loadedHere,
+        },
+      }
+    : null;
 
   // Detect "model just transitioned from not-loaded to loaded" and pop
   // the success card. Auto-clears after 12s — long enough to read,
   // short enough to not stick around forever once the user has seen it.
+  // Driven by the STABLE loadedHere so a one-poll flicker can't trigger
+  // a 12-second green pill on a deadlocked mesh.
   useEffect(() => {
     const prev = prevLoadedHere.current;
     const newlyLoaded = loadedHere.find((m) => !prev.includes(m));
@@ -813,7 +858,7 @@ export default function DashboardPage() {
           <MeshVisibilityBanner self={selfNode} />
 
           <ThisNodeCard
-            self={selfNode}
+            self={stableSelfNode}
             running={running}
             stopped={stopped}
             startupConfigured={startupConfigured}
@@ -901,7 +946,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {selfNode && <ContributionCard self={selfNode} />}
+          {stableSelfNode && <ContributionCard self={stableSelfNode} />}
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <SummaryStat
@@ -2248,6 +2293,18 @@ function Stat({
  */
 function ContributionCard({ self }: { self: NodeSummary }) {
   if (!self.splitRole) return null;
+
+  // Honesty gate: a degraded pipeline cohort is one where the runtime
+  // (or the website's applyPipelineHealthGate) has flagged
+  // `pipelineDegraded=true` because either no peer is `state="serving"`
+  // or the workers haven't all come up. Rendering "you're holding part
+  // of the model" when there is no host to receive the layers is the
+  // exact lie that motivated the May 13 fix — the rpc-server is up but
+  // sitting idle, contributing nothing. Refuse to render the green
+  // contribution card in that state; the amber pipeline-degraded note
+  // on the public status page (and the loading copy in ThisNodeCard)
+  // already tells the truthful story.
+  if (self.pipelineDegraded) return null;
 
   let title: string;
   let body: string;

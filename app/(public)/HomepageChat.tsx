@@ -57,8 +57,9 @@ function HomepageIntro({
           </span>
         </h1>
         <p className="mx-auto mt-4 max-w-md text-pretty text-[15px] leading-relaxed text-[var(--fg-muted)]">
-          A peer-to-peer mesh of contributed machines, running open-weight
-          models. No third-party API in the middle.
+          A peer-to-peer mesh of contributed machines running open-weight
+          models end-to-end. Each session lands on the peer that fits it
+          best. No third-party AI provider in the middle.
         </p>
         <div className="mt-5 flex justify-center">
           <MeshLiveStatus />

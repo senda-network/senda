@@ -348,6 +348,58 @@ function NodeCard({
         </div>
       )}
 
+      {/* Pipeline-degraded note. The /api/status route gates this
+          server-side and applies it to BOTH host and worker peers in
+          a degraded cohort — when any member of the split_group is not
+          `state="serving"`, every peer in the cohort is downgraded to
+          loading + cleared loadedModels + `pipelineDegraded=true`. The
+          two failure shapes we want to name explicitly here:
+
+          1. Host is up, workers are still mmap'ing weights
+             (`splitRole === "pipeline_host"`). Worth surfacing the
+             worker count + pooled memory so the operator knows what
+             they're waiting on.
+
+          2. No host has been elected at all — every peer in the cohort
+             is Worker / loading (`splitRole === "pipeline_worker"`).
+             This is the May 13 split-brain mode: nothing is going to
+             come up without operator intervention. Don't pretend a
+             host exists; describe the deadlock honestly. */}
+      {node.pipelineDegraded && node.splitGroup && (
+        <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[11px] text-amber-200">
+          {node.splitRole === "pipeline_host" ? (
+            <>
+              <span className="font-medium text-amber-300">
+                Awaiting {Math.max(0, node.splitGroup.peerIds.length - 1)}{" "}
+                {node.splitGroup.peerIds.length - 1 === 1 ? "worker" : "workers"}
+              </span>{" "}
+              to finish loading their layer ranges. The host is up but the
+              model can't be served until the pipeline pools{" "}
+              <span className="font-semibold text-amber-100">
+                {Math.round(node.splitGroup.totalGroupVramGb)} GB
+              </span>{" "}
+              across all {node.splitGroup.peerIds.length} machines.
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-amber-300">
+                Pipeline host not elected.
+              </span>{" "}
+              {node.splitGroup.peerIds.length} machines all want to share{" "}
+              {node.splitGroup.model}, but none has fit the model into
+              its own VRAM yet — so no peer has come up as the host that
+              the others can route to. The model needs about{" "}
+              <span className="font-semibold text-amber-100">
+                {Math.round(node.splitGroup.totalGroupVramGb)} GB
+              </span>{" "}
+              of pooled memory; until the largest peer finishes loading or
+              a bigger contributor joins, this node will keep running its
+              rpc-server idle.
+            </>
+          )}
+        </div>
+      )}
+
       {/* Models. While a node is in `loading`, its `servingModels` lists
           what it's *trying* to load, not what's actually loaded — so we
           render those as muted "loading: X" rather than as ready model
