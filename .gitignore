@@ -36,6 +36,11 @@ internal/
 # Vercel
 .vercel/
 
+# Local archives / scratch artifacts the team drops at the repo root.
+# Easy to commit by accident on a `git add -A` and bloats history once
+# pushed (see commit 657c996 — 6.6 MB Archive.zip slipped through).
+*.zip
+
 # Model cache and runtime data
 .closedmesh/
 .forgemesh/
