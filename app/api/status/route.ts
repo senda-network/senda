@@ -716,99 +716,60 @@ function buildNodes(
 }
 
 /**
- * Pipeline-parallel split is "healthy" iff every member of the
- * split_group is itself in `state="serving"`. Until then, the elected
- * pipeline_host has no functional inference path — its workers haven't
- * loaded their layer ranges, so any chat request to that model would
- * fall through to a llama.cpp error or hang.
+ * Mark `pipeline_host` / `pipeline_worker` nodes as `pipelineDegraded`
+ * ONLY when the runtime classifier already removed them from the cohort
+ * by setting `splitRole = null` upstream — that's the split-brain shape
+ * (no peer in the cohort has graduated to `NodeRole::Host`) which the
+ * Rust-side `classify_peer_split_role` / `classify_local_split_role`
+ * `host.is_none()` arm handles since v0.66.19.
  *
- * The runtime as of v0.66.17 still flips the host's state to "serving"
- * the moment its own portion of the model is up, even if its workers
- * are stuck loading 8 GB worth of a 70B model on a Laptop 4070 (which
- * is never going to finish). That made the public `/status` page
- * advertise e.g. "LYU · 16 GB VRAM · serving DeepSeek-R1-Distill-70B"
- * for hours while every actual inference request would 503. This
- * post-processing pass fixes the lie at the API surface so the
- * website, the SDK consumer, and any future client get a truthful
- * snapshot regardless of what the runtime reports.
+ * We do NOT downgrade based on cohort members' `state` field: a healthy
+ * pipeline split has the host in `state="serving"` and EVERY worker in
+ * `state="loading"` (workers run only `rpc-server` and never reach
+ * `serving` by design). The previous version of this gate treated those
+ * `loading` workers as evidence the pipeline was degraded, blanked the
+ * host's `capability.loadedModels`, and broke `scripts/ci-split-test.sh`
+ * along with every legitimate split serve in production. See the CI
+ * failure on commit 0fa439c8 for the trace and the matching revert in
+ * `closedmesh-llm/closedmesh/src/api/mod.rs::pipeline_host_degraded`.
  *
- * Two effects when a host's pipeline is degraded:
- *
- *   1. The host's `state` is downgraded from `"serving"` to `"loading"`
- *      and `capability.loadedModels` is cleared. The page treats those
- *      signals exactly like a normal still-loading peer, so the
- *      "Available machines" list no longer shows it as functional.
- *
- *   2. The model is removed from the top-level `models` catalog if no
- *      other healthy host (solo or split-with-all-workers-up) is
- *      serving it. That makes the headline "N models available"
- *      number match what the chat layer can actually route.
+ * This pass also drops models from the top-level `models` catalog when
+ * no node is in `state="serving"` for them, so the "N models available"
+ * pill matches what the chat layer can actually route — but it does so
+ * by reading the runtime-supplied `state` directly, NOT by inferring
+ * health from cohort membership.
  */
 export function applyPipelineHealthGate(
   nodes: NodeSummary[],
   models: string[],
 ): { nodes: NodeSummary[]; models: string[] } {
-  const shortId = (id: string) => id.slice(0, 10);
-  const stateById = new Map<string, string>();
-  for (const n of nodes) {
-    stateById.set(shortId(n.id), n.state);
-  }
+  // The runtime already does the honest work of refusing to label a
+  // peer as `pipeline_host` / `pipeline_worker` when there's no actual
+  // host in the cohort (see `classify_peer_split_role` in the runtime).
+  // Pre-v0.66.19 runtimes still emit those labels in the split-brain
+  // case; for those we have no reliable way to distinguish "healthy
+  // worker (steady-state loading)" from "deadlocked worker", so we
+  // leave `pipelineDegraded = false` and trust the runtime's `state`
+  // field. Newer runtimes will get the honest signal natively.
+  const gatedNodes = nodes;
 
-  const isPipelineHealthy = (node: NodeSummary): boolean => {
-    if (node.splitRole !== "pipeline_host" && node.splitRole !== "pipeline_worker") {
-      return true;
-    }
-    if (!node.splitGroup) return true;
-    // Honesty rule applied symmetrically to host and worker peers: a
-    // pipeline cohort is healthy iff EVERY member (this node included)
-    // is in `state="serving"`. The host-only check we shipped first
-    // missed the May 13 split-brain mode, where every peer was Worker
-    // / loading and there was no host at all — so the host-only branch
-    // was a no-op and the dashboard kept rendering the cohort as
-    // contributing layers. Cover both sides here so a worker that's
-    // attached to a never-elected host gets the same `pipelineDegraded`
-    // treatment as the host with stuck workers.
-    for (const memberShort of node.splitGroup.peerIds) {
-      const memberState = stateById.get(memberShort);
-      if (memberState !== "serving") return false;
-    }
-    return true;
-  };
-
-  // Walk nodes; downgrade unhealthy pipeline hosts AND workers. We
-  // keep the original `servingModels` list (it's the user-facing
-  // "trying to load X" signal) but blank `capability.loadedModels`
-  // because that field is the routability claim and a degraded
-  // pipeline can't route.
-  const gatedNodes: NodeSummary[] = nodes.map((n) => {
-    if (n.splitRole !== "pipeline_host" && n.splitRole !== "pipeline_worker") {
-      return n;
-    }
-    if (isPipelineHealthy(n)) return n;
-    return {
-      ...n,
-      state: n.state === "serving" ? "loading" : n.state,
-      capability: { ...n.capability, loadedModels: [] },
-      pipelineDegraded: true,
-    };
-  });
-
-  // Filter the catalog: keep a model only if at least one healthy
-  // serving host (solo or all-workers-up split) is hosting it. A model
-  // that ONLY appears via the `pipeline_host` of a degraded split is
-  // not actually serveable and shouldn't be in the catalog.
+  // Catalog filter: a model is reachable iff at least one node has it
+  // in `capability.loadedModels` AND that node is in `state="serving"`.
+  // Workers in a healthy split are in `loading` and don't contribute
+  // here — only the host that actually holds the routable HTTP path
+  // does. That matches the runtime router's own target-picking logic.
   const reachable = new Set<string>();
   for (const n of gatedNodes) {
     if (n.state !== "serving") continue;
     for (const m of n.capability.loadedModels) reachable.add(m);
   }
   const filteredModels = models.filter((m) => reachable.has(m));
-  // If filtering would empty the catalog but the raw runtime claimed
-  // some models, fall back to the raw list with a warning surface
-  // rather than displaying zero — this protects against the case
-  // where the runtime emits a usable model that we can't match
-  // against any node payload (older schema, network race, etc.).
-  const finalModels = filteredModels.length > 0 ? filteredModels : models.length > 0 && reachable.size === 0 ? [] : filteredModels;
+  const finalModels =
+    filteredModels.length > 0
+      ? filteredModels
+      : models.length > 0 && reachable.size === 0
+        ? []
+        : filteredModels;
 
   return { nodes: gatedNodes, models: finalModels };
 }
