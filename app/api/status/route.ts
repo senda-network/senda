@@ -333,7 +333,7 @@ function normalizeMoeShard(
   };
 }
 
-function normalizeMeshVisibility(
+export function normalizeMeshVisibility(
   raw: RuntimeMeshVisibility | null | undefined,
 ): MeshVisibility | null {
   if (!raw) return null;
@@ -547,7 +547,7 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
  * useful bit there. We mark `state: "unreachable"` because that's the
  * pre-existing label the dashboard treats as "do not route here".
  */
-function reportToInvisibleNode(report: StoredPeerReport): NodeSummary {
+export function reportToInvisibleNode(report: StoredPeerReport): NodeSummary {
   return {
     id: report.nodeId,
     hostname: report.hostname,
@@ -584,7 +584,7 @@ function reportToInvisibleNode(report: StoredPeerReport): NodeSummary {
  *      `state: "unreachable"` so the UI can render it in a "claimed
  *      but invisible" section.
  */
-function mergePeerReports(
+export function mergePeerReports(
   nodes: NodeSummary[],
   reports: StoredPeerReport[],
   selfId: string,
