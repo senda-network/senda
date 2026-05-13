@@ -74,6 +74,44 @@ export function nodeDisplayState(
     };
   }
 
+  // Mesh-visibility audit short-circuits everything else: a node that
+  // says it's "Ready · Serving X" while the entry node can't see it
+  // is the exact failure mode that motivated Slice 1. The old
+  // implementation cheerfully painted that as green; we now paint it
+  // amber/red so the operator notices BEFORE chat requests start
+  // 503-ing.
+  //
+  // We only act on `invisible` (the entry was reachable but our id
+  // wasn't in its peers list). `entry_unreachable` could just be a
+  // transient WAN blip — we want a few consecutive misses before
+  // alarming. The runtime tracks consecutiveInvisibleCount for us;
+  // surface a red banner once we've crossed the soft-reconnect
+  // threshold (3 ≈ 90 s of confirmed bad audit).
+  const visibility = node.meshVisibility;
+  if (visibility && visibility.state === "invisible") {
+    return {
+      dot: "bg-red-500",
+      badge: "border-red-400/40 bg-red-400/10 text-red-300",
+      label: "Invisible",
+      description: visibility.softReconnectTriggered
+        ? "Mesh entry node can't see this node. Auto-reconnect in progress — chat requests will not route here until visibility is restored."
+        : "Mesh entry node can't see this node. Local state says serving, but routing is broken. Auto-reconnect will kick in shortly.",
+    };
+  }
+  if (
+    visibility &&
+    visibility.state === "entry_unreachable" &&
+    visibility.consecutiveInvisibleCount >= 3
+  ) {
+    return {
+      dot: "bg-amber-400",
+      badge: "border-amber-400/40 bg-amber-400/10 text-amber-300",
+      label: "Entry unreachable",
+      description:
+        "Cannot reach the mesh entry node from this machine — chat requests can still route via the local mesh, but the public website may not list this node.",
+    };
+  }
+
   const greenBadge =
     "border-emerald-400/40 bg-emerald-400/10 text-emerald-300";
   // `loadedModels` is the actual readiness signal: the controller's

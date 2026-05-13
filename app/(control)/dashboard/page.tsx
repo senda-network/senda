@@ -810,6 +810,8 @@ export default function DashboardPage() {
             />
           )}
 
+          <MeshVisibilityBanner self={selfNode} />
+
           <ThisNodeCard
             self={selfNode}
             running={running}
@@ -1070,6 +1072,125 @@ function RepairBanner({
       </div>
     </section>
   );
+}
+
+/**
+ * Honest visibility banner.
+ *
+ * The runtime's self-audit loop (Slice 1) tracks whether the mesh entry
+ * node currently sees us in its peers list. If it doesn't, every chat
+ * request routed via `https://closedmesh.com` will skip us — but the
+ * old dashboard would still render a cheerful green "Ready · Serving X"
+ * pill because the *local* runtime had decided to commit to a model and
+ * we treated that as ground truth.
+ *
+ * This banner makes the mismatch unmissable. The semantics:
+ *
+ *   - Audit `visible`               → render nothing (default happy
+ *                                     path; the existing pill is now
+ *                                     trustworthy)
+ *   - Audit `unknown`               → render nothing (probe hasn't
+ *                                     landed yet; don't flash a scary
+ *                                     banner in the first 30 s after
+ *                                     launch)
+ *   - Audit `invisible`             → red banner; the runtime has
+ *                                     confirmed the entry doesn't see
+ *                                     us. Slice 2 is auto-reconnecting
+ *                                     in the background; tell the user
+ *   - Audit `entry_unreachable` with
+ *     count >= 3 (~90 s)            → amber banner; might be a network
+ *                                     blip on our side, doesn't mean
+ *                                     we're broken yet
+ *   - Audit `entry_unreachable` with
+ *     count <  3                    → render nothing; single transient
+ *                                     miss isn't worth alarming over
+ *
+ * Older runtimes (<0.66.18) don't emit `mesh_visibility` at all, in
+ * which case `self?.meshVisibility` is null and the banner stays
+ * hidden. Slice 1 of this rollout ships the runtime field; once that's
+ * propagated via the runtime auto-upgrader (6 h cadence per
+ * `spawn_runtime_upgrade_loop`), every install starts populating it
+ * and the banner becomes active without any desktop release.
+ */
+function MeshVisibilityBanner({ self }: { self: NodeSummary | null }) {
+  const v = self?.meshVisibility;
+  if (!v) return null;
+  if (v.state === "visible" || v.state === "unknown") return null;
+  if (v.state === "entry_unreachable" && v.consecutiveInvisibleCount < 3) {
+    return null;
+  }
+
+  const isInvisible = v.state === "invisible";
+  const tone = isInvisible
+    ? {
+        border: "border-red-400/40",
+        bg: "bg-red-400/5",
+        accent: "text-red-300",
+        dot: "bg-red-500",
+        title: "Not visible to the mesh entry",
+        body: v.softReconnectTriggered
+          ? "The public website cannot route chat requests to this machine right now. We're already auto-reconnecting in the background. If this persists for ~4 minutes the runtime will restart itself."
+          : "The public website cannot route chat requests to this machine right now. Local mesh state says we're serving, but the entry's peer list disagrees. Auto-reconnect will kick in shortly.",
+      }
+    : {
+        border: "border-amber-400/40",
+        bg: "bg-amber-400/5",
+        accent: "text-amber-300",
+        dot: "bg-amber-400",
+        title: "Mesh entry unreachable",
+        body: "We can't reach the public mesh entry from this machine — likely a transient network issue on this end. Local mesh routing is still working; only the public website status is affected until this clears.",
+      };
+
+  const ago = relativeTimeAgo(v.lastVisibleUnix);
+  const audited = relativeTimeAgo(v.lastCheckUnix);
+
+  return (
+    <section className={`rounded-2xl border ${tone.border} ${tone.bg} p-5`}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 max-w-2xl">
+          <div
+            className={`text-[10px] uppercase tracking-[0.16em] ${tone.accent}`}
+          >
+            Mesh visibility · {tone.title}
+          </div>
+          <p className="mt-1.5 text-sm text-[var(--fg)]">{tone.body}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-[var(--fg-muted)]">
+            <span>entry: {v.entryUrl || "—"}</span>
+            <span aria-hidden>·</span>
+            <span>last visible: {ago ?? "never this session"}</span>
+            <span aria-hidden>·</span>
+            <span>last probe: {audited ?? "—"}</span>
+            <span aria-hidden>·</span>
+            <span>misses: {v.consecutiveInvisibleCount}</span>
+            {v.softReconnectTriggered && (
+              <>
+                <span aria-hidden>·</span>
+                <span className={tone.accent}>auto-reconnecting</span>
+              </>
+            )}
+          </div>
+          {v.lastError && (
+            <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap rounded bg-[var(--bg-elev-2)] px-2 py-1 font-mono text-[10px] text-[var(--fg-muted)]">
+              {v.lastError}
+            </pre>
+          )}
+        </div>
+        <span
+          aria-hidden
+          className={`mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full ${tone.dot} shadow-[0_0_14px_currentColor]`}
+        />
+      </div>
+    </section>
+  );
+}
+
+function relativeTimeAgo(unixSeconds: number | null): string | null {
+  if (!unixSeconds) return null;
+  const deltaSec = Math.max(0, Math.floor(Date.now() / 1000 - unixSeconds));
+  if (deltaSec < 60) return `${deltaSec}s ago`;
+  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}m ago`;
+  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}h ago`;
+  return `${Math.floor(deltaSec / 86400)}d ago`;
 }
 
 function ThisNodeCard({

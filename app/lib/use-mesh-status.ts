@@ -34,6 +34,71 @@ export type MoeShard = {
   totalShards: number;
 };
 
+/**
+ * Outcome of one mesh-visibility probe against the configured entry
+ * node. Mirrors `closedmesh::mesh::visibility::MeshVisibilityState` in
+ * the runtime. The audit answers the only question the dashboard's
+ * green pill actually cares about: **does the entry node currently
+ * know we exist?**
+ *
+ *   - `unknown`             — first 30 s after launch, no probe has
+ *                             landed yet; render "checking…"
+ *   - `visible`             — the entry's `peers[]` contains us; we
+ *                             are reachable from the public website
+ *   - `invisible`           — the entry was reachable but our node_id
+ *                             was not in its peers list; we are
+ *                             silently broken
+ *   - `entry_unreachable`   — could not reach the entry at all
+ *                             (network blip, captive portal, entry
+ *                             rebooting)
+ */
+export type MeshVisibilityState =
+  | "unknown"
+  | "visible"
+  | "invisible"
+  | "entry_unreachable";
+
+/**
+ * Self-audit snapshot the runtime emits on its `/api/status` when it
+ * was started with `--join-url`. Present only for the local self node
+ * (peers don't audit themselves over our gossip); will be populated
+ * for other nodes once Slice 4 plumbs per-peer audit reports through
+ * Vercel KV.
+ */
+export type MeshVisibility = {
+  state: MeshVisibilityState;
+  /** Unix seconds of the most recent probe attempt, any outcome. */
+  lastCheckUnix: number | null;
+  /** Unix seconds of the most recent `visible` probe. */
+  lastVisibleUnix: number | null;
+  /**
+   * Consecutive non-`visible` probes since the last `visible`. Drives
+   * the auto-heal escalation in the runtime: 3 = soft reconnect
+   * (re-`node.join` with a fresh token), 8 = hard reset (process
+   * exit, supervisor restart). The dashboard renders this so users
+   * can see escalation in flight rather than having to wait silently.
+   */
+  consecutiveInvisibleCount: number;
+  /** Last failure reason; null when state is `visible`. */
+  lastError: string | null;
+  /** Entry URL being probed (e.g. `https://mesh.closedmesh.com`). */
+  entryUrl: string;
+  /**
+   * True if the audit loop has issued at least one soft reconnect
+   * since the last `visible` outcome. The dashboard shows this so
+   * users understand the spinner means "trying to fix itself" rather
+   * than "hung".
+   */
+  softReconnectTriggered: boolean;
+  /**
+   * True if the audit loop decided a hard reset is needed. Set ~1 s
+   * before `std::process::exit`, so a fast UI poll can record it.
+   * Once the runtime restarts the counter resets and this flips back
+   * to false at the next `visible`.
+   */
+  hardResetTriggered: boolean;
+};
+
 export type NodeSummary = {
   id: string;
   hostname: string | null;
@@ -54,6 +119,16 @@ export type NodeSummary = {
   splitRole: SplitRole;
   splitGroup: SplitGroup | null;
   moeShard: MoeShard | null;
+  /**
+   * Self-audit result from this node's mesh-visibility loop. Present
+   * only for the self node today (the only one that runs the audit
+   * loop locally). Phase 4 will populate this for other nodes by
+   * fanning audit reports through the public website.
+   *
+   * Null on older runtimes that don't run the audit, or on the entry
+   * node itself (which has nothing to audit against).
+   */
+  meshVisibility: MeshVisibility | null;
 };
 
 /**

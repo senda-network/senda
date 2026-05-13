@@ -421,7 +421,25 @@ function IssueNodeRow({
       if (loadingFor > 0) return `loading ${formatDuration(loadingFor)}`;
       return "loading";
     }
-    if (node.state === "unreachable") return "unreachable from entry node";
+    if (node.state === "unreachable") {
+      // Slice 4: a peer that's only in our list because it phoned home
+      // its audit (`meshVisibility` non-null) is in a more specific
+      // failure mode than a peer that the entry simply stopped
+      // hearing from — it's actively reporting in but the entry
+      // can't see it. Label accordingly so operators don't conflate
+      // the two while debugging.
+      if (node.meshVisibility) {
+        if (node.meshVisibility.state === "invisible") {
+          return node.meshVisibility.softReconnectTriggered
+            ? "reporting in but invisible to entry · auto-reconnecting"
+            : "reporting in but invisible to entry";
+        }
+        if (node.meshVisibility.state === "entry_unreachable") {
+          return `can't reach entry from this peer · ${node.meshVisibility.consecutiveInvisibleCount} miss(es)`;
+        }
+      }
+      return "unreachable from entry node";
+    }
     if (node.state === "offline") return "offline";
     return node.state;
   })();

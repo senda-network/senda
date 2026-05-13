@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { applyCors, preflightResponse } from "../_cors";
+import { listReports, type StoredPeerReport } from "../peer-report/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -176,6 +177,28 @@ export type NodeSummary = {
    * When present, the MoE expert-shard membership for this node.
    */
   moeShard: MoeShard | null;
+  /**
+   * Self-audit snapshot from the node's mesh-visibility loop. Mirrors
+   * `closedmesh::mesh::visibility::MeshVisibilitySnapshot`. Present
+   * only for the self node today (the only node we have a local
+   * runtime for); a future slice will phone-home per-peer audits so
+   * other nodes' visibility can be rendered the same way.
+   *
+   * Null on older runtimes that don't run the audit loop, or on the
+   * entry node itself (no parent entry to verify against).
+   */
+  meshVisibility: MeshVisibility | null;
+};
+
+export type MeshVisibility = {
+  state: "unknown" | "visible" | "invisible" | "entry_unreachable";
+  lastCheckUnix: number | null;
+  lastVisibleUnix: number | null;
+  consecutiveInvisibleCount: number;
+  lastError: string | null;
+  entryUrl: string;
+  softReconnectTriggered: boolean;
+  hardResetTriggered: boolean;
 };
 
 type Status = {
@@ -230,6 +253,23 @@ type RuntimeGpu = {
   vram_bytes?: number;
 };
 
+/**
+ * Mirrors `closedmesh::mesh::visibility::MeshVisibilitySnapshot` in the
+ * runtime — see the doc on the Rust struct for the full audit semantics.
+ * Present only when the runtime was started with `--join-url`; absent
+ * (and treated as null) on older runtimes that pre-date Slice 1.
+ */
+type RuntimeMeshVisibility = {
+  state: "unknown" | "visible" | "invisible" | "entry_unreachable";
+  last_check_unix?: number | null;
+  last_visible_unix?: number | null;
+  consecutive_invisible_count: number;
+  last_error?: string | null;
+  entry_url: string;
+  soft_reconnect_triggered: boolean;
+  hard_reset_triggered: boolean;
+};
+
 type RuntimeStatus = {
   node_id?: string;
   is_host?: boolean;
@@ -253,6 +293,15 @@ type RuntimeStatus = {
   my_split_role?: string | null;
   my_split_group?: RuntimeSplitGroup | null;
   my_moe_shard?: RuntimeMoeShard | null;
+  /**
+   * Mesh-visibility audit snapshot for THIS node. Only the local
+   * runtime emits this on its own /api/status — peers do not include
+   * it in gossip — so it's surfaced only on the self node in
+   * `NodeSummary.meshVisibility`. Older runtimes simply omit the
+   * field, in which case `normalizeMeshVisibility` returns null and
+   * the UI degrades to its pre-Slice-1 behaviour.
+   */
+  mesh_visibility?: RuntimeMeshVisibility | null;
 };
 
 function normalizeSplitRole(raw: string | null | undefined): SplitRole {
@@ -281,6 +330,32 @@ function normalizeMoeShard(
   return {
     model: raw.model,
     totalShards: raw.total_shards ?? 0,
+  };
+}
+
+function normalizeMeshVisibility(
+  raw: RuntimeMeshVisibility | null | undefined,
+): MeshVisibility | null {
+  if (!raw) return null;
+  // Defensive: accept any string here but only declare the four known
+  // states in our type. Future runtime values pass through as "unknown"
+  // so the UI doesn't crash on a schema bump.
+  const state: MeshVisibility["state"] =
+    raw.state === "visible" ||
+    raw.state === "invisible" ||
+    raw.state === "entry_unreachable" ||
+    raw.state === "unknown"
+      ? raw.state
+      : "unknown";
+  return {
+    state,
+    lastCheckUnix: raw.last_check_unix ?? null,
+    lastVisibleUnix: raw.last_visible_unix ?? null,
+    consecutiveInvisibleCount: raw.consecutive_invisible_count ?? 0,
+    lastError: raw.last_error ?? null,
+    entryUrl: raw.entry_url ?? "",
+    softReconnectTriggered: !!raw.soft_reconnect_triggered,
+    hardResetTriggered: !!raw.hard_reset_triggered,
   };
 }
 
@@ -449,7 +524,101 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     splitRole: normalizeSplitRole(peer.split_role),
     splitGroup: normalizeSplitGroup(peer.split_group),
     moeShard: normalizeMoeShard(peer.moe_shard),
+    // Peers don't include their own audit snapshot in the gossip-shaped
+    // RuntimePeer payload — only the self-emitter does. Null here means
+    // "we have no audit information about this peer", which the UI
+    // distinguishes from `state: "invisible"` (definitive negative
+    // answer). Slice 4's `mergePeerReports` overwrites this when a
+    // peer-report exists for the same node.
+    meshVisibility: null,
   };
+}
+
+/**
+ * Convert a peer report into a synthetic NodeSummary for the case
+ * where the report's nodeId is *not* in the entry's peer list (i.e.
+ * the silently-broken state). The visible/role/state fields are
+ * conservative pessimistic defaults so the UI can render the entry
+ * as "claimed-but-invisible" without lying about capability.
+ *
+ * `loaded_models` defaults to the report's `servingModels` because
+ * the report-only path is what unlocks "this peer was hosting X but
+ * we can't see them" — the loaded model list is the operationally
+ * useful bit there. We mark `state: "unreachable"` because that's the
+ * pre-existing label the dashboard treats as "do not route here".
+ */
+function reportToInvisibleNode(report: StoredPeerReport): NodeSummary {
+  return {
+    id: report.nodeId,
+    hostname: report.hostname,
+    isSelf: false,
+    role: "Worker",
+    state: "unreachable",
+    vramGb: 0,
+    servingModels: report.servingModels,
+    capability: {
+      backend: "unknown",
+      vendor: "none",
+      computeClass: "lo",
+      vramGb: 0,
+      loadedModels: report.servingModels,
+    },
+    version: report.version,
+    splitRole: null,
+    splitGroup: null,
+    moeShard: null,
+    meshVisibility: report.meshVisibility,
+  };
+}
+
+/**
+ * Merge peer-report data into the unified node list.
+ *
+ * Two outcomes per report:
+ *   1. The peer is already in the unified list (matched by short id).
+ *      We overlay the report's `meshVisibility` on the existing node
+ *      — the entry's view doesn't include audit data, but the report
+ *      does, and the audit is the truth signal we actually want.
+ *   2. The peer is NOT in the unified list. The report is the only
+ *      evidence this peer exists; synthesize a `NodeSummary` with
+ *      `state: "unreachable"` so the UI can render it in a "claimed
+ *      but invisible" section.
+ */
+function mergePeerReports(
+  nodes: NodeSummary[],
+  reports: StoredPeerReport[],
+  selfId: string,
+): NodeSummary[] {
+  const shortId = (id: string) => id.slice(0, 10);
+  const byShort = new Map<string, NodeSummary>();
+  for (const n of nodes) byShort.set(shortId(n.id), n);
+
+  const result: NodeSummary[] = [...nodes];
+  for (const report of reports) {
+    const key = shortId(report.nodeId);
+    // Don't reprocess the local self — its meshVisibility was set
+    // directly from the local runtime in `buildNodes`.
+    if (key === shortId(selfId)) continue;
+
+    const existing = byShort.get(key);
+    if (existing) {
+      existing.meshVisibility = report.meshVisibility;
+      // Refresh hostname/version from the report when the entry left
+      // them blank. Don't overwrite values the entry *did* provide —
+      // its view is closer to ground truth for non-audit fields.
+      if (!existing.hostname && report.hostname) {
+        existing.hostname = report.hostname;
+      }
+      if (!existing.version && report.version) {
+        existing.version = report.version;
+      }
+      continue;
+    }
+
+    result.push(reportToInvisibleNode(report));
+    byShort.set(key, result[result.length - 1]);
+  }
+  return result;
 }
 
 /**
@@ -500,6 +669,7 @@ function buildNodes(
     splitRole: normalizeSplitRole(rt.my_split_role),
     splitGroup: normalizeSplitGroup(rt.my_split_group),
     moeShard: normalizeMoeShard(rt.my_moe_shard),
+    meshVisibility: normalizeMeshVisibility(rt.mesh_visibility),
   });
 
   const addPeers = (peers: RuntimePeer[] | undefined) => {
@@ -595,7 +765,18 @@ export async function GET(req: Request) {
     const localModels = modelsFromRuntime(runtime, v1Models);
     const models =
       entryModels.length > localModels.length ? entryModels : localModels;
-    const nodes = runtime ? buildNodes(runtime, entry) : [];
+    let nodes = runtime ? buildNodes(runtime, entry) : [];
+    // Slice 4: merge in any peer audit reports the website has
+    // received directly. This catches the silently-broken case — a
+    // peer that claims to be serving X but isn't routable from the
+    // entry — which the entry's own /api/status cannot report on by
+    // construction. `listReports` returns at most a few-minute-old
+    // entries; older reports are dropped on read.
+    const reports = listReports();
+    if (reports.length > 0) {
+      const selfId = runtime?.node_id ?? "local";
+      nodes = mergePeerReports(nodes, reports, selfId);
+    }
     const nodeCount = nodes.length || 1;
     const status: Status = { online: true, nodeCount, models, nodes };
     return applyCors(req, NextResponse.json(status));
