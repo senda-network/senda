@@ -373,28 +373,25 @@ function NodeCard({
                 Awaiting {Math.max(0, node.splitGroup.peerIds.length - 1)}{" "}
                 {node.splitGroup.peerIds.length - 1 === 1 ? "worker" : "workers"}
               </span>{" "}
-              to finish loading their layer ranges. The host is up but the
-              model can't be served until the pipeline pools{" "}
-              <span className="font-semibold text-amber-100">
-                {Math.round(node.splitGroup.totalGroupVramGb)} GB
-              </span>{" "}
-              across all {node.splitGroup.peerIds.length} machines.
+              to finish loading their layer ranges. This node is the
+              elected host, but the cohort can't serve until every worker
+              has its layer range resident in memory.
             </>
           ) : (
             <>
               <span className="font-medium text-amber-300">
                 Pipeline host not elected.
               </span>{" "}
-              {node.splitGroup.peerIds.length} machines all want to share{" "}
-              {node.splitGroup.model}, but none has fit the model into
-              its own VRAM yet — so no peer has come up as the host that
-              the others can route to. The model needs about{" "}
-              <span className="font-semibold text-amber-100">
-                {Math.round(node.splitGroup.totalGroupVramGb)} GB
-              </span>{" "}
-              of pooled memory; until the largest peer finishes loading or
-              a bigger contributor joins, this node will keep running its
-              rpc-server idle.
+              {node.splitGroup.peerIds.length} machines are committed to{" "}
+              {node.splitGroup.model}, but none has finished claiming the
+              host role yet — so there's no peer for traffic to route
+              through. Usually the largest peer is still loading weights
+              and will advertise itself as host once the model is
+              resident. If this stays stuck for several minutes one
+              contributor is likely blocking the cohort; restart the
+              affected runtime to break the deadlock. (v0.66.21+
+              auto-recovers from stuck hosts after a 30-second grace
+              window.)
             </>
           )}
         </div>
