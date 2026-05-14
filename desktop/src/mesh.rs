@@ -2448,8 +2448,18 @@ fn build_launchd_plist_xml(bin: &std::path::Path, join_args: &[String]) -> Strin
         .unwrap_or_else(|| "/".to_string());
     let log_dir = format!("{home}/Library/Logs/closedmesh");
 
+    // `--log-format json` is a top-level flag and must precede the `serve`
+    // subcommand. Without it, headless mode falls through to the runtime's
+    // pretty-fallback formatter, which re-renders the entire dashboard text
+    // (Running models / Mesh events panel / etc.) on every output event into
+    // stderr. With ~5 RTT pings/sec across 2 peers that's ~5 full dashboard
+    // frames/sec ≈ 36 MB/day of mostly-redundant text. JSON mode emits one
+    // structured line per event (~1 MB/day) and is what we actually want for
+    // a launchd-managed background service whose stderr is a file, not a TTY.
     let mut program_args = vec![
         bin.display().to_string(),
+        "--log-format".to_string(),
+        "json".to_string(),
         "serve".to_string(),
         "--auto".to_string(),
         "--publish".to_string(),
@@ -2843,7 +2853,13 @@ fn build_windows_service_args(bin: &std::path::Path) -> String {
         relays.push_str(" --relay ");
         relays.push_str(r);
     }
-    format!("serve --auto --publish --mesh-name closedmesh{join_segment}{relays} --headless")
+    // `--log-format json` is a top-level flag (must precede `serve`). See the
+    // matching comment in `build_launchd_plist_xml` for the why — without it,
+    // the headless runtime re-renders the full dashboard text into stderr on
+    // every output event, producing ~36 MB/day of redundant frames.
+    format!(
+        "--log-format json serve --auto --publish --mesh-name closedmesh{join_segment}{relays} --headless"
+    )
 }
 
 /// Returns the (binPath, argString) the currently installed Scheduled
