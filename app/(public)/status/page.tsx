@@ -78,6 +78,13 @@ function lookupCatalogModel(id: string): CatalogModel | null {
 type WarmingVerdict =
   | { kind: "fits"; modelId: string; displayName: string; catalog: CatalogModel; hostVramGb: number }
   | {
+      kind: "pooling";
+      modelId: string;
+      displayName: string;
+      catalog: CatalogModel;
+      peerCount: number;
+    }
+  | {
       kind: "underprovisioned";
       modelId: string;
       displayName: string;
@@ -87,12 +94,29 @@ type WarmingVerdict =
     }
   | { kind: "unknown"; modelId: string; displayName: string };
 
-function warmingUpVerdict(node: NodeSummary): WarmingVerdict | null {
+function warmingUpVerdict(
+  node: NodeSummary,
+  warmingPeerCountForModel = 1,
+): WarmingVerdict | null {
   const modelId = node.servingModels[0];
   if (!modelId) return null;
   const display = prettyModelName(modelId);
   const catalog = lookupCatalogModel(modelId);
   if (!catalog) return { kind: "unknown", modelId, displayName: display };
+  // When multiple peers are simultaneously advertising the same model in
+  // `loading`, the honest user-facing state is "the distributed group is
+  // forming / recovering". A missing splitGroup snapshot during entry
+  // restart or host re-election must not be rendered as four separate solo
+  // capacity failures with fake per-machine shortfalls.
+  if (node.state === "loading" && warmingPeerCountForModel > 1) {
+    return {
+      kind: "pooling",
+      modelId,
+      displayName: catalog.name,
+      catalog,
+      peerCount: warmingPeerCountForModel,
+    };
+  }
   // Use the smaller of the two reported numbers — `vramGb` (top-level)
   // is the Metal-budgeted figure for Apple Silicon (~75% of unified
   // memory) and `capability.vramGb` is sometimes the unified-memory
@@ -545,6 +569,10 @@ function IssueNodeRow({
  *     defeatist phrasing ("won't load", "will time out"); the user
  *     just needs to know that the mesh is waiting on more memory.
  *
+ *   - `pooling`: multiple peers are warming the same model, but the
+ *     splitGroup snapshot is not stable yet. Show recovery/loading copy
+ *     instead of per-machine solo-capacity math.
+ *
  *   - `fits` / `unknown`: muted "Loading X — usually takes 30 s to
  *     2 min" line. Legitimate transient case where the model does fit
  *     and just hasn't finished bringing up yet.
@@ -618,6 +646,12 @@ function WarmingUpCard({
                     ~{Math.ceil(verdict.shortfallGb)} GB
                   </span>{" "}
                   before the model can come online.
+                </>
+              ) : verdict.kind === "pooling" ? (
+                <>
+                  Distributed load in progress. {verdict.peerCount} machines
+                  are advertising this model; waiting for host election and
+                  peer links to settle.
                 </>
               ) : verdict.kind === "fits" ? (
                 <>
@@ -913,8 +947,24 @@ export default function StatusPage() {
   // "MacBook-Air-de-al-2 is warming up Mixtral 8x7B — won't actually
   // load on its own, needs 24 GB more memory" instead of the previous
   // "Be the first to share" lie + collapsed accordion.
+  const warmingPeerCountsByModel = new Map<string, number>();
+  for (const n of unavailableNodes) {
+    if (n.state !== "loading") continue;
+    const modelId = n.servingModels[0];
+    if (!modelId) continue;
+    warmingPeerCountsByModel.set(
+      modelId,
+      (warmingPeerCountsByModel.get(modelId) ?? 0) + 1,
+    );
+  }
   const warmingUpNodes = unavailableNodes
-    .map((n) => ({ node: n, verdict: warmingUpVerdict(n) }))
+    .map((n) => ({
+      node: n,
+      verdict: warmingUpVerdict(
+        n,
+        warmingPeerCountsByModel.get(n.servingModels[0] ?? "") ?? 1,
+      ),
+    }))
     .filter((x): x is { node: typeof x.node; verdict: WarmingVerdict } =>
       x.verdict !== null,
     );

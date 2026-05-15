@@ -90,6 +90,77 @@ export async function OPTIONS(req: Request) {
   return preflightResponse(req);
 }
 
+export type ParsedChatBody = {
+  messages: UIMessage[];
+  model?: string;
+};
+
+export type ChatBodyParseResult =
+  | { ok: true; body: ParsedChatBody }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Validate the JSON body of a `/api/chat` POST request.
+ *
+ * The previous handler did `(await req.json()) as { messages, model? }`
+ * with no defensive checks. Malformed JSON or a missing/invalid
+ * `messages` field produced an unhandled exception inside
+ * `convertToModelMessages`, which surfaced to the user as a generic
+ * 500 with no useful body. We want bad input to produce a clean 400
+ * with a single-line reason — and we want the contract pinned in a
+ * test so the validation can't silently regress.
+ *
+ * Note: we deliberately only check the *shape* of `messages` (array of
+ * objects). Validating each `UIMessagePart` discriminant is the AI
+ * SDK's job; doing it here would duplicate a moving target and reject
+ * input the SDK actually accepts.
+ */
+export function parseChatBody(raw: unknown): ChatBodyParseResult {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, status: 400, error: "request body must be a JSON object" };
+  }
+  const body = raw as Record<string, unknown>;
+  const messages = body.messages;
+  if (!Array.isArray(messages)) {
+    return { ok: false, status: 400, error: "`messages` must be an array" };
+  }
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (m === null || typeof m !== "object" || Array.isArray(m)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `\`messages[${i}]\` must be an object`,
+      };
+    }
+  }
+  let model: string | undefined;
+  if (body.model !== undefined) {
+    if (typeof body.model !== "string") {
+      return { ok: false, status: 400, error: "`model` must be a string" };
+    }
+    const trimmed = body.model.trim();
+    if (!trimmed) {
+      return { ok: false, status: 400, error: "`model` must be a non-empty string" };
+    }
+    model = trimmed;
+  }
+  return {
+    ok: true,
+    body: { messages: messages as UIMessage[], model },
+  };
+}
+
+function badRequest(req: Request, message: string, status = 400): Response {
+  return applyCors(
+    req,
+    new Response(JSON.stringify({ error: message }), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+}
+
 /**
  * Translate runtime errors into single, user-readable lines.
  *
@@ -126,17 +197,24 @@ function friendlyChatError(error: unknown): string {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as {
-    messages: UIMessage[];
-    model?: string;
-  };
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return badRequest(req, "request body must be valid JSON");
+  }
 
-  const modelId = body.model ?? (await pickDefaultModel());
+  const parsed = parseChatBody(raw);
+  if (!parsed.ok) {
+    return badRequest(req, parsed.error, parsed.status);
+  }
+
+  const modelId = parsed.body.model ?? (await pickDefaultModel());
 
   const result = streamText({
     model: closedmesh.chatModel(modelId),
     system: SYSTEM_PROMPT,
-    messages: convertToModelMessages(body.messages),
+    messages: convertToModelMessages(parsed.body.messages),
     // The AI SDK retries up to 2x on 5xx by default. For a peer-to-peer
     // mesh this is actively harmful: a 503 from the runtime almost always
     // means "no host elected" or "host saturated", neither of which is

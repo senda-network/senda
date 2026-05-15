@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isPublicDeploymentServer } from "./app/lib/deployment";
 
 /**
  * Edge proxy (Next 16's middleware replacement). Its sole job is to make
@@ -33,17 +34,12 @@ const CONTROL_PAGE_PREFIXES = [
 
 const CONTROL_API_PREFIX = "/api/control";
 
-// `.trim()` defensively — a stray newline in the Vercel env var
-// (`"public\n"` instead of `"public"`) is the kind of typo that would
-// silently disable the firewall otherwise. Empty / unset env vars stay
-// falsy.
-function flagSet(value: string | undefined): boolean {
-  return (value ?? "").trim() === "public";
-}
-
-const PUBLIC_DEPLOYMENT =
-  flagSet(process.env.NEXT_PUBLIC_DEPLOYMENT) ||
-  flagSet(process.env.CLOSEDMESH_DEPLOYMENT);
+// Single source of truth for "is this the public Vercel deployment?".
+// Honors every accepted server-side env name (NEXT_PUBLIC_DEPLOYMENT,
+// NEXT_PUBLIC_CLOSEDMESH_DEPLOYMENT, CLOSEDMESH_DEPLOYMENT,
+// FORGEMESH_DEPLOYMENT) so the edge firewall and the /api/control/*
+// handlers can never disagree because of a legacy var name.
+const PUBLIC_DEPLOYMENT = isPublicDeploymentServer();
 
 export function proxy(req: NextRequest) {
   if (!PUBLIC_DEPLOYMENT) return NextResponse.next();

@@ -91,11 +91,16 @@ Check existing deployments: `vercel ls`
    - `desktop/Cargo.toml` → `version = "X.Y.Z"`
    - `desktop/tauri.conf.json` → `"version": "X.Y.Z"`
 2. Commit and push to `main` on `closedmesh/closedmesh`
-3. Push a `desktop-vX.Y.Z` **tag** — this is what triggers the build, NOT the branch push:
+3. Push a `vX.Y.Z` **tag** — this is what triggers the build, NOT the branch push:
    ```bash
-   git tag desktop-vX.Y.Z && git push origin desktop-vX.Y.Z
+   git tag vX.Y.Z && git push origin vX.Y.Z
    ```
 4. GitHub Actions (`desktop-release.yml`) builds `.dmg` / installers (~10 min)
+
+Release policy: ship straight from `main` with real versions. Do not use
+`desktop-v*`, candidate, or throwaway prerelease app tags; if an unlaunched
+version needs correction, fix forward and rebuild the same real release version
+or bump to the next real version.
 
 Current version: check `desktop/Cargo.toml`.
 
@@ -123,6 +128,10 @@ gh -R closedmesh/closedmesh-llm workflow run release.yml \
 ```
 
 The workflow's `prepare_release` job bumps all `Cargo.toml` versions, commits to `main`, creates the tag, then build jobs run in parallel (~2.5h for Linux CUDA), and finally `Publish GitHub release` uploads the assets.
+
+Release policy: always use real `vX.Y.Z` runtime releases from `main` with
+`prerelease=false`. Do not use `*-pre`, prerelease, or candidate runtime
+versions unless Al explicitly overrides this rule.
 
 GitHub Actions (`release.yml`) uploads assets named `closedmesh-{os}-{arch}.tar.gz` (stable alias, always points to latest) and `closedmesh-v{version}-{os}-{arch}.tar.gz` (versioned, pinned to that release).
 
@@ -255,6 +264,7 @@ The entry node previously ran with `--auto --publish --mesh-name closedmesh`. Th
 
 - **Vercel does not auto-deploy.** Always run `vercel --prod` after pushing.
 - **Version bump requires two files**: `Cargo.toml` AND `tauri.conf.json` — they must match or the build fails.
+- **Release versions are real mainline versions.** Desktop app tags are `vX.Y.Z`, not `desktop-v*`; runtime releases use `prerelease=false`, not `*-pre` or candidate versions.
 - **Entry node container is owned by `closedmesh-entry.service`**, not by hand. `docker run`/`docker stop`/`docker rm` will be undone within ~10 s. Always edit the systemd unit and `systemctl restart`.
 - **Never put `--auto` or `--publish` back on the entry node** until the Nostr d-tag is privatized in `closedmesh-llm` (Phase C). Both flags caused the May 2026 incident where the entry silently joined the upstream `mesh-llm` community pool.
 - **Entry node uses a fixed iroh port** (`--bind-port 42140`). If the unit is edited without it, iroh picks a random port that is likely blocked by the Lightsail firewall, breaking P2P connections and causing `3.210.30.58:0` in the join token.

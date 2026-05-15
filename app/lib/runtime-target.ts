@@ -17,16 +17,14 @@
  * what's a "your machine" feature versus a "the mesh" feature.
  */
 
-// `.trim()` defensively against env values like `"public\n"` (a real Vercel
-// pitfall). We still expose `isPublicDeployment` for build-time gating
-// in `proxy.ts`, but it never affects URL resolution any more.
-function flagSet(value: string | undefined): boolean {
-  return (value ?? "").trim() === "public";
-}
+// Browser-safe wrapper around the shared deployment-flag helper. Only
+// `NEXT_PUBLIC_*` env vars are inlined into the client bundle, so the
+// client-only variant is the right call here — pulling in the server
+// variant would silently always read `undefined` for the legacy
+// `CLOSEDMESH_DEPLOYMENT` / `FORGEMESH_DEPLOYMENT` names.
+import { isPublicDeploymentClient } from "./deployment";
 
-const PUBLIC_DEPLOYMENT_BUILD =
-  flagSet(process.env.NEXT_PUBLIC_DEPLOYMENT) ||
-  flagSet(process.env.NEXT_PUBLIC_CLOSEDMESH_DEPLOYMENT);
+const PUBLIC_DEPLOYMENT_BUILD = isPublicDeploymentClient();
 
 export function isPublicDeployment(): boolean {
   return PUBLIC_DEPLOYMENT_BUILD;

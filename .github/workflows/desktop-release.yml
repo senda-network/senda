@@ -1,8 +1,8 @@
 # Build & publish the ClosedMesh desktop bundles (.dmg, .msi, .AppImage, .deb)
-# whenever a `desktop-v*` tag is pushed.
+# whenever a normal app release tag (`v*`) is pushed.
 #
 # Trigger:
-#     git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
+#     git tag v0.1.0 && git push origin v0.1.0
 #
 # Output: a GitHub Release named "ClosedMesh Desktop v0.1.0" with one asset
 # per platform variant:
@@ -15,20 +15,20 @@
 #     closedmesh_0.1.0_amd64.AppImage       (universal Linux)
 #     latest.json                           (Tauri auto-updater manifest)
 #
-# The `desktop-v*` prefix is intentional: the desktop shell versions
-# independently of the Next.js chat app and the closedmesh-llm runtime, so
-# we don't want a normal `vX.Y.Z` push to fire this workflow.
+# Desktop app releases are mainline releases. Do not use `desktop-v*` or
+# prerelease/candidate tag names; fix forward with the next real version if a
+# not-yet-launched release needs correction.
 
 name: Desktop release
 
 on:
   push:
     tags:
-      - 'desktop-v*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g. desktop-v0.1.0)'
+        description: 'Release tag (e.g. v0.1.0)'
         required: true
         type: string
 

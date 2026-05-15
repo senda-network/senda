@@ -2,19 +2,14 @@ import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { isPublicDeploymentServer } from "../../lib/deployment";
 
-// `.trim()` defensively — a stray trailing newline in the Vercel env var
-// (`"public\n"` vs `"public"`) would silently turn this flag off otherwise,
-// and any /api/control/* handler would happily try to spawn closedmesh on
-// a Vercel function. Belt-and-braces alongside proxy.ts.
-function flagSet(value: string | undefined): boolean {
-  return (value ?? "").trim() === "public";
-}
-
-export const isPublic =
-  flagSet(process.env.NEXT_PUBLIC_DEPLOYMENT) ||
-  flagSet(process.env.CLOSEDMESH_DEPLOYMENT) ||
-  flagSet(process.env.FORGEMESH_DEPLOYMENT);
+// Belt-and-braces alongside proxy.ts: even if the edge firewall ever
+// stops short of a /api/control/* path, the handler itself refuses to
+// shell out. Both layers now read the same env-var set via
+// `isPublicDeploymentServer`, so misconfiguring one name no longer
+// makes the two layers disagree about "are we public?".
+export const isPublic = isPublicDeploymentServer();
 
 const explicit = process.env.CLOSEDMESH_BIN ?? process.env.FORGEMESH_BIN;
 const isWindows = process.platform === "win32";

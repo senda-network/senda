@@ -126,9 +126,41 @@ struct Capability {
     backend: Option<String>,
 }
 
-const ADMIN_STATUS_URL: &str = "http://127.0.0.1:3131/api/status";
+/// Default admin base URL — the runtime's `--console` port on loopback.
+/// Overridden at runtime by the `CLOSEDMESH_ADMIN_URL` env var (the same
+/// var the bundled sidecar forwards to the Node controller, so the tray
+/// and the dashboard always talk to the same admin endpoint).
+const DEFAULT_ADMIN_BASE_URL: &str = "http://127.0.0.1:3131";
 const LEGACY_LOCAL_CONTROLLER_URL: &str = "http://localhost:3000";
 const REMOTE_CHAT_URL: &str = "https://closedmesh.com";
+
+/// Resolve the admin `/api/status` URL the tray should poll.
+///
+/// Reads `CLOSEDMESH_ADMIN_URL` at every call so a release build can
+/// flip the admin endpoint at launch (e.g. point at the public mesh
+/// entry node) without forcing the tray onto a stale value cached at
+/// process start. The poll cadence is 1.5–5 s, so the env lookup is
+/// negligible.
+pub(crate) fn admin_status_url() -> String {
+    resolve_admin_status_url(std::env::var("CLOSEDMESH_ADMIN_URL").ok())
+}
+
+/// Pure helper behind [`admin_status_url`]. Kept separate so unit tests
+/// can exercise URL composition without racing on the process env.
+///
+/// `.trim()` defensively against env values with a trailing newline —
+/// the same Vercel-style pitfall that's burned us before
+/// (`CLOSEDMESH_RUNTIME_URL="…/v1\n"` produced a literal newline mid-URL
+/// and 100 % of admin probes failed). Empty / unset fall through to the
+/// loopback default, which matches the local desktop default.
+fn resolve_admin_status_url(raw_env: Option<String>) -> String {
+    let base = raw_env
+        .map(|raw| raw.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_ADMIN_BASE_URL.to_string());
+    let trimmed = base.trim_end_matches('/');
+    format!("{trimmed}/api/status")
+}
 
 /// Returns the URL the WebView should load.
 ///
@@ -202,24 +234,29 @@ pub fn fetch_status() -> MeshStatus {
         .timeout_read(Duration::from_millis(1500))
         .build();
 
-    // A successful HTTP 200 from the runtime's admin port is itself
-    // proof the runtime is up — counting nodes/peers refines the tooltip
-    // but doesn't gate the Start/Stop menu item. Treating a parse-able
-    // 200 as `online: true` even when the body is unexpected is the
-    // safer default; the previous behavior (return `default()` on any
-    // missing field) painted "Start ClosedMesh Service" over a service
-    // that was actively serving a model.
-    let payload: StatusPayload = match agent.get(ADMIN_STATUS_URL).call() {
+    // ureq's `.call()` already returns `Err(_)` for any non-2xx
+    // response, so reaching `Ok(resp)` means HTTP 200-ish from whatever
+    // happens to be listening at the admin URL.
+    //
+    // Acceptance for "online: true" is JSON that deserializes into the
+    // (very loose, all `#[serde(default)]`) `StatusPayload`. A successful
+    // HTTP 200 with a non-JSON body is the failure mode we deliberately
+    // *don't* trust: it almost always means an unrelated server is bound
+    // to the admin port (a stray Vite/Next dev server, a static-page 404
+    // page, an HTML auth-portal, …). The previous behaviour treated that
+    // case as `online: true` with `node_count: 1` and painted a fake
+    // green tray on top of a runtime that wasn't actually running.
+    //
+    // The original concern that motivated that "lenient 200" branch —
+    // missing fields making the parse fail — no longer applies, because
+    // every field on `StatusPayload` is now `#[serde(default)]`. So the
+    // only way `into_json` fails today is if the body isn't a JSON object
+    // at all, which is the exact case we want to fail closed on.
+    let url = admin_status_url();
+    let payload: StatusPayload = match agent.get(&url).call() {
         Ok(resp) => match resp.into_json() {
             Ok(p) => p,
-            Err(_) => {
-                return MeshStatus {
-                    online: true,
-                    node_count: 1,
-                    model: None,
-                    backend: None,
-                };
-            }
+            Err(_) => return MeshStatus::default(),
         },
         Err(_) => return MeshStatus::default(),
     };
@@ -2199,7 +2236,7 @@ const ENTRY_STATUS_URL: &str = "https://mesh.closedmesh.com/api/status";
 ///   ssh ubuntu@3.210.30.58 'docker logs mesh-entry 2>&1 | \
 ///       grep -oE "Invite created.*: \S+" | tail -1 | awk "{print \$NF}"'
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6ImRkNjFmNWQ5Y2IzOGM4ODJiOTg4NTczNjg2YjdiMjE1YzEzNmRkMzA2NzU3ZjE3ZWUwMjlkYjM2MmRhMzIzMTkiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjUxNjMyIn1dfQ";
+const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjE1NWQzMzZhNjUxYTc5NDFkNDQ2N2JjZDEwZjVhMWQ4NjI4MmMwZTJiNjIwOTZiY2MzYzdmNWVjMDVkY2RlNjEiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjM3OTQ1In1dfQ";
 
 /// Public Iroh relays we explicitly hand to the runtime via `--relay`.
 ///
@@ -3514,5 +3551,63 @@ fn run_cli(args: &[&str]) {
             );
         }
         _ => {}
+    }
+}
+
+// ---------- Tests -------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pin the URL composition logic that the tray relies on so future
+    /// changes to env-var handling can't silently break local-only
+    /// installs (the `None` case) or release builds that point the
+    /// admin at a remote endpoint.
+    #[test]
+    fn admin_url_defaults_to_loopback_when_unset() {
+        assert_eq!(
+            resolve_admin_status_url(None),
+            "http://127.0.0.1:3131/api/status",
+        );
+    }
+
+    #[test]
+    fn admin_url_falls_back_when_env_is_blank() {
+        assert_eq!(
+            resolve_admin_status_url(Some(String::new())),
+            "http://127.0.0.1:3131/api/status",
+        );
+        assert_eq!(
+            resolve_admin_status_url(Some("   ".into())),
+            "http://127.0.0.1:3131/api/status",
+        );
+    }
+
+    #[test]
+    fn admin_url_honors_explicit_override() {
+        assert_eq!(
+            resolve_admin_status_url(Some("https://mesh.closedmesh.com".into())),
+            "https://mesh.closedmesh.com/api/status",
+        );
+    }
+
+    #[test]
+    fn admin_url_strips_trailing_slash_so_path_does_not_double() {
+        assert_eq!(
+            resolve_admin_status_url(Some("https://mesh.closedmesh.com/".into())),
+            "https://mesh.closedmesh.com/api/status",
+        );
+    }
+
+    /// Vercel has shipped env values with literal trailing newlines
+    /// before (`"public\n"`); the same pitfall applies to URL env vars.
+    /// A newline mid-URL would break every probe with no clean error.
+    #[test]
+    fn admin_url_trims_whitespace_and_newlines() {
+        assert_eq!(
+            resolve_admin_status_url(Some("  https://mesh.closedmesh.com\n".into())),
+            "https://mesh.closedmesh.com/api/status",
+        );
     }
 }

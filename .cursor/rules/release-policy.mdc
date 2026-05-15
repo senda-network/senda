@@ -1,0 +1,12 @@
+---
+description: ClosedMesh release policy for app and runtime versions.
+alwaysApply: true
+---
+
+# Release Policy
+
+- Ship from `main`. Do not keep release work on long-lived feature branches once it is ready.
+- Use real release versions, even for versions that have not launched yet. If a release breaks, fix forward with the next real version.
+- Desktop app releases in `closedmesh/closedmesh` use normal `vX.Y.Z` release tags/names. Do not create `desktop-v*` app release tags.
+- Runtime releases in `closedmesh/closedmesh-llm` use normal `vX.Y.Z` versions with `prerelease=false`. Do not create `*-pre`, prerelease, or candidate runtime versions unless Al explicitly overrides this rule.
+- Always scope GitHub CLI calls with `-R closedmesh/closedmesh` or `-R closedmesh/closedmesh-llm`.
