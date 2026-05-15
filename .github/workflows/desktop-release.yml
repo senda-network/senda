@@ -11,8 +11,7 @@
 #     ClosedMesh_0.1.0_x64.dmg              (Intel Mac)
 #     ClosedMesh_0.1.0_x64-setup.exe        (Windows NSIS)
 #     ClosedMesh_0.1.0_x64_en-US.msi        (Windows MSI)
-#     closedmesh_0.1.0_amd64.deb            (Debian / Ubuntu)
-#     closedmesh_0.1.0_amd64.AppImage       (universal Linux)
+#     ClosedMesh_0.1.0_amd64.deb            (Debian / Ubuntu)
 #     latest.json                           (Tauri auto-updater manifest)
 #
 # Desktop app releases are mainline releases. Do not use `desktop-v*` or
@@ -226,7 +225,6 @@ jobs:
             - **macOS (Apple Silicon, M1+):** `ClosedMesh_*_aarch64.dmg`
             - **Windows 10/11:** `ClosedMesh_*_x64-setup.exe` (recommended) or `.msi`
             - **Linux (Debian / Ubuntu):** `*_amd64.deb`
-            - **Linux (everything else):** `*_amd64.AppImage` (`chmod +x` and run)
 
             (Pre-2021 Intel Macs aren't shipped pre-built; you can still
             build from source with `cd desktop && ./scripts/build.sh`.)
