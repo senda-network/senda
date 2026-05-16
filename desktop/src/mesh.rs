@@ -131,7 +131,6 @@ struct Capability {
 /// var the bundled sidecar forwards to the Node controller, so the tray
 /// and the dashboard always talk to the same admin endpoint).
 const DEFAULT_ADMIN_BASE_URL: &str = "http://127.0.0.1:3131";
-const LEGACY_LOCAL_CONTROLLER_URL: &str = "http://localhost:3000";
 const REMOTE_CHAT_URL: &str = "https://closedmesh.com";
 
 /// Resolve the admin `/api/status` URL the tray should poll.
@@ -168,10 +167,7 @@ fn resolve_admin_status_url(raw_env: Option<String>) -> String {
 ///   1. `CLOSEDMESH_APP_URL` env var (dev / staging override)
 ///   2. `http://127.0.0.1:<sidecar_port>` if the bundled Next.js
 ///      controller spawned successfully (the common case)
-///   3. `http://localhost:3000` if a user-installed launchd controller
-///      is still around from before the sidecar (legacy install) AND it
-///      positively identifies as a closedmesh controller
-///   4. `https://closedmesh.com` as a marketing/install fallback
+///   3. `https://closedmesh.com` as a marketing/install fallback
 pub fn preferred_url() -> String {
     if let Ok(u) = std::env::var("CLOSEDMESH_APP_URL") {
         if !u.is_empty() {
@@ -181,34 +177,7 @@ pub fn preferred_url() -> String {
     if let Some(port) = crate::sidecar::current_port() {
         return format!("http://127.0.0.1:{port}");
     }
-    if legacy_controller_up() {
-        return LEGACY_LOCAL_CONTROLLER_URL.to_string();
-    }
     REMOTE_CHAT_URL.to_string()
-}
-
-/// Header the closedmesh controller stamps onto `/api/control/status`
-/// responses. The desktop shell looks for it before trusting whatever's on
-/// `:3000` to be ours — without the marker we'd happily load an unrelated
-/// Next.js / Vite / static server the user happens to be running on the
-/// same port into the WebView, which is a confusing failure that's worse
-/// than just falling through to closedmesh.com.
-const CONTROLLER_HEADER: &str = "x-closedmesh-controller";
-
-/// HTTP probe of `:3000` that *positively* confirms it's the closedmesh
-/// controller, not just any server willing to accept a TCP connection.
-/// We deliberately don't fall back to a bare TCP probe — a "yes it answered"
-/// from someone else's Next.js dev server is exactly the failure we're
-/// trying to avoid here.
-fn legacy_controller_up() -> bool {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_millis(250))
-        .timeout_read(Duration::from_millis(750))
-        .build();
-    match agent.get("http://127.0.0.1:3000/api/control/status").call() {
-        Ok(resp) => resp.header(CONTROLLER_HEADER).is_some(),
-        Err(_) => false,
-    }
 }
 
 /// Where the controller writes stdout/stderr logs. Used by `Sidecar` to
@@ -2236,7 +2205,7 @@ const ENTRY_STATUS_URL: &str = "https://mesh.closedmesh.com/api/status";
 ///   ssh ubuntu@3.210.30.58 'docker logs mesh-entry 2>&1 | \
 ///       grep -oE "Invite created.*: \S+" | tail -1 | awk "{print \$NF}"'
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjJmOWViMjc1OTY5YmNiNWQ1ZWYwYTljZjZlYTJhODBkYzNlNjc0NDNhZTdiZDUxMmQzNzU4NjViMzJkM2Q0MDEiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjM0MDM2In1dfQ";
+const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjRkMWQ1NzcxN2UyNDBmNDU4NTk4NTcxZGQ3OGU1NDIxYzc1OWZiMjE2ODRjYzQ4NGNiMzE4ZWQzYWIxZTU2NTgiLCJhZGRycyI6W3siUmVsYXkiOiJodHRwczovL3VzZTEtMS5yZWxheS5uMC5pcm9oLWNhbmFyeS5pcm9oLmxpbmsuLyJ9LHsiSXAiOiIzLjIxMC4zMC41ODo0MjE0MCJ9LHsiSXAiOiIxNzIuMTcuMC4xOjQyMTQwIn0seyJJcCI6IjE3Mi4yNi4zLjkxOjQyMTQwIn0seyJJcCI6IlsyNjAwOjFmMTg6NTI2Zjo0OTAwOjY4NjU6YzY4NzoxYTc0OjRiOWJdOjYwMzI2In1dfQ";
 
 /// Public Iroh relays we explicitly hand to the runtime via `--relay`.
 ///

@@ -156,6 +156,7 @@ export type NodeSummary = {
   state: string;
   vramGb: number;
   servingModels: string[];
+  inflightRequests?: number;
   capability: NodeCapabilitySummary;
   /**
    * Runtime version this peer is reporting (e.g. "0.65.7"). Surfaced
@@ -269,6 +270,7 @@ type RuntimePeer = {
   vram_gb?: number;
   serving_models?: string[];
   hosted_models?: string[];
+  inflight_requests?: number;
   capability?: RuntimeCapability;
   version?: string;
   /**
@@ -312,6 +314,7 @@ type RuntimeStatus = {
   my_is_soc?: boolean;
   serving_models?: string[];
   hosted_models?: string[];
+  inflight_requests?: number;
   capability?: RuntimeCapability;
   /** rc2 and earlier emit GPU info here rather than inside `capability`. */
   gpus?: RuntimeGpu[];
@@ -576,6 +579,7 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
       ...(peer.serving_models ?? []),
       ...(peer.hosted_models ?? []),
     ].filter((m, i, arr) => arr.indexOf(m) === i),
+    inflightRequests: peer.inflight_requests ?? 0,
     capability: summarizeCapability(peer.capability, peer.hosted_models, peer.vram_gb),
     version: peer.version ?? null,
     splitRole: normalizeSplitRole(peer.split_role),
@@ -617,6 +621,7 @@ export function reportToInvisibleNode(report: StoredPeerReport): NodeSummary {
     state: "unreachable",
     vramGb: 0,
     servingModels: report.servingModels,
+    inflightRequests: 0,
     capability: {
       backend: "unknown",
       vendor: "none",
@@ -726,6 +731,7 @@ function buildNodes(
       ...(rt.serving_models ?? []),
       ...(rt.hosted_models ?? []),
     ].filter((m, i, arr) => arr.indexOf(m) === i),
+    inflightRequests: rt.inflight_requests ?? 0,
     capability: summarizeCapability(inferLocalCapability(rt), null, rt.my_vram_gb),
     version: rt.version ?? null,
     splitRole: normalizeSplitRole(rt.my_split_role),

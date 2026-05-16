@@ -266,6 +266,7 @@ function NodeCard({
   const isEntryNode = node.hostname?.startsWith("ip-");
   const cap = node.capability;
   const isServing = node.state === "serving";
+  const inflightRequests = node.inflightRequests ?? 0;
 
   // Honest display: show what the node is actually doing right now. We
   // used to "smooth" loading→standby→Ready when the node had been good
@@ -362,6 +363,16 @@ function NodeCard({
           {cap.vramGb === 0 && cap.backend === "cpu" && (
             <span>CPU inference</span>
           )}
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[11px] ${
+              inflightRequests > 0
+                ? "border-sky-400/40 bg-sky-400/10 text-sky-200"
+                : "border-[var(--border)] text-[var(--fg-muted)]"
+            }`}
+            title="Current requests this peer reports over gossip"
+          >
+            {inflightRequests} in flight
+          </span>
           {/* Runtime version. Quietly informational for healthy peers,
               flagged amber if outdated so users can see at a glance
               that this peer needs to update before they go hunting for

@@ -107,6 +107,7 @@ export type NodeSummary = {
   state: string;
   vramGb: number;
   servingModels: string[];
+  inflightRequests?: number;
   capability: NodeCapabilitySummary;
   /**
    * Runtime version this peer is reporting (e.g. "0.65.7"). Surfaced on
