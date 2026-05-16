@@ -387,12 +387,26 @@ export function normalizeMeshVisibility(
 function summarizeCapability(
   cap: RuntimeCapability | undefined,
   hostedOverride?: string[] | null,
+  usableVramGb?: number,
 ): NodeCapabilitySummary {
+  const advertisedVramGb = Math.round(((cap?.vram_total_mb ?? 0) / 1024) * 10) / 10;
+  const usableHintGb =
+    typeof usableVramGb === "number" && usableVramGb > 0
+      ? Math.round(usableVramGb * 10) / 10
+      : 0;
+  // `vram_total_mb` is an inventory number (on Apple it can be raw unified
+  // memory; on CUDA it can ignore driver/runtime overhead). The runtime's
+  // top-level `vram_gb` / `my_vram_gb` is the planner budget, so display the
+  // smaller value when both exist instead of inflating pooled memory.
+  const vramGb =
+    advertisedVramGb > 0 && usableHintGb > 0
+      ? Math.min(advertisedVramGb, usableHintGb)
+      : usableHintGb || advertisedVramGb;
   return {
     backend: cap?.backend ?? "unknown",
     vendor: cap?.vendor ?? "none",
     computeClass: cap?.compute_class ?? "lo",
-    vramGb: Math.round(((cap?.vram_total_mb ?? 0) / 1024) * 10) / 10,
+    vramGb,
     loadedModels: hostedOverride ?? cap?.loaded_models ?? [],
   };
 }
@@ -534,7 +548,7 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
       ...(peer.serving_models ?? []),
       ...(peer.hosted_models ?? []),
     ].filter((m, i, arr) => arr.indexOf(m) === i),
-    capability: summarizeCapability(peer.capability, peer.hosted_models),
+    capability: summarizeCapability(peer.capability, peer.hosted_models, peer.vram_gb),
     version: peer.version ?? null,
     splitRole: normalizeSplitRole(peer.split_role),
     splitGroup: normalizeSplitGroup(peer.split_group),
@@ -684,7 +698,7 @@ function buildNodes(
       ...(rt.serving_models ?? []),
       ...(rt.hosted_models ?? []),
     ].filter((m, i, arr) => arr.indexOf(m) === i),
-    capability: summarizeCapability(inferLocalCapability(rt)),
+    capability: summarizeCapability(inferLocalCapability(rt), null, rt.my_vram_gb),
     version: rt.version ?? null,
     splitRole: normalizeSplitRole(rt.my_split_role),
     splitGroup: normalizeSplitGroup(rt.my_split_group),
