@@ -83,6 +83,8 @@ type WarmingVerdict =
       displayName: string;
       catalog: CatalogModel;
       peerCount: number;
+      pooledGb: number;
+      neededGb: number;
     }
   | {
       kind: "underprovisioned";
@@ -97,6 +99,7 @@ type WarmingVerdict =
 function warmingUpVerdict(
   node: NodeSummary,
   warmingPeerCountForModel = 1,
+  pooledGbForModel = 0,
 ): WarmingVerdict | null {
   const modelId = node.servingModels[0];
   if (!modelId) return null;
@@ -115,6 +118,8 @@ function warmingUpVerdict(
       displayName: catalog.name,
       catalog,
       peerCount: warmingPeerCountForModel,
+      pooledGb: pooledGbForModel,
+      neededGb: catalog.minVramGb,
     };
   }
   // Use the smaller of the two reported numbers — `vramGb` (top-level)
@@ -592,6 +597,21 @@ function WarmingUpCard({
       ? Date.now() - history.loadingSince
       : 0;
   const awaiting = verdict.kind === "underprovisioned";
+  // What this machine actually contributes to the pool — the smaller of
+  // the two reported numbers, mirroring the verdict math. Surfacing this
+  // per-card is what turns "5 machines, no idea why it isn't loading"
+  // into "5 machines, here are their budgets, here is the gap".
+  const nodeVramGb = Math.min(
+    node.vramGb || Number.POSITIVE_INFINITY,
+    node.capability?.vramGb || Number.POSITIVE_INFINITY,
+  );
+  const nodeVramLabel = Number.isFinite(nodeVramGb) && nodeVramGb > 0
+    ? `${nodeVramGb.toFixed(nodeVramGb >= 10 ? 0 : 1)} GB`
+    : null;
+  const pooledShort =
+    verdict.kind === "pooling" && verdict.pooledGb < verdict.neededGb;
+  const pooledOk =
+    verdict.kind === "pooling" && verdict.pooledGb >= verdict.neededGb;
   return (
     <div
       className={
@@ -620,6 +640,11 @@ function WarmingUpCard({
             </div>
             <div className="mt-0.5 text-sm font-semibold tracking-tight text-[var(--fg)]">
               {hostname}
+              {nodeVramLabel && (
+                <span className="ml-2 text-[11px] font-normal text-[var(--fg-muted)]">
+                  · {nodeVramLabel} usable
+                </span>
+              )}
             </div>
             <div className="mt-1 font-mono text-[12px] text-[var(--fg)]/85">
               {verdict.displayName}
@@ -649,9 +674,35 @@ function WarmingUpCard({
                 </>
               ) : verdict.kind === "pooling" ? (
                 <>
-                  Distributed load in progress. {verdict.peerCount} machines
-                  are advertising this model; waiting for host election and
-                  peer links to settle.
+                  {verdict.peerCount} machines advertising this model, pooling{" "}
+                  <span
+                    className={
+                      "font-semibold " +
+                      (pooledShort ? "text-amber-300" : "text-[var(--fg)]")
+                    }
+                  >
+                    {verdict.pooledGb.toFixed(0)} GB
+                  </span>{" "}
+                  against a{" "}
+                  <span className="font-semibold text-[var(--fg)]">
+                    {verdict.neededGb} GB
+                  </span>{" "}
+                  requirement.{" "}
+                  {pooledShort ? (
+                    <>
+                      Short by{" "}
+                      <span className="font-semibold text-amber-300">
+                        ~{Math.ceil(verdict.neededGb - verdict.pooledGb)} GB
+                      </span>
+                      {" "}— the model won&apos;t finish loading until more
+                      capacity joins the mesh.
+                    </>
+                  ) : pooledOk ? (
+                    <>Capacity is sufficient; waiting for host election and
+                      worker links to settle.</>
+                  ) : (
+                    <>Waiting for host election and peer links to settle.</>
+                  )}
                 </>
               ) : verdict.kind === "fits" ? (
                 <>
@@ -680,6 +731,8 @@ function WarmingUpCard({
 function SummaryBar({
   status,
   workingPeerCount,
+  pooledGb,
+  loadingPeerCount,
 }: {
   status: MeshStatus;
   /**
@@ -689,13 +742,16 @@ function SummaryBar({
    * shown below: machines == cards in the "Connected nodes" section.
    */
   workingPeerCount: number;
+  /** Total usable memory across all non-entry peers right now. */
+  pooledGb: number;
+  /** Non-entry peers currently in `loading`. */
+  loadingPeerCount: number;
 }) {
   // "Sharing" = a non-entry node genuinely contributing capacity *right
   // now*. Excludes nodes stuck in `loading` (they self-report a model in
   // `serving_models` while still bringing it up — that's how the page
   // used to claim "1 node sharing GPU" while inference 503'd) and excludes
   // pure clients that aren't serving anything.
-  const totalNodes = workingPeerCount;
   const sharingNodes = status.nodes.filter(
     (n) =>
       !n.hostname?.startsWith("ip-") &&
@@ -708,9 +764,18 @@ function SummaryBar({
         n.state === "standby"),
   ).length;
   const models = status.models;
+  // Cards shown in "Available machines": everyone we recognise, plus
+  // the peers stuck loading whose own card we surface above the empty
+  // state. Without including the latter, the page shows "5 machines"
+  // in the cards but "0 machines" in the summary — the exact mismatch
+  // that prompted this change.
+  const totalNodes = Math.max(workingPeerCount, loadingPeerCount);
+  const pooledLabel = pooledGb > 0
+    ? `${pooledGb >= 100 ? Math.round(pooledGb) : pooledGb.toFixed(0)} GB`
+    : "—";
 
   return (
-    <div className="grid grid-cols-3 divide-x divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--bg-elev)]">
+    <div className="grid grid-cols-4 divide-x divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--bg-elev)]">
       <div className="flex flex-col items-center gap-0.5 px-4 py-4">
         <div className="text-2xl font-semibold tabular-nums text-[var(--fg)]">
           {totalNodes}
@@ -718,6 +783,12 @@ function SummaryBar({
         <div className="text-[11px] text-[var(--fg-muted)]">
           {totalNodes === 1 ? "machine" : "machines"}
         </div>
+      </div>
+      <div className="flex flex-col items-center gap-0.5 px-4 py-4">
+        <div className="text-2xl font-semibold tabular-nums text-[var(--fg)]">
+          {pooledLabel}
+        </div>
+        <div className="text-[11px] text-[var(--fg-muted)]">pooled memory</div>
       </div>
       <div className="flex flex-col items-center gap-0.5 px-4 py-4">
         <div className="text-2xl font-semibold tabular-nums text-[var(--fg)]">
@@ -948,6 +1019,7 @@ export default function StatusPage() {
   // load on its own, needs 24 GB more memory" instead of the previous
   // "Be the first to share" lie + collapsed accordion.
   const warmingPeerCountsByModel = new Map<string, number>();
+  const pooledGbByModel = new Map<string, number>();
   for (const n of unavailableNodes) {
     if (n.state !== "loading") continue;
     const modelId = n.servingModels[0];
@@ -956,6 +1028,19 @@ export default function StatusPage() {
       modelId,
       (warmingPeerCountsByModel.get(modelId) ?? 0) + 1,
     );
+    // Use the smaller of vramGb / capability.vramGb so the pooled figure
+    // reflects what each peer can actually contribute, not whichever of
+    // the two reported numbers is larger.
+    const nodeVramGb = Math.min(
+      n.vramGb || Number.POSITIVE_INFINITY,
+      n.capability?.vramGb || Number.POSITIVE_INFINITY,
+    );
+    if (Number.isFinite(nodeVramGb) && nodeVramGb > 0) {
+      pooledGbByModel.set(
+        modelId,
+        (pooledGbByModel.get(modelId) ?? 0) + nodeVramGb,
+      );
+    }
   }
   const warmingUpNodes = unavailableNodes
     .map((n) => ({
@@ -963,6 +1048,7 @@ export default function StatusPage() {
       verdict: warmingUpVerdict(
         n,
         warmingPeerCountsByModel.get(n.servingModels[0] ?? "") ?? 1,
+        pooledGbByModel.get(n.servingModels[0] ?? "") ?? 0,
       ),
     }))
     .filter((x): x is { node: typeof x.node; verdict: WarmingVerdict } =>
@@ -1033,6 +1119,22 @@ export default function StatusPage() {
                   (n) => !n.hostname?.startsWith("ip-"),
                 ).length
               }
+              loadingPeerCount={
+                renderNodes.filter(
+                  (n) =>
+                    !n.hostname?.startsWith("ip-") &&
+                    n.state === "loading",
+                ).length
+              }
+              pooledGb={renderNodes
+                .filter((n) => !n.hostname?.startsWith("ip-"))
+                .reduce((acc, n) => {
+                  const v = Math.min(
+                    n.vramGb || Number.POSITIVE_INFINITY,
+                    n.capability?.vramGb || Number.POSITIVE_INFINITY,
+                  );
+                  return acc + (Number.isFinite(v) && v > 0 ? v : 0);
+                }, 0)}
             />
 
             {/* Models list */}
