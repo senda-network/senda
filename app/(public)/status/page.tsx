@@ -1056,7 +1056,7 @@ export default function StatusPage() {
   // Zero means election is stuck; this is the deadlock signal that
   // hides behind "5 machines loading forever".
   const hostingCountByModel = new Map<string, number>();
-  for (const n of status.nodes) {
+  for (const n of renderNodes) {
     for (const m of n.capability?.loadedModels ?? []) {
       if (n.state === "serving" || (n.capability?.loadedModels?.length ?? 0) > 0) {
         hostingCountByModel.set(m, (hostingCountByModel.get(m) ?? 0) + 1);
