@@ -105,6 +105,12 @@ export type NodeCapabilitySummary = {
   vendor: string;
   /** "lo" | "mid" | "hi" | "pro" */
   computeClass: string;
+  /**
+   * Memory this peer can actually contribute to a serve right now. Already
+   * clamped to the runtime's own fit-time budget (`can_serve_max_gb`) when
+   * reported, so summing this across peers gives a pooled figure the mesh
+   * can actually plan against — not the inflated nameplate VRAM total.
+   */
   vramGb: number;
   loadedModels: string[];
 };
@@ -229,6 +235,17 @@ type RuntimeCapability = {
   vendor?: string;
   compute_class?: string;
   vram_total_mb?: number;
+  vram_free_mb?: number;
+  /**
+   * The runtime's own fit-time estimate of the largest single model this
+   * peer can host. It bakes in llama-server overhead, KV cache headroom,
+   * and driver reservations — i.e. it's the number the planner actually
+   * trusts when deciding whether a model fits. The raw `vram_total_mb`
+   * is an inventory figure and can over-state usable capacity by 10–30%,
+   * which is exactly the gap that made the public status page claim
+   * "Capacity is sufficient" while no host could be elected.
+   */
+  can_serve_max_gb?: number;
   loaded_models?: string[];
 };
 
@@ -394,14 +411,25 @@ function summarizeCapability(
     typeof usableVramGb === "number" && usableVramGb > 0
       ? Math.round(usableVramGb * 10) / 10
       : 0;
-  // `vram_total_mb` is an inventory number (on Apple it can be raw unified
-  // memory; on CUDA it can ignore driver/runtime overhead). The runtime's
-  // top-level `vram_gb` / `my_vram_gb` is the planner budget, so display the
-  // smaller value when both exist instead of inflating pooled memory.
-  const vramGb =
-    advertisedVramGb > 0 && usableHintGb > 0
-      ? Math.min(advertisedVramGb, usableHintGb)
-      : usableHintGb || advertisedVramGb;
+  // `can_serve_max_gb` is the runtime's own fit-time budget: nameplate
+  // VRAM minus llama-server overhead, KV cache headroom, and driver
+  // reservations. It's the number the planner trusts when deciding
+  // whether a model fits, so it's the truthful clamp for what each peer
+  // can contribute to a pooled serve. Without it, we fall through to
+  // the two inventory numbers (capability.vram_total and the peer's
+  // top-level vram_gb), which both over-state usable memory.
+  const canServeMaxGb =
+    typeof cap?.can_serve_max_gb === "number" && cap.can_serve_max_gb > 0
+      ? cap.can_serve_max_gb
+      : 0;
+  // Pick the smallest non-zero value across the three numbers we have.
+  // Anything that's zero is treated as "unreported" rather than "this
+  // peer contributes zero" — a single missing field shouldn't zero out
+  // the pool. When ALL three are zero we honestly report zero.
+  const candidates = [advertisedVramGb, usableHintGb, canServeMaxGb].filter(
+    (v) => v > 0,
+  );
+  const vramGb = candidates.length > 0 ? Math.min(...candidates) : 0;
   return {
     backend: cap?.backend ?? "unknown",
     vendor: cap?.vendor ?? "none",

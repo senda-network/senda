@@ -85,6 +85,16 @@ type WarmingVerdict =
       peerCount: number;
       pooledGb: number;
       neededGb: number;
+      /**
+       * How many peers in the mesh have actually committed to hosting
+       * this model right now (i.e. their `hosted_models` includes it).
+       * When this is 0 with `peerCount >= 2`, the mesh has the
+       * capacity to serve but no peer has been elected as host yet —
+       * the symptom that masquerades as "loading forever" on the
+       * public page and was the actual root cause of the 5-machine
+       * stall, not a memory shortfall.
+       */
+      hostingCount: number;
     }
   | {
       kind: "underprovisioned";
@@ -100,6 +110,7 @@ function warmingUpVerdict(
   node: NodeSummary,
   warmingPeerCountForModel = 1,
   pooledGbForModel = 0,
+  hostingCountForModel = 0,
 ): WarmingVerdict | null {
   const modelId = node.servingModels[0];
   if (!modelId) return null;
@@ -120,6 +131,7 @@ function warmingUpVerdict(
       peerCount: warmingPeerCountForModel,
       pooledGb: pooledGbForModel,
       neededGb: catalog.minVramGb,
+      hostingCount: hostingCountForModel,
     };
   }
   // Use the smaller of the two reported numbers — `vramGb` (top-level)
@@ -612,6 +624,13 @@ function WarmingUpCard({
     verdict.kind === "pooling" && verdict.pooledGb < verdict.neededGb;
   const pooledOk =
     verdict.kind === "pooling" && verdict.pooledGb >= verdict.neededGb;
+  // Pool large enough but nobody has actually committed to hosting:
+  // the election-stall signal that explains "5 machines loading forever".
+  const hostStalled =
+    verdict.kind === "pooling" &&
+    pooledOk &&
+    verdict.hostingCount === 0 &&
+    verdict.peerCount >= 2;
   return (
     <div
       className={
@@ -696,6 +715,18 @@ function WarmingUpCard({
                       </span>
                       {" "}— the model won&apos;t finish loading until more
                       capacity joins the mesh.
+                    </>
+                  ) : hostStalled ? (
+                    <>
+                      Capacity fits, but{" "}
+                      <span className="font-semibold text-amber-300">
+                        no peer has been elected as host
+                      </span>
+                      . Every machine is waiting on another to lead the
+                      serve — usually a transient state during peer
+                      re-link, but if it persists for more than a minute
+                      the mesh is stuck in an election loop and the model
+                      can&apos;t come online.
                     </>
                   ) : pooledOk ? (
                     <>Capacity is sufficient; waiting for host election and
@@ -1020,6 +1051,18 @@ export default function StatusPage() {
   // "Be the first to share" lie + collapsed accordion.
   const warmingPeerCountsByModel = new Map<string, number>();
   const pooledGbByModel = new Map<string, number>();
+  // Per-model: how many peers across the whole mesh — warming AND
+  // working — have hosted_models actually pointing at this model.
+  // Zero means election is stuck; this is the deadlock signal that
+  // hides behind "5 machines loading forever".
+  const hostingCountByModel = new Map<string, number>();
+  for (const n of status.nodes) {
+    for (const m of n.capability?.loadedModels ?? []) {
+      if (n.state === "serving" || (n.capability?.loadedModels?.length ?? 0) > 0) {
+        hostingCountByModel.set(m, (hostingCountByModel.get(m) ?? 0) + 1);
+      }
+    }
+  }
   for (const n of unavailableNodes) {
     if (n.state !== "loading") continue;
     const modelId = n.servingModels[0];
@@ -1049,6 +1092,7 @@ export default function StatusPage() {
         n,
         warmingPeerCountsByModel.get(n.servingModels[0] ?? "") ?? 1,
         pooledGbByModel.get(n.servingModels[0] ?? "") ?? 0,
+        hostingCountByModel.get(n.servingModels[0] ?? "") ?? 0,
       ),
     }))
     .filter((x): x is { node: typeof x.node; verdict: WarmingVerdict } =>
