@@ -363,6 +363,17 @@ function NodeCard({
           {cap.vramGb === 0 && cap.backend === "cpu" && (
             <span>CPU inference</span>
           )}
+          {/* System RAM (v0.66.38+). Hidden for pre-v0.66.38 peers
+              (systemRamBytes undefined or 0) so we don't claim a peer
+              "has 0 GB RAM" when it just hasn't gossiped the field. */}
+          {!!node.systemRamBytes && node.systemRamBytes > 0 && (
+            <span title="Total system RAM (used by RAM-aware host election)">
+              <span className="font-medium text-[var(--fg)]">
+                {Math.round(node.systemRamBytes / 1e9)} GB
+              </span>{" "}
+              RAM
+            </span>
+          )}
           <span
             className={`rounded-full border px-2 py-0.5 text-[11px] ${
               inflightRequests > 0

@@ -106,6 +106,13 @@ export type NodeSummary = {
   role: string;
   state: string;
   vramGb: number;
+  /**
+   * Total system RAM advertised by this peer (bytes). 0 means the peer is
+   * on a pre-v0.66.38 runtime that didn't gossip this field; UI should
+   * render that as "—" rather than "0 GB" to avoid implying the peer is
+   * actively reporting zero RAM.
+   */
+  systemRamBytes?: number;
   servingModels: string[];
   inflightRequests?: number;
   capability: NodeCapabilitySummary;

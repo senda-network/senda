@@ -155,6 +155,8 @@ export type NodeSummary = {
   role: string;
   state: string;
   vramGb: number;
+  /** See `use-mesh-status.ts` doc; matches `system_ram_bytes` from the runtime status payload. */
+  systemRamBytes?: number;
   servingModels: string[];
   inflightRequests?: number;
   capability: NodeCapabilitySummary;
@@ -271,6 +273,7 @@ type RuntimePeer = {
   serving_models?: string[];
   hosted_models?: string[];
   inflight_requests?: number;
+  system_ram_bytes?: number;
   capability?: RuntimeCapability;
   version?: string;
   /**
@@ -315,6 +318,7 @@ type RuntimeStatus = {
   serving_models?: string[];
   hosted_models?: string[];
   inflight_requests?: number;
+  system_ram_bytes?: number;
   capability?: RuntimeCapability;
   /** rc2 and earlier emit GPU info here rather than inside `capability`. */
   gpus?: RuntimeGpu[];
@@ -580,6 +584,7 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
       ...(peer.hosted_models ?? []),
     ].filter((m, i, arr) => arr.indexOf(m) === i),
     inflightRequests: peer.inflight_requests ?? 0,
+    systemRamBytes: peer.system_ram_bytes,
     capability: summarizeCapability(peer.capability, peer.hosted_models, peer.vram_gb),
     version: peer.version ?? null,
     splitRole: normalizeSplitRole(peer.split_role),
@@ -732,6 +737,7 @@ function buildNodes(
       ...(rt.hosted_models ?? []),
     ].filter((m, i, arr) => arr.indexOf(m) === i),
     inflightRequests: rt.inflight_requests ?? 0,
+    systemRamBytes: rt.system_ram_bytes,
     capability: summarizeCapability(inferLocalCapability(rt), null, rt.my_vram_gb),
     version: rt.version ?? null,
     splitRole: normalizeSplitRole(rt.my_split_role),
