@@ -37,6 +37,16 @@ const closedmesh = createOpenAICompatible({
   name: "closedmesh",
   baseURL: RUNTIME_URL,
   headers: runtimeHeaders,
+  // v0.66.43 marketplace metrics: the runtime backend proxy can only
+  // record a per-model TPS/TTFT sample when the upstream llama-server
+  // response carries `usage.completion_tokens`. For non-streaming
+  // responses that's always there. For streaming (SSE) responses, the
+  // OpenAI spec requires the client to opt in via
+  // `stream_options.include_usage: true` — without that flag the
+  // final chunk omits `usage`, the runtime parses `None`, and the
+  // catalog stays empty. Setting this here on the provider applies
+  // to every `streamText({ model: closedmesh.chatModel(...) })` call.
+  includeUsage: true,
 });
 
 async function pickDefaultModel(): Promise<string> {

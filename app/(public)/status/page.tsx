@@ -298,6 +298,50 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
   );
   const contributorCount = contributors.length;
 
+  // Classify the cohort by role so we can describe the topology in
+  // plain English. We scope split/MoE membership to *this model*
+  // because a peer's `splitRole` is per-model — a peer could be a
+  // `pipeline_worker` for model A and serve model B solo at the same
+  // time. The classification feeds the small line under the row title.
+  let hostCount = 0;
+  let workerCount = 0;
+  let moeCount = 0;
+  let soloCount = 0;
+  for (const n of contributors) {
+    if (n.splitRole === "pipeline_host" && n.splitGroup?.model === model) {
+      hostCount += 1;
+    } else if (
+      n.splitRole === "pipeline_worker" &&
+      n.splitGroup?.model === model
+    ) {
+      workerCount += 1;
+    } else if (n.splitRole === "moe_shard" && n.moeShard?.model === model) {
+      moeCount += 1;
+    } else {
+      soloCount += 1;
+    }
+  }
+  const topologyParts: string[] = [];
+  if (hostCount > 0 || workerCount > 0) {
+    // Pipeline split is the "power-user pooled mode" (see Phase 0
+    // narrative in `MeshComputer.tsx`) — label it explicitly so the
+    // reader knows this row's t/s isn't single-machine performance.
+    topologyParts.push(
+      `${hostCount} host + ${workerCount} worker${workerCount === 1 ? "" : "s"} (pooled split)`,
+    );
+  }
+  if (moeCount > 0) {
+    topologyParts.push(
+      `${moeCount} MoE shard${moeCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (soloCount > 0) {
+    topologyParts.push(
+      `${soloCount} solo contributor${soloCount === 1 ? "" : "s"}`,
+    );
+  }
+  const topologyLabel = topologyParts.join(" · ");
+
   const tpsValues = contributors
     .map((n) => n.measuredTpsP50ByModel?.[model])
     .filter((v): v is number => typeof v === "number" && v > 0);
@@ -324,9 +368,10 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
         <div className="shrink-0 text-[11px] text-[var(--fg-muted)] tabular-nums">
           {contributorCount === 0
             ? "no peers loaded"
-            : contributorCount === 1
-              ? "1 contributor"
-              : `${contributorCount} contributors`}
+            : topologyLabel ||
+              (contributorCount === 1
+                ? "1 contributor"
+                : `${contributorCount} contributors`)}
         </div>
       </div>
       {hasMeasurements ? (
