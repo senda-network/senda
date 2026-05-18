@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -105,21 +106,38 @@ export function runClosedmesh(
   timeoutMs = 8000,
 ): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn(bin, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-      // CRITICAL on Windows: this controller runs as a Node sidecar of the
-      // Tauri desktop app, which is a GUI process (`windows_subsystem =
-      // "windows"`). When such a parent spawns a console-subsystem child
-      // like `closedmesh.exe`, `schtasks.exe`, or `tar.exe`, Windows
-      // allocates a brand-new console window for it. With `/api/control/*`
-      // routes invoked on every dashboard tick, that meant a terminal
-      // window flashed on the user's screen 4× a second forever — the
-      // "opening terminals like crazy" symptom. `windowsHide` translates
-      // to `CREATE_NO_WINDOW` (0x0800_0000) on the underlying CreateProcess
-      // call, which suppresses the allocation. No effect on macOS / Linux.
-      windowsHide: true,
-    });
+    // Node's child_process.spawn() can throw synchronously on Windows
+    // (e.g. invalid argv encoding, ENOENT on the executable, libuv's
+    // UV_UNKNOWN spawn failure observed in controller.stderr.log). A
+    // synchronous throw inside this Promise executor becomes an
+    // unhandled rejection at the call site if the caller did not
+    // `.catch()` — which on a Tauri sidecar process can take the
+    // whole Node controller down mid-bounce and present to the user
+    // as "the desktop app crashed when I clicked Set as startup".
+    // Wrap the spawn so any throw resolves the same way an async
+    // 'error' event would: ok:false with the message preserved.
+    let child: ChildProcessByStdio<null, Readable, Readable>;
+    try {
+      child = spawn(bin, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: process.env,
+        // CRITICAL on Windows: this controller runs as a Node sidecar of the
+        // Tauri desktop app, which is a GUI process (`windows_subsystem =
+        // "windows"`). When such a parent spawns a console-subsystem child
+        // like `closedmesh.exe`, `schtasks.exe`, or `tar.exe`, Windows
+        // allocates a brand-new console window for it. With `/api/control/*`
+        // routes invoked on every dashboard tick, that meant a terminal
+        // window flashed on the user's screen 4× a second forever — the
+        // "opening terminals like crazy" symptom. `windowsHide` translates
+        // to `CREATE_NO_WINDOW` (0x0800_0000) on the underlying CreateProcess
+        // call, which suppresses the allocation. No effect on macOS / Linux.
+        windowsHide: true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      resolve({ ok: false, code: -1, stdout: "", stderr: `spawn threw: ${message}` });
+      return;
+    }
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
@@ -138,9 +156,20 @@ export function runClosedmesh(
         stderr: stderr.trim(),
       });
     });
-    child.on("error", () => {
+    child.on("error", (err) => {
       clearTimeout(timer);
-      resolve({ ok: false, code: -1, stdout, stderr: stderr || "spawn failed" });
+      // The previous version of this handler discarded the error object
+      // and returned a bare "spawn failed" string, which was useless
+      // for diagnosing the libuv UV_UNKNOWN / ENOENT spawn failures
+      // that turned up on Windows during the "set as startup" bounce.
+      // Preserve the message so /api/control/models/startup can surface it.
+      const message = err instanceof Error ? err.message : String(err);
+      resolve({
+        ok: false,
+        code: -1,
+        stdout,
+        stderr: stderr || message || "spawn failed",
+      });
     });
   });
 }

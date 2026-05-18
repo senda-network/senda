@@ -19,6 +19,51 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
+ * Step-by-step instrumentation for the "Set as startup" bounce.
+ *
+ * The flow has historically been opaque: a user clicks the button, the
+ * route shells out to `closedmesh service stop`, an internal PowerShell
+ * residual-kill, and `closedmesh service start`, and we'd see only the
+ * final ok/error message in the UI toast. When the desktop app crashed
+ * mid-bounce on Windows (initial reports: a stray libuv UV_UNKNOWN
+ * spawn failure left in `controller.stderr.log`) we had no way to tell
+ * which child process failed.
+ *
+ * Every step now writes a one-line JSON record to stderr (which the
+ * Tauri sidecar redirects to `controller.stderr.log`; see
+ * `desktop/src/sidecar.rs`). Each line carries a per-request `rid`
+ * tag so a single click is `rg '"rid":"<id>"' controller.stderr.log`.
+ */
+function reqId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function startupLog(rid: string, event: string, fields: Record<string, unknown> = {}): void {
+  try {
+    const entry = {
+      tag: "startup",
+      rid,
+      event,
+      ts: new Date().toISOString(),
+      platform: process.platform,
+      ...fields,
+    };
+    // Stderr (not stdout) so the existing Next.js banner spam in
+    // controller.stdout.log doesn't drown the bounce trace.
+    console.error(`[startup] ${JSON.stringify(entry)}`);
+  } catch {
+    // Logging must never fail the request. Swallow JSON.stringify
+    // failures on circular fields (none expected, but cheap to guard).
+  }
+}
+
+/** Trim a captured stderr/stdout blob for log embedding. */
+function trim(s: string | undefined, n = 400): string {
+  if (!s) return "";
+  return s.length > n ? `${s.slice(0, n)}…(+${s.length - n} chars)` : s;
+}
+
+/**
  * Manage which model(s) the local runtime loads on boot.
  *
  *   GET  → { ok, models: StartupModel[], configPath }
@@ -81,76 +126,128 @@ export async function GET() {
 export async function POST(req: Request) {
   if (isPublic) return forbiddenOnPublic();
 
-  let body: StartupModelInput;
+  const rid = reqId();
+  // Top-level guard: prior to this, an exception inside bounceService
+  // (e.g. a synchronous spawn throw on Windows) escaped to Next.js'
+  // default error path and the client received an HTML 500. The UI
+  // surfaces that as "request failed" with no actionable detail, and
+  // in the worst case the Node sidecar died on an unhandled rejection.
+  // Catch everything, log it, return a structured ok:false.
   try {
-    body = (await req.json()) as StartupModelInput;
-  } catch {
-    return NextResponse.json<StartupResponse>(
-      { ok: false, message: "expected JSON body { model, ctxSize? }" },
-      { status: 400 },
-    );
-  }
+    startupLog(rid, "post.enter");
 
-  const model = (body.model ?? "").trim();
-  if (!model) {
-    return NextResponse.json<StartupResponse>(
-      { ok: false, message: "missing 'model' (catalog id or canonical ref)" },
-      { status: 400 },
-    );
-  }
-  if (model.length > 256 || /[\r\n"\\]/.test(model)) {
-    return NextResponse.json<StartupResponse>(
-      { ok: false, message: "model id contains illegal characters" },
-      { status: 400 },
-    );
-  }
+    let body: StartupModelInput;
+    try {
+      body = (await req.json()) as StartupModelInput;
+    } catch {
+      startupLog(rid, "post.bad_json");
+      return NextResponse.json<StartupResponse>(
+        { ok: false, message: "expected JSON body { model, ctxSize? }" },
+        { status: 400 },
+      );
+    }
 
-  const ctxSize =
-    typeof body.ctxSize === "number" && Number.isFinite(body.ctxSize)
-      ? Math.max(1, Math.floor(body.ctxSize))
-      : undefined;
+    const model = (body.model ?? "").trim();
+    if (!model) {
+      startupLog(rid, "post.missing_model");
+      return NextResponse.json<StartupResponse>(
+        { ok: false, message: "missing 'model' (catalog id or canonical ref)" },
+        { status: 400 },
+      );
+    }
+    if (model.length > 256 || /[\r\n"\\]/.test(model)) {
+      startupLog(rid, "post.illegal_model_id", { len: model.length });
+      return NextResponse.json<StartupResponse>(
+        { ok: false, message: "model id contains illegal characters" },
+        { status: 400 },
+      );
+    }
 
-  const forceSplit = body.forceSplit === true ? true : undefined;
+    const ctxSize =
+      typeof body.ctxSize === "number" && Number.isFinite(body.ctxSize)
+        ? Math.max(1, Math.floor(body.ctxSize))
+        : undefined;
 
-  const next: StartupModel = { model, ctxSize, forceSplit };
+    const forceSplit = body.forceSplit === true ? true : undefined;
 
-  let updated: string;
-  try {
-    const existing = await readConfigFile();
-    updated = writeStartupModels(existing, [next]);
-    await writeConfigFile(updated);
+    startupLog(rid, "post.body_parsed", { model, ctxSize, forceSplit });
+
+    const next: StartupModel = { model, ctxSize, forceSplit };
+
+    let updated: string;
+    try {
+      const existing = await readConfigFile();
+      updated = writeStartupModels(existing, [next]);
+      await writeConfigFile(updated);
+      startupLog(rid, "config.written", {
+        path: CONFIG_PATH,
+        bytes: updated.length,
+      });
+    } catch (err) {
+      startupLog(rid, "config.write_failed", {
+        path: CONFIG_PATH,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NextResponse.json<StartupResponse>(
+        {
+          ok: false,
+          message:
+            err instanceof Error
+              ? `write failed: ${err.message}`
+              : "write failed",
+          configPath: CONFIG_PATH,
+        },
+        { status: 500 },
+      );
+    }
+
+    const restart = await bounceService(rid);
+
+    startupLog(rid, "post.done", {
+      restartOk: restart.ok,
+      restartMessage: restart.message,
+    });
+
+    return NextResponse.json<StartupResponse>({
+      ok: true,
+      models: readStartupModels(updated),
+      configPath: CONFIG_PATH,
+      restart,
+    });
   } catch (err) {
+    startupLog(rid, "post.unhandled", {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return NextResponse.json<StartupResponse>(
       {
         ok: false,
         message:
           err instanceof Error
-            ? `write failed: ${err.message}`
-            : "write failed",
+            ? `internal error: ${err.message}`
+            : "internal error",
         configPath: CONFIG_PATH,
       },
       { status: 500 },
     );
   }
-
-  const restart = await bounceService();
-
-  return NextResponse.json<StartupResponse>({
-    ok: true,
-    models: readStartupModels(updated),
-    configPath: CONFIG_PATH,
-    restart,
-  });
 }
 
 export async function DELETE() {
   if (isPublic) return forbiddenOnPublic();
 
+  const rid = reqId();
   try {
+    startupLog(rid, "delete.enter");
     const existing = await readConfigFile();
     const cleared = writeStartupModels(existing, []);
     await writeConfigFile(cleared);
-    const restart = await bounceService();
+    startupLog(rid, "delete.config_cleared", { path: CONFIG_PATH });
+    const restart = await bounceService(rid);
+    startupLog(rid, "delete.done", {
+      restartOk: restart.ok,
+      restartMessage: restart.message,
+    });
     return NextResponse.json<StartupResponse>({
       ok: true,
       models: [],
@@ -158,6 +255,10 @@ export async function DELETE() {
       restart,
     });
   } catch (err) {
+    startupLog(rid, "delete.unhandled", {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return NextResponse.json<StartupResponse>(
       {
         ok: false,
@@ -181,8 +282,11 @@ export async function DELETE() {
  * exits; the caller polls /api/control/status to watch the model
  * actually come up.
  */
-async function bounceService(): Promise<{ ok: boolean; message: string }> {
+async function bounceService(
+  rid: string,
+): Promise<{ ok: boolean; message: string }> {
   const bin = await findClosedmeshBin();
+  startupLog(rid, "bounce.bin_resolved", { bin });
   if (!bin) {
     return {
       ok: false,
@@ -193,7 +297,13 @@ async function bounceService(): Promise<{ ok: boolean; message: string }> {
 
   // `service stop` exits non-zero if the unit was already stopped or
   // never installed, which is fine. We treat both as "ok to start now".
-  await runClosedmesh(bin, ["service", "stop"], 10_000);
+  const stop = await runClosedmesh(bin, ["service", "stop"], 10_000);
+  startupLog(rid, "bounce.stop_result", {
+    ok: stop.ok,
+    code: stop.code,
+    stdout: trim(stop.stdout),
+    stderr: trim(stop.stderr),
+  });
 
   // Windows-only: bridge two async-termination races between stop and
   // start, both of which manifest as "I clicked Make startup model and
@@ -226,11 +336,32 @@ async function bounceService(): Promise<{ ok: boolean; message: string }> {
   if (process.platform === "win32") {
     await new Promise((r) => setTimeout(r, 1500));
     const ps = `Get-Process -Name closedmesh -ErrorAction SilentlyContinue | Where-Object { $_.Path -and ($_.Path -ieq '${bin.replace(/'/g, "''")}') } | Stop-Process -Force -ErrorAction SilentlyContinue`;
-    await runClosedmesh("powershell", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps], 5_000).catch(() => undefined);
+    const residualKill = await runClosedmesh(
+      "powershell",
+      ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+      5_000,
+    ).catch((err) => ({
+      ok: false,
+      code: -1,
+      stdout: "",
+      stderr: err instanceof Error ? err.message : String(err),
+    }));
+    startupLog(rid, "bounce.win_residual_kill", {
+      ok: residualKill.ok,
+      code: residualKill.code,
+      stderr: trim(residualKill.stderr),
+    });
     await new Promise((r) => setTimeout(r, 500));
   }
 
   let start = await runClosedmesh(bin, ["service", "start"], 15_000);
+  startupLog(rid, "bounce.start_result", {
+    attempt: 1,
+    ok: start.ok,
+    code: start.code,
+    stdout: trim(start.stdout),
+    stderr: trim(start.stderr),
+  });
 
   // Work around a known race in the runtime CLI's `service start`:
   // `launchctl bootout` returns immediately but the agent unload is
@@ -242,14 +373,25 @@ async function bounceService(): Promise<{ ok: boolean; message: string }> {
   // failing after ~6 s of accumulated wait, it's almost certainly a
   // real plist / permissions problem and we surface the error.
   const backoffMs = [2_000, 4_000];
+  let attempt = 1;
   for (const wait of backoffMs) {
     if (start.ok) break;
     if (!isLaunchctlBootstrapRace(start.stderr, start.stdout)) break;
+    attempt += 1;
+    startupLog(rid, "bounce.start_retry_scheduled", { attempt, waitMs: wait });
     await new Promise((r) => setTimeout(r, wait));
     start = await runClosedmesh(bin, ["service", "start"], 15_000);
+    startupLog(rid, "bounce.start_result", {
+      attempt,
+      ok: start.ok,
+      code: start.code,
+      stdout: trim(start.stdout),
+      stderr: trim(start.stderr),
+    });
   }
 
   if (start.ok) {
+    startupLog(rid, "bounce.success");
     return {
       ok: true,
       message:
@@ -264,10 +406,23 @@ async function bounceService(): Promise<{ ok: boolean; message: string }> {
   // itself broke we want the surface error rather than a generic
   // "couldn't start".
   const looksMissing = looksLikeServiceMissing(start.stderr, start.stdout);
+  startupLog(rid, "bounce.start_failed", { looksMissing });
   if (looksMissing) {
     const install = await runClosedmesh(bin, ["service", "install"], 20_000);
+    startupLog(rid, "bounce.install_result", {
+      ok: install.ok,
+      code: install.code,
+      stdout: trim(install.stdout),
+      stderr: trim(install.stderr),
+    });
     if (install.ok) {
       const retry = await runClosedmesh(bin, ["service", "start"], 15_000);
+      startupLog(rid, "bounce.start_after_install_result", {
+        ok: retry.ok,
+        code: retry.code,
+        stdout: trim(retry.stdout),
+        stderr: trim(retry.stderr),
+      });
       if (retry.ok) {
         return {
           ok: true,
