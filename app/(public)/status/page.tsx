@@ -283,8 +283,16 @@ function NodeCard({
   // tracked in history and reset whenever state moves to anything other
   // than `loading`. Past ~20s it's almost certainly stuck rather than
   // genuinely re-loading.
+  //
+  // Pipeline workers are EXCLUDED from this timer: the runtime keeps
+  // them in `state="loading"` indefinitely while they hold rpc-server
+  // shards for the host. Their "loading time" would tick up forever and
+  // the card would say "Stuck loading 4h" in amber — exactly the opposite
+  // of what's happening (they're healthy contributors). The green
+  // "Contributing" label from nodeDisplayState is the correct read.
+  const isPipelineWorker = node.splitRole === "pipeline_worker";
   const loadingFor =
-    node.state === "loading" && history?.loadingSince
+    node.state === "loading" && !isPipelineWorker && history?.loadingSince
       ? Date.now() - history.loadingSince
       : 0;
   const stuckLoading = loadingFor > 20_000;
@@ -805,16 +813,23 @@ function SummaryBar({
   // `serving_models` while still bringing it up — that's how the page
   // used to claim "1 node sharing GPU" while inference 503'd) and excludes
   // pure clients that aren't serving anything.
+  //
+  // EXCEPT: `splitRole === "pipeline_worker"` peers ARE sharing GPU
+  // (they're running rpc-server holding model layers for the host),
+  // they just have `state="loading"` because no local llama-server is
+  // accepting requests. Counting them as not-sharing was the same lie
+  // that hid 3 of 4 contributors from the headline number on May 18 2026.
   const sharingNodes = status.nodes.filter(
     (n) =>
       !n.hostname?.startsWith("ip-") &&
-      n.state !== "loading" &&
       n.state !== "unreachable" &&
       n.state !== "offline" &&
-      ((n.capability?.loadedModels?.length ?? 0) > 0 ||
-        n.servingModels.length > 0 ||
-        n.state === "serving" ||
-        n.state === "standby"),
+      (n.splitRole === "pipeline_worker" ||
+        (n.state !== "loading" &&
+          ((n.capability?.loadedModels?.length ?? 0) > 0 ||
+            n.servingModels.length > 0 ||
+            n.state === "serving" ||
+            n.state === "standby"))),
   ).length;
   const models = status.models;
   // Cards shown in "Available machines": everyone we recognise, plus
@@ -1053,6 +1068,14 @@ export default function StatusPage() {
     // demote it once the grace expires and we drop it from renderNodes
     // entirely.
     if (h?.everUseful) return false;
+    // Pipeline workers in an active split are contributing compute via
+    // rpc-server, not "loading" — they belong in the Available list
+    // alongside the host. See `nodeDisplayState` for why we treat the
+    // runtime's `state="loading"` as misleading in this specific case.
+    // Without this, a 4-peer Qwen3-32B split renders as "1 available,
+    // 3 unavailable" on the public dashboard, which scares off
+    // contributors who don't see their own machine in the list.
+    if (n.splitRole === "pipeline_worker") return false;
     return (
       n._vanished ||
       n.state === "loading" ||

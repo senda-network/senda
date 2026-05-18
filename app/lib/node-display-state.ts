@@ -129,6 +129,28 @@ export function nodeDisplayState(
   const hasLoadedModel = (node.capability?.loadedModels?.length ?? 0) > 0;
   const intendsToServe = node.servingModels.length > 0;
 
+  // Pipeline-worker peers are CONTRIBUTING, not "loading". They run
+  // `rpc-server` holding a slice of the model on behalf of a
+  // `pipeline_host` peer that owns the HTTP endpoint. The runtime
+  // reports `state="loading"` because no local `llama-server` is
+  // accepting requests on this peer — that's literally true but
+  // misleading on the public dashboard: from a contributor's point
+  // of view their machine IS active and IS sharing compute. Surface
+  // that as a distinct green "Contributing" state so the
+  // contributor sees their card alongside the host, and the
+  // visitor sees the actual split topology instead of "1 machine
+  // serving, 3 unavailable". The host stays "Serving"/"Ready" via
+  // the branches below — only the workers get this label.
+  if (node.splitRole === "pipeline_worker") {
+    return {
+      dot: "bg-emerald-400",
+      badge: greenBadge,
+      label: "Contributing",
+      description:
+        "Running rpc-server as a worker in an active pipeline split. This peer holds a slice of the model on behalf of the elected host — chat requests don't land here directly, but every token the host generates flows through this machine's layers.",
+    };
+  }
+
   if (node.state === "loading" || (intendsToServe && !hasLoadedModel)) {
     return {
       dot: "bg-amber-400",
