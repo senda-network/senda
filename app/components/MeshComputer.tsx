@@ -4,10 +4,15 @@ import type { NodeSummary } from "../lib/use-mesh-status";
 import type { MeshModel } from "../lib/use-mesh-status";
 
 /**
- * Big-numbers header for the Mesh page. Reframes the swarm as one collective
- * computer rather than "your machine + a counter": pooled VRAM, contributor
- * count, models served, and how many of them are running as multi-node
- * splits.
+ * Big-numbers header for the Mesh page. Surfaces the live marketplace
+ * shape — contributor count, aggregate hosting capacity, models served,
+ * and how many of those are running as multi-node splits — without
+ * promoting the "one collective computer / one virtual GPU" framing the
+ * strategy explicitly demotes (see `internal/STRATEGY.md` §2: each peer
+ * serves what fits end-to-end; pooled splits are a power-user fallback,
+ * not the headline). The prose subheader leads with per-peer serving;
+ * splits are kept as a stat for transparency but called out as a
+ * power-user mode.
  *
  * Driven by the live `useMeshStatus()` and `useMeshModels()` outputs. The
  * model-list input is optional so this component can render meaningfully on
@@ -62,21 +67,22 @@ export function MeshComputer({
       </div>
       <div className="mt-2 text-[15px] leading-snug text-[var(--fg)]">
         <span className="text-2xl font-semibold tracking-tight">
+          {contributorCount}
+        </span>{" "}
+        {contributorCount === 1 ? "contributor" : "contributors"} hosting{" "}
+        <span className="text-2xl font-semibold tracking-tight">
           {pooledVramGb >= 100
             ? `${Math.round(pooledVramGb)} GB`
             : `${pooledVramGb.toFixed(1)} GB`}
         </span>{" "}
-        of pooled memory across{" "}
-        <span className="text-2xl font-semibold tracking-tight">
-          {contributorCount}
-        </span>{" "}
-        {contributorCount === 1 ? "contributor" : "contributors"}
+        of aggregate capacity
       </div>
       <p className="mt-1.5 max-w-2xl text-[12px] leading-relaxed text-[var(--fg-muted)]">
-        The mesh is one collective computer made of every machine that joins.
-        Models that don&apos;t fit on any single box can run pooled across
-        contributors — bigger model than your laptop can hold, no upgrade
-        needed.
+        Each contributor hosts what fits on their hardware end-to-end — the
+        mesh routes each session to the best peer for the job. Models too
+        big for any single peer can fall back to a pooled split: a
+        power-user mode for the rare case the catalog can&apos;t otherwise
+        serve.
       </p>
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -96,8 +102,8 @@ export function MeshComputer({
             value={String(splitsActive)}
             hint={
               splitsActive > 0
-                ? "Models running across multiple contributors"
-                : "No models are split right now"
+                ? "Models running in power-user pooled mode (no single peer can solo them)"
+                : "No models are in pooled split mode right now"
             }
           />
         ) : (
