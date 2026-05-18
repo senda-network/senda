@@ -187,6 +187,15 @@ export type NodeSummary = {
    */
   moeShard: MoeShard | null;
   /**
+   * Phase 1 marketplace metrics: per-model median t/s this peer
+   * actually measured over the last hour. Optional + missing-friendly:
+   * peers on runtimes older than v0.66.42 won't include these, and
+   * the Catalog view treats absent / empty maps as "no measurements
+   * yet, render placeholder row" rather than "measured zero".
+   */
+  measuredTpsP50ByModel?: Record<string, number>;
+  measuredTtftMsP50ByModel?: Record<string, number>;
+  /**
    * True when this node is the elected `pipeline_host` for a model but
    * one or more peers in `splitGroup.peerIds` is not yet `state="serving"`.
    * In that case the node is structurally unable to fulfil inference for
@@ -283,6 +292,15 @@ type RuntimePeer = {
   split_role?: string | null;
   split_group?: RuntimeSplitGroup | null;
   moe_shard?: RuntimeMoeShard | null;
+  /**
+   * Phase 1 marketplace metrics (runtime v0.66.42+). Empty / missing
+   * map means "this peer hasn't reported any local-inference timings
+   * for any model yet" — not "measured zero". The Catalog view on
+   * `/status` uses this distinction to render a "no measurements yet"
+   * fallback row for catalog models nobody on the mesh has served.
+   */
+  measured_tps_p50_by_model?: Record<string, number>;
+  measured_ttft_ms_p50_by_model?: Record<string, number>;
 };
 
 type RuntimeGpu = {
@@ -319,6 +337,13 @@ type RuntimeStatus = {
   hosted_models?: string[];
   inflight_requests?: number;
   system_ram_bytes?: number;
+  /**
+   * Phase 1 marketplace metrics (runtime v0.66.42+) — same fields and
+   * semantics as on `RuntimePeer`. These cover the local node; peer
+   * entries carry their own gossiped versions via `peers[].measured_*`.
+   */
+  measured_tps_p50_by_model?: Record<string, number>;
+  measured_ttft_ms_p50_by_model?: Record<string, number>;
   capability?: RuntimeCapability;
   /** rc2 and earlier emit GPU info here rather than inside `capability`. */
   gpus?: RuntimeGpu[];
@@ -590,6 +615,13 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     splitRole: normalizeSplitRole(peer.split_role),
     splitGroup: normalizeSplitGroup(peer.split_group),
     moeShard: normalizeMoeShard(peer.moe_shard),
+    // Phase 1 marketplace metrics — runtime v0.66.42+. Older peers
+    // gossip an empty `model_timings` vec which becomes `undefined`
+    // here; the Catalog view distinguishes that from a present-but-
+    // empty map ("measured zero") and renders the row as "no
+    // measurements yet" instead.
+    measuredTpsP50ByModel: peer.measured_tps_p50_by_model,
+    measuredTtftMsP50ByModel: peer.measured_ttft_ms_p50_by_model,
     // Set in the post-processing pass `applyPipelineHealthGate`. We
     // can't decide it here because we need the full peer list to know
     // whether the workers have come up.
@@ -743,6 +775,10 @@ function buildNodes(
     splitRole: normalizeSplitRole(rt.my_split_role),
     splitGroup: normalizeSplitGroup(rt.my_split_group),
     moeShard: normalizeMoeShard(rt.my_moe_shard),
+    // Phase 1 marketplace metrics — see `peerToNode` for the
+    // missing/empty/zero semantics.
+    measuredTpsP50ByModel: rt.measured_tps_p50_by_model,
+    measuredTtftMsP50ByModel: rt.measured_ttft_ms_p50_by_model,
     pipelineDegraded: false,
     meshVisibility: normalizeMeshVisibility(rt.mesh_visibility),
   });

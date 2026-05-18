@@ -253,6 +253,120 @@ function maxVersion(nodes: { version: string | null }[]): string | null {
   return best;
 }
 
+/**
+ * Median of a numeric array. Returns `null` for empty input rather than
+ * 0 so the caller can distinguish "no samples" from "samples that
+ * average to zero" — same convention the runtime uses for missing
+ * `measured_*_p50_by_model` keys.
+ */
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * One row in the Catalog block on /status. Aggregates per-peer
+ * measurements for `model` into the marketplace-shaped row:
+ *
+ *   - Contributor count = peers whose `servingModels` / `capability.loadedModels`
+ *     include this model. We dedupe by node id.
+ *   - Throughput = median of `measuredTpsP50ByModel[model]` across reporting
+ *     peers (median of medians — fine as MVP, ranks the cohort correctly
+ *     and is robust to one outlier).
+ *   - Time-to-first-token = the LOWEST `measuredTtftMsP50ByModel[model]`
+ *     across reporting peers. We pick the best because that's the
+ *     marketplace promise — if any peer can answer fast, the router can
+ *     hand you to that peer. Median-of-medians here would hide the best
+ *     hardware, which is the opposite of what we want to surface.
+ *   - "No measurements yet" placeholder when every reporting peer is on
+ *     a pre-v0.66.42 runtime (no `measured_*` maps), or when no peer in
+ *     the cohort has actually completed a local inference for this
+ *     model. We deliberately don't show fake 0 t/s in that case — the
+ *     whole point of the runtime distinguishing "missing entry" from
+ *     "measured zero" is to let this UI tell users "we'd report it if
+ *     we had it, we don't yet".
+ */
+function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
+  const contributors = nodes.filter(
+    (n) =>
+      n.servingModels.includes(model) ||
+      (n.capability?.loadedModels?.includes(model) ?? false),
+  );
+  const contributorCount = contributors.length;
+
+  const tpsValues = contributors
+    .map((n) => n.measuredTpsP50ByModel?.[model])
+    .filter((v): v is number => typeof v === "number" && v > 0);
+  const ttftValues = contributors
+    .map((n) => n.measuredTtftMsP50ByModel?.[model])
+    .filter((v): v is number => typeof v === "number" && v > 0);
+
+  const medianTps = median(tpsValues);
+  const lowestTtftMs = ttftValues.length > 0 ? Math.min(...ttftValues) : null;
+
+  const hasMeasurements = medianTps !== null || lowestTtftMs !== null;
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${contributorCount > 0 ? "bg-emerald-400" : "bg-slate-500"}`}
+          />
+          <span className="truncate text-[14px] font-semibold text-[var(--fg)]">
+            {prettyModelName(model)}
+          </span>
+        </div>
+        <div className="shrink-0 text-[11px] text-[var(--fg-muted)] tabular-nums">
+          {contributorCount === 0
+            ? "no peers loaded"
+            : contributorCount === 1
+              ? "1 contributor"
+              : `${contributorCount} contributors`}
+        </div>
+      </div>
+      {hasMeasurements ? (
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[12px] text-[var(--fg-muted)]">
+          {medianTps !== null && (
+            <span>
+              <span className="font-semibold tabular-nums text-[var(--fg)]">
+                {medianTps >= 10 ? medianTps.toFixed(0) : medianTps.toFixed(1)}
+              </span>{" "}
+              tokens/sec
+              {tpsValues.length > 1 && (
+                <span className="text-[10px] uppercase tracking-wider opacity-70">
+                  {" "}
+                  median of {tpsValues.length}
+                </span>
+              )}
+            </span>
+          )}
+          {lowestTtftMs !== null && (
+            <span>
+              <span className="font-semibold tabular-nums text-[var(--fg)]">
+                {lowestTtftMs < 1000
+                  ? `${Math.round(lowestTtftMs)}ms`
+                  : `${(lowestTtftMs / 1000).toFixed(1)}s`}
+              </span>{" "}
+              fastest first token
+            </span>
+          )}
+        </div>
+      ) : contributorCount > 0 ? (
+        <div className="mt-2 text-[12px] text-[var(--fg-muted)]">
+          No measurements yet — peers need to actually serve a request before
+          throughput shows up here. Older runtimes (&lt; v0.66.42) won&apos;t
+          report measurements at all.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function NodeCard({
   node,
   history,
@@ -1226,21 +1340,24 @@ export default function StatusPage() {
                 }, 0)}
             />
 
-            {/* Models list */}
+            {/* Catalog view: one row per model, with measured throughput,
+                first-token latency, and contributor count. This replaces
+                the flat chip list because a chip just answers "is this
+                model loaded somewhere?" — for the marketplace narrative
+                we also need "how fast", "how responsive", "who's serving
+                it". Median t/s and lowest TTFT come from per-peer
+                rolling-1h samples gossiped via PeerAnnouncement
+                (runtime v0.66.42+). Older peers don't gossip these and
+                the row renders a "no measurements yet" line instead of
+                fabricating zeros. */}
             {status.models.length > 0 && (
               <div>
                 <div className="mb-3 text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
-                  Available models
+                  Catalog
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="space-y-2">
                   {status.models.map((m) => (
-                    <span
-                      key={m}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[12px] font-medium text-[var(--fg)]"
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      {prettyModelName(m)}
-                    </span>
+                    <CatalogRow key={m} model={m} nodes={status.nodes} />
                   ))}
                 </div>
               </div>

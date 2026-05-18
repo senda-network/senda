@@ -150,6 +150,24 @@ export type NodeSummary = {
    * node itself (which has nothing to audit against).
    */
   meshVisibility: MeshVisibility | null;
+  /**
+   * Per-model median tokens-per-second this peer has measured over the
+   * last hour of successful local-inference completions. Phase 1
+   * marketplace metric — runtime v0.66.42+. Missing keys mean "not yet
+   * measured" rather than "measured zero"; the Catalog view on
+   * `/status` keys off this map to render per-model throughput rows.
+   * Object-valued and optional so older API responses (and peers on
+   * runtimes that pre-date the gossip field) deserialize cleanly to
+   * `undefined`.
+   */
+  measuredTpsP50ByModel?: Record<string, number>;
+  /**
+   * Per-model median time-to-first-token (milliseconds) this peer has
+   * measured over the last hour of successful local-inference
+   * completions. Same Phase 1 / "missing = not measured" semantics as
+   * `measuredTpsP50ByModel`.
+   */
+  measuredTtftMsP50ByModel?: Record<string, number>;
 };
 
 /**
