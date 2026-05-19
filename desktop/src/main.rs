@@ -535,7 +535,7 @@ fn pin_huggingface_cache_dir() {
 }
 
 /// Append the control-group entry path (`/dashboard`) to the controller's
-/// base URL. Handles both `http://127.0.0.1:3000` and `http://127.0.0.1:3000/`
+/// base URL. Handles both `http://127.0.0.1:42141` and `http://127.0.0.1:42141/`
 /// inputs without producing a double slash. When the fallback URL is the
 /// public site (https://closedmesh.com), this still produces a valid URL
 /// — middleware on the public site renders a 404 with a link back to /,

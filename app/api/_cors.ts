@@ -2,15 +2,15 @@
 //
 // When a visitor opens https://closedmesh.com (the Vercel-hosted public UI),
 // their browser makes calls back into THIS Next.js process running on their
-// own Mac at http://localhost:3000. That cross-origin call needs the local
-// controller to set the right CORS headers.
+// own Mac at http://127.0.0.1:42141. That cross-origin call needs the
+// local controller to set the right CORS headers.
 //
-// Browsers permit https://closedmesh.com → http://localhost:3000 because
-// localhost is a "potentially trustworthy origin" (W3C mixed-content spec).
+// Browsers permit https://closedmesh.com → http://127.0.0.1:42141 because
+// loopback hosts are "potentially trustworthy origins" (W3C mixed-content spec).
 //
 // Origins are configured via CLOSEDMESH_PUBLIC_ORIGINS (comma-separated). The
 // default trusts only the hosted site. The same-machine deployment (i.e. the
-// browser opening http://localhost:3000 directly) is same-origin and doesn't
+// browser opening the local sidecar URL directly) is same-origin and doesn't
 // need this layer at all.
 
 const DEFAULT_ALLOWED = ["https://closedmesh.com"];

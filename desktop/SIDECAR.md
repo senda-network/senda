@@ -4,12 +4,12 @@
 
 Today the Tauri desktop shell is a webview that loads either:
 
-- `http://localhost:3000` if the user separately ran
+- `http://127.0.0.1:42141` if the user separately ran
   `scripts/install-controller.sh` to install the Next.js controller as a
   launchd service, or
 - `https://closedmesh.com` if no local controller is responding.
 
-That second path *also* ultimately needs a controller on `localhost:3000`
+That second path *also* ultimately needs a controller on `127.0.0.1:42141`
 because the public site's chat client posts back to it via CORS. So the
 "download .app and use it" flow currently dead-ends unless the user
 runs a separate curl-bash from the terminal.
@@ -35,7 +35,7 @@ ClosedMesh.app
 
 On launch, `main.rs`:
 
-1. Picks a free port (`TcpListener::bind("127.0.0.1:0")`).
+1. Picks `127.0.0.1:42141`, falling back to a random free port if needed.
 2. Spawns `node $RESOURCES/controller/server.js` with
    `PORT=<port> HOSTNAME=127.0.0.1 NODE_ENV=production`.
 3. Polls `http://127.0.0.1:<port>/api/control/status` until it answers
@@ -49,8 +49,7 @@ On launch, `main.rs`:
 ```
 1. CLOSEDMESH_APP_URL env (dev override)              — unchanged
 2. http://127.0.0.1:<sidecar_port>/                   — NEW (default)
-3. (dev only) http://localhost:3000 if a real Next.js dev server is up
-4. https://closedmesh.com                             — last resort
+3. https://closedmesh.com                             — last resort
 ```
 
 ## Pointing the sidecar at a remote mesh

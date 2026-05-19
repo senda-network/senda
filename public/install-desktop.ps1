@@ -3,7 +3,8 @@
 #   iwr -useb https://closedmesh.com/install-desktop.ps1 | iex
 #
 # What it does:
-#   1. Resolves the latest desktop-v* GitHub Release.
+#   1. Resolves the latest v* GitHub Release (legacy desktop-v* tags
+#      are still accepted so older pinned versions keep resolving).
 #   2. Downloads ClosedMesh_<version>_x64-setup.exe (NSIS installer).
 #   3. Runs it silently and waits for it to finish.
 #   4. Optionally launches ClosedMesh once installation completes.
@@ -16,7 +17,7 @@
 #
 # Override points (rarely needed):
 #   $env:CLOSEDMESH_DESKTOP_REPO = 'closedmesh/closedmesh'
-#   $env:CLOSEDMESH_DESKTOP_VERSION = 'desktop-v0.1.0'  # pin a release
+#   $env:CLOSEDMESH_DESKTOP_VERSION = 'v0.1.93'  # pin a release
 
 [CmdletBinding()]
 param(
@@ -35,7 +36,27 @@ if (-not $Version) {
     $Version = if ($env:CLOSEDMESH_DESKTOP_VERSION) { $env:CLOSEDMESH_DESKTOP_VERSION } else { '' }
 }
 
-$tagPrefix = 'desktop-v'
+# Desktop releases use plain `vX.Y.Z` tags (per release policy). Legacy
+# `desktop-v*` tags are still accepted so existing pinned URLs work.
+$tagPrefix = 'v'
+$legacyTagPrefix = 'desktop-v'
+
+function Test-DesktopTag([string]$name) {
+    if (-not $name) { return $false }
+    # Accept `vX...` (with a digit right after the v so we don't pick
+    # up unrelated tags like `vendor-foo`) or the legacy `desktop-v...`.
+    return ($name -match '^v\d') -or ($name.StartsWith($legacyTagPrefix))
+}
+
+function Remove-TagPrefix([string]$name) {
+    if ($name.StartsWith($legacyTagPrefix)) {
+        return $name.Substring($legacyTagPrefix.Length)
+    }
+    if ($name.StartsWith($tagPrefix)) {
+        return $name.Substring($tagPrefix.Length)
+    }
+    return $name
+}
 
 function Info($msg)  { Write-Host "[closedmesh-desktop] $msg" -ForegroundColor Cyan }
 function Warn($msg)  { Write-Host "[closedmesh-desktop] $msg" -ForegroundColor Yellow }
@@ -66,7 +87,7 @@ else {
     Info "Resolving latest release of $Repo..."
     try {
         $candidate = Invoke-GitHub '/releases/latest'
-        if ($candidate.tag_name -like "$tagPrefix*") {
+        if (Test-DesktopTag $candidate.tag_name) {
             $release = $candidate
         }
     }
@@ -77,16 +98,16 @@ else {
     if (-not $release) {
         Info "Falling back to release list..."
         $list = Invoke-GitHub '/releases?per_page=20'
-        $release = $list | Where-Object { (-not $_.draft) -and (-not $_.prerelease) -and ($_.tag_name -like "$tagPrefix*") } | Select-Object -First 1
+        $release = $list | Where-Object { (-not $_.draft) -and (-not $_.prerelease) -and (Test-DesktopTag $_.tag_name) } | Select-Object -First 1
     }
 }
 
 if (-not $release) {
-    Fail "couldn't find a published $tagPrefix* release. Try the GitHub releases page directly: https://github.com/$Repo/releases"
+    Fail "couldn't find a published v* release. Try the GitHub releases page directly: https://github.com/$Repo/releases"
 }
 
 $tagName = $release.tag_name
-$versionNumber = $tagName.Substring($tagPrefix.Length)
+$versionNumber = Remove-TagPrefix $tagName
 
 # --------------------------------------------------------------------------
 # Pick the right asset.

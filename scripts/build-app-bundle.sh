@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/build-app-bundle.sh — build a tiny ClosedMesh.app launcher.
 #
-# The .app is a thin wrapper that opens http://localhost:3000/control in the
+# The .app is a thin wrapper that opens the local controller in the
 # default browser. The actual server is the launchd controller that
 # `scripts/install-controller.sh` set up. We use osacompile so this works on
 # any Mac without Apple Developer account, Xcode, or codesigning.
@@ -19,8 +19,8 @@ DIST_DIR="$REPO_ROOT/dist"
 APP_PATH="$DIST_DIR/ClosedMesh.app"
 ZIP_PATH="$DIST_DIR/ClosedMesh.app.zip"
 BUNDLE_ID="com.closedmesh.app"
-PORT="${CLOSEDMESH_CONTROLLER_PORT:-3000}"
-URL="http://localhost:${PORT}/control"
+PORT="${CLOSEDMESH_CONTROLLER_PORT:-42141}"
+URL="http://127.0.0.1:${PORT}/control"
 
 mkdir -p "$DIST_DIR"
 rm -rf "$APP_PATH" "$ZIP_PATH"

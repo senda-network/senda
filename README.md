@@ -47,7 +47,7 @@ Three ways, pick one:
 
   Add `-s -- --service` (or `closedmesh-install -Service` on Windows) to
   register an autostart unit. The node joins the public mesh on launch
-  and the chat at `http://localhost:3000` works locally.
+  and the desktop app opens the local controller.
 
 ## Architecture
 

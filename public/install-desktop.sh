@@ -4,7 +4,8 @@
 #   curl -fsSL https://closedmesh.com/install-desktop.sh | sh
 #
 # What it does:
-#   1. Resolves the latest desktop-v* GitHub Release.
+#   1. Resolves the latest v* GitHub Release (legacy desktop-v* tags are
+#      also recognised so users on a stale link still install something).
 #   2. Downloads the right bundle for this machine:
 #        - macOS arm64  → ClosedMesh_*_aarch64.dmg
 #        - macOS x86_64 → ClosedMesh_*_x64.dmg
@@ -24,13 +25,17 @@
 #
 # Override points (rarely needed):
 #   CLOSEDMESH_DESKTOP_REPO=closedmesh/closedmesh
-#   CLOSEDMESH_DESKTOP_VERSION=desktop-v0.1.0   # pin a specific release
+#   CLOSEDMESH_DESKTOP_VERSION=v0.1.93   # pin a specific release
 
 set -euo pipefail
 
 REPO="${CLOSEDMESH_DESKTOP_REPO:-closedmesh/closedmesh}"
 VERSION="${CLOSEDMESH_DESKTOP_VERSION:-}"
-TAG_PREFIX="desktop-v"
+# Desktop releases live under plain `vX.Y.Z` tags. Legacy `desktop-v*`
+# tags from before May 2026 are still accepted so existing pins keep
+# resolving.
+TAG_PREFIX="v"
+LEGACY_TAG_PREFIX="desktop-v"
 
 color() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
 info()  { color "0;36" "[closedmesh-desktop] $*"; }
@@ -108,18 +113,18 @@ else
     info "Resolving latest release of ${REPO}..."
     release_json="$(api "/releases/latest" 2>/dev/null || true)"
     # /releases/latest can return a non-desktop tag (or a 404 on a fresh
-    # repo) — fall back to scanning the recent list.
-    if ! printf '%s' "$release_json" | grep -q "\"tag_name\": *\"$TAG_PREFIX"; then
+    # repo) — fall back to scanning the recent list. Match either the
+    # current `vX.Y.Z` scheme or the legacy `desktop-v*` scheme.
+    if ! printf '%s' "$release_json" | grep -Eq "\"tag_name\": *\"(${LEGACY_TAG_PREFIX}|${TAG_PREFIX}[0-9])"; then
         info "Falling back to release list…"
         release_json="$(api "/releases?per_page=20")"
-        # Take the first $TAG_PREFIX tag in the JSON. The GitHub API returns
+        # Take the first matching tag in the JSON. The GitHub API returns
         # newest first, so this is the latest published desktop release.
-        release_json="$(printf '%s' "$release_json" | awk -v p="$TAG_PREFIX" '
-            BEGIN { depth=0 }
+        release_json="$(printf '%s' "$release_json" | awk '
             /^\[/ { next }
             /^]/  { exit }
             /"tag_name":/ {
-                if (match($0, "\"" p "[^\"]+\"")) { in_block=1 }
+                if (match($0, /"tag_name": *"v[0-9]/) || match($0, /"tag_name": *"desktop-v/)) { in_block=1 }
             }
             in_block { print }
             in_block && /^  }/ { exit }
@@ -133,7 +138,8 @@ fi
 
 tag_name="$(printf '%s' "$release_json" | awk -F'"' '/"tag_name":/ { print $4; exit }')"
 [ -n "$tag_name" ] || fail "no tag_name in release response"
-version="${tag_name#$TAG_PREFIX}"
+version="${tag_name#$LEGACY_TAG_PREFIX}"
+version="${version#$TAG_PREFIX}"
 
 # Walk the assets array, pick the URL whose filename ends with $match.
 asset_url="$(printf '%s' "$release_json" | awk -v m="$match" -F'"' '

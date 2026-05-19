@@ -13,10 +13,26 @@ export const revalidate = 300;
 const REPO =
   process.env.CLOSEDMESH_DESKTOP_REPO ?? "closedmesh/closedmesh";
 
-// All Tauri release tags for the desktop app are prefixed with `desktop-v`
-// (so they don't collide with future runtime / web tags). The user-facing
-// version we surface in UI strips the prefix.
-const TAG_PREFIX = "desktop-v";
+// Desktop app release tags are plain `vX.Y.Z` (per the release policy in
+// .cursor/rules/release-policy.mdc). Older releases used `desktop-v*`; we
+// still accept either prefix so a re-deploy mid-cutover doesn't blank out
+// the /download page. The user-facing `version` we surface in the API
+// response strips both prefixes.
+const TAG_PREFIXES = ["v", "desktop-v"];
+
+function matchesTag(tag: string | undefined | null): boolean {
+  if (!tag) return false;
+  // `v` alone is too loose (e.g. `vendor-something`); require a digit
+  // immediately after to match real semver tags like v0.1.93.
+  return /^(?:desktop-)?v\d/.test(tag);
+}
+
+function stripTagPrefix(tag: string): string {
+  for (const prefix of TAG_PREFIXES) {
+    if (tag.startsWith(prefix)) return tag.slice(prefix.length);
+  }
+  return tag;
+}
 
 export type DesktopAsset = {
   /** File name as it appears on the release, e.g. `ClosedMesh_0.1.0_aarch64.dmg`. */
@@ -38,7 +54,7 @@ export type DesktopAssetKind =
   | "linux-appimage";
 
 export type DesktopRelease = {
-  /** "0.1.0" — the tag with the `desktop-v` prefix removed. */
+  /** "0.1.93" — the tag with the `v` (or legacy `desktop-v`) prefix removed. */
   version: string;
   /** GitHub release page; fallback link when no platform-specific asset matches. */
   htmlUrl: string;
@@ -92,9 +108,9 @@ function classifyAsset(name: string): DesktopAssetKind | null {
 async function fetchLatestRelease(): Promise<DesktopRelease | null> {
   // Prefer `releases/latest` (which respects "Set as latest release" in the
   // GitHub UI and skips drafts/prereleases for us), but fall back to listing
-  // all releases and picking the newest non-draft `desktop-v*` so a half-set
-  // of platform bundles still surfaces in the UI while CI is mid-flight on
-  // the others.
+  // all releases and picking the newest non-draft `v*` so a half-set of
+  // platform bundles still surfaces in the UI while CI is mid-flight on the
+  // others.
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -111,7 +127,7 @@ async function fetchLatestRelease(): Promise<DesktopRelease | null> {
   let release: GitHubRelease | null = null;
   if (latest.ok) {
     const candidate = (await latest.json()) as GitHubRelease;
-    if (candidate.tag_name?.startsWith(TAG_PREFIX)) {
+    if (matchesTag(candidate.tag_name)) {
       release = candidate;
     }
   }
@@ -128,8 +144,7 @@ async function fetchLatestRelease(): Promise<DesktopRelease | null> {
     const all = (await list.json()) as GitHubRelease[];
     release =
       all.find(
-        (r) =>
-          !r.draft && !r.prerelease && r.tag_name.startsWith(TAG_PREFIX),
+        (r) => !r.draft && !r.prerelease && matchesTag(r.tag_name),
       ) ?? null;
   }
   if (!release) return null;
@@ -151,7 +166,7 @@ async function fetchLatestRelease(): Promise<DesktopRelease | null> {
   }
 
   return {
-    version: release.tag_name.slice(TAG_PREFIX.length),
+    version: stripTagPrefix(release.tag_name),
     htmlUrl: release.html_url,
     publishedAt: release.published_at,
     assets,

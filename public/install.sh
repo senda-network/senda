@@ -650,7 +650,7 @@ main() {
 $( (( INSTALL_SERVICE )) && echo '    closedmesh service status            # check the autostart service' )
 $( (( INSTALL_SERVICE )) && echo '    closedmesh service stop              # stop the autostart service' )
 
-  Open the chat at https://closedmesh.com (or http://localhost:3000 if you ran the local app).
+  Open the chat at https://closedmesh.com (or http://127.0.0.1:42141 if you ran the local app).
 
 EOF
 }

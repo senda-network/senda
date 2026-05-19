@@ -123,11 +123,11 @@ Pick A as the "host" — that's where you'll join from for the chat UI.
 
    Expected: `3` (B, C, D have all joined).
 
-4. Open `http://localhost:3000/control` on A and switch to the **Nodes**
+4. Open `http://127.0.0.1:42141/control` on A and switch to the **Nodes**
    tab. You should see four rows: `self` (A) plus B, C, D, each with the
    correct `backend`, `vendor`, and VRAM.
 
-5. Hover the status pill in the chat header (`http://localhost:3000`).
+5. Hover the status pill in the chat header (`http://127.0.0.1:42141`).
    Same four nodes should appear in the hover panel.
 
 ### Capability filter proof
@@ -151,7 +151,7 @@ The point of the filter is: a CPU-only node never gets a 70B request.
    `/api/chat` directly:
 
    ```bash
-   curl -i -s -X POST http://localhost:3000/api/chat \
+   curl -i -s -X POST http://127.0.0.1:42141/api/chat \
        -H 'content-type: application/json' \
        -d '{"messages":[{"role":"user","content":"hi"}],"model":"Llama-3-70B-Instruct-Q4_K_M"}'
    ```

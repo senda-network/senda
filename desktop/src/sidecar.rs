@@ -120,23 +120,18 @@ const RUNTIME_TARGET_ENV_KEYS: &[&str] = &[
     "CLOSEDMESH_ADMIN_URL",
 ];
 
-/// The port we'd LIKE the bundled controller to bind. Matches the
-/// existing `localhost:3000` convention so that:
+/// The port we'd like the bundled controller to bind.
 ///
-///   - closedmesh.com's cross-origin chat client (which posts to
-///     `NEXT_PUBLIC_LOCAL_CONTROLLER_URL`, default `http://localhost:3000`)
-///     finds the bundled controller automatically.
-///   - Anyone who had the legacy launchd controller before Phase 8b
-///     keeps working on the same port if they ever turn it back on.
-const PREFERRED_PORT: u16 = 3000;
+/// Keep this away from common web-dev defaults like 3000/5173 so the
+/// desktop app does not steal a port from the user's own projects.
+const PREFERRED_PORT: u16 = 42141;
 
 /// Pick a TCP port for the controller. We try `PREFERRED_PORT` first
-/// (so the website's CORS flow keeps working) and fall back to a
-/// kernel-assigned random high port if it's busy. Binding to `:0` lets
-/// the kernel choose; we drop the listener and immediately pass the
-/// port to Node. The brief TOCTOU window between close-and-listen has
-/// not been a problem in practice — nothing else on the user's machine
-/// is racing for an ephemeral port that just freed.
+/// and fall back to a kernel-assigned random high port if it's busy.
+/// Binding to `:0` lets the kernel choose; we drop the listener and
+/// immediately pass the port to Node. The brief TOCTOU window between
+/// close-and-listen has not been a problem in practice — nothing else
+/// on the user's machine is racing for an ephemeral port that just freed.
 fn pick_port() -> io::Result<u16> {
     if let Ok(listener) = TcpListener::bind(("127.0.0.1", PREFERRED_PORT)) {
         let port = listener.local_addr()?.port();

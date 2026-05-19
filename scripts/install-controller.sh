@@ -7,7 +7,7 @@
 #   2. Copies the bundle into ~/.closedmesh/controller/.
 #   3. Writes ~/Library/LaunchAgents/dev.closedmesh.controller.plist.
 #   4. Bootstraps the launchd service so the chat UI + /control panel are
-#      available at http://localhost:3000 every time you log in.
+#      available at http://127.0.0.1:42141 every time you log in.
 #
 # Uninstall:
 #   launchctl bootout gui/$(id -u)/dev.closedmesh.controller
@@ -25,7 +25,7 @@ TARGET_DIR="$HOME/.closedmesh/controller"
 LAUNCHD_DIR="$HOME/Library/LaunchAgents"
 PLIST="$LAUNCHD_DIR/$LABEL.plist"
 LOG_DIR="$HOME/Library/Logs/closedmesh"
-PORT="${CLOSEDMESH_CONTROLLER_PORT:-3000}"
+PORT="${CLOSEDMESH_CONTROLLER_PORT:-42141}"
 
 color() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
 info() { color "0;36" "[closedmesh] $*"; }

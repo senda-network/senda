@@ -21,8 +21,8 @@ PowerShell one-liners in the root README. The desktop app gives the user:
   start|stop`), **Copy Invite Token** (reads the local node's join token
   from `http://127.0.0.1:3131/api/status` and copies it to the system
   clipboard), **Show Logs in File Manager**.
-- A WKWebView / WebView2 / WebKitGTK that loads `http://localhost:3000`
-  if the local Next.js controller is up, falling back to
+- A WKWebView / WebView2 / WebKitGTK that loads the bundled local
+  controller, falling back to
   `https://closedmesh.com` otherwise.
 
 ## Develop
@@ -46,8 +46,8 @@ npm run dev            # hot-reload dev build (cargo + tauri)
 ```
 
 `npm run dev` will rebuild on Rust file changes; the WebView itself loads
-the chat UI directly from `localhost:3000` / `closedmesh.com`, so frontend
-changes are picked up by reloading.
+the bundled local controller / `closedmesh.com`, so frontend changes are
+picked up by reloading.
 
 ## Build distributable bundles
 

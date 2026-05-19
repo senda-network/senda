@@ -645,7 +645,7 @@ function Invoke-Install {
         Write-Host "    Stop-ScheduledTask -TaskName $TaskName                          # stop the service"
     }
     Write-Host ''
-    Write-Host '  Open the chat at https://closedmesh.com (or http://localhost:3000 if you ran the local app).'
+    Write-Host '  Open the chat at https://closedmesh.com (or http://127.0.0.1:42141 if you ran the local app).'
     Write-Host ''
 }
 

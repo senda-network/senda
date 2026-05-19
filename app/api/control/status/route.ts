@@ -19,12 +19,6 @@ type Status = {
   publicDeployment: boolean;
 };
 
-// Stable identifier the desktop shell uses to confirm "the thing on :3000 is
-// actually our controller, not some unrelated Next.js dev server the user
-// happens to be running on the same port." See `desktop/src/mesh.rs`'s
-// `legacy_controller_up` for the consumer.
-const CONTROLLER_HEADERS = { "X-ClosedMesh-Controller": "1" } as const;
-
 function parseStatus(out: string): Status["service"] {
   const txt = out.trim();
   if (!txt) return { state: "unknown", reason: "empty status output" };
@@ -52,7 +46,7 @@ export async function GET() {
       service: { state: "unavailable" },
       publicDeployment: true,
     };
-    return NextResponse.json(status, { headers: CONTROLLER_HEADERS });
+    return NextResponse.json(status);
   }
 
   const bin = await findClosedmeshBin();
@@ -63,7 +57,7 @@ export async function GET() {
       service: { state: "unavailable" },
       publicDeployment: false,
     };
-    return NextResponse.json(status, { headers: CONTROLLER_HEADERS });
+    return NextResponse.json(status);
   }
 
   const result = await runClosedmesh(bin, ["service", "status"]);
@@ -75,5 +69,5 @@ export async function GET() {
     service,
     publicDeployment: false,
   };
-  return NextResponse.json(status, { headers: CONTROLLER_HEADERS });
+  return NextResponse.json(status);
 }
