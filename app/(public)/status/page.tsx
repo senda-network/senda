@@ -290,6 +290,35 @@ function median(values: number[]): number | null {
  *     "measured zero" is to let this UI tell users "we'd report it if
  *     we had it, we don't yet".
  */
+/** Phase 2: solo catalog rows first, pooled-split rows below a divider. */
+function partitionCatalogModels(
+  models: string[],
+  nodes: MeshNode[],
+): { solo: string[]; split: string[] } {
+  const solo: string[] = [];
+  const split: string[] = [];
+  for (const model of models) {
+    let hostCount = 0;
+    let workerCount = 0;
+    for (const n of nodes) {
+      if (n.splitRole === "pipeline_host" && n.splitGroup?.model === model) {
+        hostCount += 1;
+      } else if (
+        n.splitRole === "pipeline_worker" &&
+        n.splitGroup?.model === model
+      ) {
+        workerCount += 1;
+      }
+    }
+    if (hostCount > 0 || workerCount > 0) {
+      split.push(model);
+    } else {
+      solo.push(model);
+    }
+  }
+  return { solo, split };
+}
+
 function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
   const contributors = nodes.filter(
     (n) =>
@@ -479,7 +508,16 @@ function NodeCard({
             <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${dot}`} />
           </span>
           <div className="min-w-0">
-            <div className="text-sm font-medium text-[var(--fg)] truncate">
+            <div
+              className="text-sm font-medium text-[var(--fg)] truncate"
+              title={
+                node.splitRole === "pipeline_worker"
+                  ? `Pipeline worker for ${prettyModelName(node.splitGroup?.model ?? "a pooled model")}`
+                  : node.splitRole === "pipeline_host"
+                    ? `Pipeline host for ${prettyModelName(node.splitGroup?.model ?? "a pooled model")}`
+                    : undefined
+              }
+            >
               {isEntryNode ? "Entry node" : hostname}
             </div>
             <div className="text-[11px] text-[var(--fg-muted)] truncate">
@@ -1401,9 +1439,27 @@ export default function StatusPage() {
                   Catalog
                 </div>
                 <div className="space-y-2">
-                  {status.models.map((m) => (
-                    <CatalogRow key={m} model={m} nodes={status.nodes} />
-                  ))}
+                  {(() => {
+                    const { solo, split } = partitionCatalogModels(
+                      status.models,
+                      status.nodes,
+                    );
+                    return (
+                      <>
+                        {solo.map((m) => (
+                          <CatalogRow key={m} model={m} nodes={status.nodes} />
+                        ))}
+                        {split.length > 0 && solo.length > 0 && (
+                          <div className="py-1 text-center text-[10px] uppercase tracking-widest text-[var(--fg-muted)]">
+                            — pooled splits —
+                          </div>
+                        )}
+                        {split.map((m) => (
+                          <CatalogRow key={m} model={m} nodes={status.nodes} />
+                        ))}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
