@@ -168,6 +168,19 @@ export type NodeSummary = {
    * `measuredTpsP50ByModel`.
    */
   measuredTtftMsP50ByModel?: Record<string, number>;
+  /**
+   * Phase 3.0 benchmark honesty (runtime v0.66.49+): per-model native
+   * llama-server TPS measured by the peer issuing a synthetic chat
+   * directly to its own llama-server on 127.0.0.1, no mesh involved.
+   * Paired with `measuredTpsP50ByModel` to render the through-mesh /
+   * native ratio in the Catalog. Missing keys mean "no baseline yet".
+   */
+  nativeTpsP50ByModel?: Record<string, number>;
+  /**
+   * Per-model native time-to-first-token (ms). Same Phase 3.0 semantics
+   * as `nativeTpsP50ByModel`.
+   */
+  nativeTtftMsP50ByModel?: Record<string, number>;
 };
 
 /**

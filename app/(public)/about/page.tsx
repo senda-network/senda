@@ -59,15 +59,17 @@ export default function AboutPage() {
               </h1>
               <p className="mt-5 max-w-2xl text-pretty text-base leading-relaxed text-[var(--fg-muted)] sm:text-lg">
                 ClosedMesh runs open-weight models end-to-end on the
-                hardware contributors already own. An M-series Mac with
-                36–128 GB of unified memory is genuinely capable of
-                serving 30B–70B parameter models at full quality; the
-                mesh&apos;s job is to find the best peer for each session
-                and pair two peers via speculative decoding when one
-                peer isn&apos;t enough. Chat from closedmesh.com or the
-                desktop app, no install required. Add a node from any
-                capable machine to grow capacity for the swarm. No
-                third-party AI provider in the middle.
+                hardware contributors already own. An M3 Max or M4 Max
+                with 64–128 GB of unified memory is genuinely capable
+                of serving 30B–70B parameter models at full quality;
+                smaller M-series chips and dedicated GPU boxes serve
+                smaller models well. The mesh&apos;s job is to find the
+                best peer for each session and pair two peers via
+                speculative decoding when one peer isn&apos;t enough.
+                Chat from closedmesh.com or the desktop app, no install
+                required. Add a node from any capable machine to grow
+                capacity for the swarm. No third-party AI provider in
+                the middle.
               </p>
             </div>
 
@@ -214,7 +216,7 @@ export default function AboutPage() {
             />
             <Feature
               title="Apple Silicon is the hero"
-              body="M-series unified memory turns a $2.5–4.5k laptop into a 30B–70B-capable inference box at speeds same-price Windows GPU setups can't match. CUDA / ROCm / Vulkan boxes happily join too — each shines at different model sizes."
+              body="On the right configuration — M3 Max or M4 Max with 64–128 GB of unified memory — a $2.5–4.5k laptop becomes a 30B–70B-capable inference box at speeds same-price Windows GPU setups can't match. Smaller M-series chips serve 7B–13B-class models well. CUDA / ROCm / Vulkan boxes happily join too — each shines at different model sizes."
             />
             <Feature
               title="Speculative decoding across peers"

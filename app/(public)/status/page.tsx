@@ -381,6 +381,25 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
   const medianTps = median(tpsValues);
   const lowestTtftMs = ttftValues.length > 0 ? Math.min(...ttftValues) : null;
 
+  // Phase 3.0 benchmark honesty (runtime v0.66.49+). Each peer that
+  // serves the model also runs a synthetic chat directly against its
+  // own llama-server (no entry tunnel, no auth, no routing) and gossips
+  // the result. We aggregate native TPS the same way as through-mesh
+  // TPS (median of medians) so the ratio is apples-to-apples between
+  // the two columns: both are "this cohort's median measurement".
+  const nativeTpsValues = contributors
+    .map((n) => n.nativeTpsP50ByModel?.[model])
+    .filter((v): v is number => typeof v === "number" && v > 0);
+  const medianNativeTps = median(nativeTpsValues);
+  // Ratio = through-mesh / native. < 1 means the mesh path is slower
+  // than running locally on the same hardware; the gap to 1.0 is the
+  // mesh overhead tax. Only computed when both numbers exist; if
+  // either is missing we don't fabricate one.
+  const meshRatio =
+    medianTps !== null && medianNativeTps !== null && medianNativeTps > 0
+      ? medianTps / medianNativeTps
+      : null;
+
   const hasMeasurements = medianTps !== null || lowestTtftMs !== null;
 
   return (
@@ -410,13 +429,40 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
               <span className="font-semibold tabular-nums text-[var(--fg)]">
                 {medianTps >= 10 ? medianTps.toFixed(0) : medianTps.toFixed(1)}
               </span>{" "}
-              tokens/sec
+              t/s through mesh
               {tpsValues.length > 1 && (
                 <span className="text-[10px] uppercase tracking-wider opacity-70">
                   {" "}
                   median of {tpsValues.length}
                 </span>
               )}
+            </span>
+          )}
+          {medianNativeTps !== null && (
+            <span title="Synthetic chat against the peer's own llama-server on 127.0.0.1 — no entry tunnel, no auth, no routing.">
+              <span className="font-semibold tabular-nums text-[var(--fg)]">
+                {medianNativeTps >= 10
+                  ? medianNativeTps.toFixed(0)
+                  : medianNativeTps.toFixed(1)}
+              </span>{" "}
+              t/s native
+            </span>
+          )}
+          {meshRatio !== null && (
+            <span
+              title="Mesh efficiency = through-mesh ÷ native. 1.00 means the mesh path is as fast as the peer's local stack; smaller numbers mean overhead from the entry tunnel, auth gateway, or routing layer."
+              className={
+                meshRatio >= 0.8
+                  ? "text-emerald-300"
+                  : meshRatio >= 0.5
+                    ? "text-amber-300"
+                    : "text-rose-300"
+              }
+            >
+              <span className="font-semibold tabular-nums">
+                {(meshRatio * 100).toFixed(0)}%
+              </span>{" "}
+              mesh efficiency
             </span>
           )}
           {lowestTtftMs !== null && (

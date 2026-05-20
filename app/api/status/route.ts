@@ -196,6 +196,16 @@ export type NodeSummary = {
   measuredTpsP50ByModel?: Record<string, number>;
   measuredTtftMsP50ByModel?: Record<string, number>;
   /**
+   * Phase 3.0 benchmark honesty (runtime v0.66.49+): per-model native
+   * llama-server TPS/TTFT measured by issuing a synthetic chat directly
+   * to 127.0.0.1, bypassing the entry tunnel, auth gateway, and routing
+   * layer. Paired with `measuredTpsP50ByModel` lets the Catalog render
+   * the through-mesh / native ratio per (peer, model). Missing keys
+   * mean "no baseline yet" (legacy peer or pre-baseline window).
+   */
+  nativeTpsP50ByModel?: Record<string, number>;
+  nativeTtftMsP50ByModel?: Record<string, number>;
+  /**
    * True when this node is the elected `pipeline_host` for a model but
    * one or more peers in `splitGroup.peerIds` is not yet `state="serving"`.
    * In that case the node is structurally unable to fulfil inference for
@@ -301,6 +311,16 @@ type RuntimePeer = {
    */
   measured_tps_p50_by_model?: Record<string, number>;
   measured_ttft_ms_p50_by_model?: Record<string, number>;
+  /**
+   * Phase 3.0 benchmark honesty (runtime v0.66.49+). Per-model native
+   * llama-server TPS/TTFT measured by issuing a synthetic chat directly
+   * to 127.0.0.1 — bypassing the entry tunnel, auth gateway, and
+   * routing layer. Paired with `measured_*` lets the Catalog render
+   * the through-mesh / native ratio per (peer, model). Empty / missing
+   * means "no baseline collected yet" (legacy peer or pre-baseline).
+   */
+  native_tps_p50_by_model?: Record<string, number>;
+  native_ttft_ms_p50_by_model?: Record<string, number>;
 };
 
 type RuntimeGpu = {
@@ -344,6 +364,9 @@ type RuntimeStatus = {
    */
   measured_tps_p50_by_model?: Record<string, number>;
   measured_ttft_ms_p50_by_model?: Record<string, number>;
+  /** Phase 3.0 benchmark honesty (runtime v0.66.49+) — see `RuntimePeer`. */
+  native_tps_p50_by_model?: Record<string, number>;
+  native_ttft_ms_p50_by_model?: Record<string, number>;
   capability?: RuntimeCapability;
   /** rc2 and earlier emit GPU info here rather than inside `capability`. */
   gpus?: RuntimeGpu[];
@@ -622,6 +645,8 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     // measurements yet" instead.
     measuredTpsP50ByModel: peer.measured_tps_p50_by_model,
     measuredTtftMsP50ByModel: peer.measured_ttft_ms_p50_by_model,
+    nativeTpsP50ByModel: peer.native_tps_p50_by_model,
+    nativeTtftMsP50ByModel: peer.native_ttft_ms_p50_by_model,
     // Set in the post-processing pass `applyPipelineHealthGate`. We
     // can't decide it here because we need the full peer list to know
     // whether the workers have come up.
@@ -779,6 +804,9 @@ function buildNodes(
     // missing/empty/zero semantics.
     measuredTpsP50ByModel: rt.measured_tps_p50_by_model,
     measuredTtftMsP50ByModel: rt.measured_ttft_ms_p50_by_model,
+    // Phase 3.0 benchmark honesty.
+    nativeTpsP50ByModel: rt.native_tps_p50_by_model,
+    nativeTtftMsP50ByModel: rt.native_ttft_ms_p50_by_model,
     pipelineDegraded: false,
     meshVisibility: normalizeMeshVisibility(rt.mesh_visibility),
   });
