@@ -252,6 +252,9 @@ The entry node previously ran with `--auto --publish --mesh-name closedmesh`. Th
 | `desktop/src/mesh.rs` | `FALLBACK_JOIN_TOKEN` — update when entry node identity changes |
 | `desktop/Cargo.toml` + `desktop/tauri.conf.json` | App version (must stay in sync) |
 | `app/api/status/route.ts` | Public `/api/status` — aggregates mesh node + model data |
+| `app/api/kpi-snapshot/route.ts` | Hourly KPI snapshots → Upstash Redis (`vercel.json` cron); needs `UPSTASH_REDIS_*` + `CRON_SECRET` |
+| `app/api/peer-report/store.ts` | Peer audit reports — Upstash when configured, else in-memory |
+| `scripts/setup-upstash-vercel.sh` | Link Upstash Redis on Vercel + pull env |
 | `app/api/control/runtime-upgrade/route.ts` | Reads/writes runtime auto-upgrade state shared with the Rust shell |
 | `app/components/MeshLiveStatus.tsx` | Header status pill → links to `/status` |
 | `app/(public)/status/page.tsx` | Live mesh status page |

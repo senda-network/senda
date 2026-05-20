@@ -51,6 +51,18 @@ export function PublicHeader({
         ) : null}
         <nav className="flex items-center gap-5 text-[12px]">
           <Link
+            href="/status"
+            className="hidden text-[var(--fg-muted)] hover:text-[var(--fg)] sm:inline"
+          >
+            Status
+          </Link>
+          <Link
+            href="/metrics"
+            className="hidden text-[var(--fg-muted)] hover:text-[var(--fg)] sm:inline"
+          >
+            Metrics
+          </Link>
+          <Link
             href="/about"
             className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
           >

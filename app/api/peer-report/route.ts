@@ -148,7 +148,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const stored = putReport(report);
+  const stored = await putReport(report);
   return NextResponse.json({
     ok: true,
     receivedAtUnix: stored.receivedAtUnix,
@@ -168,5 +168,5 @@ export async function POST(req: Request) {
  * no incremental disclosure from exposing it directly.
  */
 export async function GET() {
-  return NextResponse.json({ reports: listReports() });
+  return NextResponse.json({ reports: await listReports() });
 }

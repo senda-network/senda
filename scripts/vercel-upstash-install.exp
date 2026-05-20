@@ -1,0 +1,68 @@
+#!/usr/bin/expect -f
+# Automate: vercel integration add upstash → Upstash for Redis → link → accept terms
+set timeout 120
+cd [file dirname [file dirname $argv0]]
+
+spawn vercel integration add upstash
+
+expect {
+  "Select a product" {
+    send "\033\[B"
+    send "\033\[B"
+    send "\r"
+    exp_continue
+  }
+  "link this resource" {
+    send "Y\r"
+    exp_continue
+  }
+  "Terms have not been accepted" {
+    send "Y\r"
+    exp_continue
+  }
+  "Open Vercel Dashboard" {
+    send "Y\r"
+    exp_continue
+  }
+  "Database name" {
+    send "closedmesh-kpi\r"
+    exp_continue
+  }
+  "region" -nocase {
+    send "\r"
+    exp_continue
+  }
+  "Primary Region" {
+    send "\r"
+    exp_continue
+  }
+  "Eviction" {
+    send "\r"
+    exp_continue
+  }
+  "TLS" {
+    send "\r"
+    exp_continue
+  }
+  "success" {
+    exp_continue
+  }
+  "Installed" {
+    exp_continue
+  }
+  "Linked" {
+    exp_continue
+  }
+  "Error:" {
+    puts $expect_out(buffer)
+    exit 1
+  }
+  eof {
+    catch wait result
+    exit [lindex $result 3]
+  }
+  timeout {
+    puts "timeout waiting for prompt"
+    exit 1
+  }
+}

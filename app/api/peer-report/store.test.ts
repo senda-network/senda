@@ -44,92 +44,92 @@ afterEach(() => {
 });
 
 describe("putReport / getReport", () => {
-  test("roundtrips a single report", () => {
-    putReport(makeReport("MSI_id_full_string_xxx"));
-    const got = getReport("MSI_id_full_string_xxx");
+  test("roundtrips a single report", async () => {
+    await putReport(makeReport("MSI_id_full_string_xxx"));
+    const got = await getReport("MSI_id_full_string_xxx");
     expect(got).not.toBeNull();
     expect(got?.nodeId).toBe("MSI_id_full_string_xxx");
     expect(got?.meshVisibility.state).toBe("visible");
     expect(typeof got?.receivedAtUnix).toBe("number");
   });
 
-  test("replaces previous report for the same nodeId (no leak across writes)", () => {
-    putReport(makeReport("MSI_id", { servingModels: ["model-a"] }));
-    putReport(makeReport("MSI_id", { servingModels: ["model-b"] }));
-    const got = getReport("MSI_id");
+  test("replaces previous report for the same nodeId (no leak across writes)", async () => {
+    await putReport(makeReport("MSI_id", { servingModels: ["model-a"] }));
+    await putReport(makeReport("MSI_id", { servingModels: ["model-b"] }));
+    const got = await getReport("MSI_id");
     expect(got?.servingModels).toEqual(["model-b"]);
     // Replacement: still only one report total.
-    expect(listReports().length).toBe(1);
+    expect((await listReports()).length).toBe(1);
   });
 
-  test("getReport returns null for unknown nodeId", () => {
-    putReport(makeReport("MSI_id"));
-    expect(getReport("nope")).toBeNull();
+  test("getReport returns null for unknown nodeId", async () => {
+    await putReport(makeReport("MSI_id"));
+    expect(await getReport("nope")).toBeNull();
   });
 
-  test("getReport returns null after store reset", () => {
-    putReport(makeReport("MSI_id"));
+  test("getReport returns null after store reset", async () => {
+    await putReport(makeReport("MSI_id"));
     __resetForTest();
-    expect(getReport("MSI_id")).toBeNull();
-    expect(listReports()).toEqual([]);
+    expect(await getReport("MSI_id")).toBeNull();
+    expect(await listReports()).toEqual([]);
   });
 });
 
 describe("listReports", () => {
-  test("returns reports newest first", () => {
+  test("returns reports newest first", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-13T10:00:00Z"));
-    putReport(makeReport("first_id"));
+    await putReport(makeReport("first_id"));
     vi.setSystemTime(new Date("2026-05-13T10:01:00Z"));
-    putReport(makeReport("second_id"));
+    await putReport(makeReport("second_id"));
     vi.setSystemTime(new Date("2026-05-13T10:02:00Z"));
-    putReport(makeReport("third_id"));
+    await putReport(makeReport("third_id"));
 
-    const ids = listReports().map((r) => r.nodeId);
+    const ids = (await listReports()).map((r) => r.nodeId);
     expect(ids).toEqual(["third_id", "second_id", "first_id"]);
   });
 
-  test("expires reports older than 5 minutes", () => {
+  test("expires reports older than 5 minutes", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-13T10:00:00Z"));
-    putReport(makeReport("stale_id"));
+    await putReport(makeReport("stale_id"));
 
     // 4 minutes later — still live.
     vi.setSystemTime(new Date("2026-05-13T10:04:00Z"));
-    expect(listReports().length).toBe(1);
+    expect((await listReports()).length).toBe(1);
 
     // 5 minutes 1 second after the write — expired.
     vi.setSystemTime(new Date("2026-05-13T10:05:01Z"));
-    expect(listReports().length).toBe(0);
-    expect(getReport("stale_id")).toBeNull();
+    expect((await listReports()).length).toBe(0);
+    expect(await getReport("stale_id")).toBeNull();
   });
 
-  test("write of a new report refreshes its TTL without affecting others", () => {
+  test("write of a new report refreshes its TTL without affecting others", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-13T10:00:00Z"));
-    putReport(makeReport("A_id"));
-    putReport(makeReport("B_id"));
+    await putReport(makeReport("A_id"));
+    await putReport(makeReport("B_id"));
 
     // 4 minutes later, refresh A.
     vi.setSystemTime(new Date("2026-05-13T10:04:00Z"));
-    putReport(makeReport("A_id"));
+    await putReport(makeReport("A_id"));
 
     // 5 minutes 1 second after start — B is expired, A is not.
     vi.setSystemTime(new Date("2026-05-13T10:05:01Z"));
-    const ids = listReports().map((r) => r.nodeId);
+    const ids = (await listReports()).map((r) => r.nodeId);
     expect(ids).toEqual(["A_id"]);
   });
 });
 
 describe("rate-limiting", () => {
-  test("enforces MAX_REPORTS cap by dropping the oldest entry", () => {
+  test("enforces MAX_REPORTS cap by dropping the oldest entry", async () => {
     // The cap is 1024; we only need to prove the eviction logic with
     // a smaller-but-deterministic insert pattern. Use real time so
     // that every insert lands within the TTL window.
     for (let i = 0; i < 1100; i++) {
-      putReport(makeReport(`peer_${i.toString().padStart(4, "0")}`));
+      await putReport(makeReport(`peer_${i.toString().padStart(4, "0")}`));
     }
-    const all = listReports();
+    const all = await listReports();
     expect(all.length).toBeLessThanOrEqual(1024);
     // Oldest entries (peer_0000..) should have been evicted.
     const surviving = new Set(all.map((r) => r.nodeId));

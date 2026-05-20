@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { PublicHeader } from "../../components/PublicHeader";
 import { MeshLiveStatus } from "../../components/MeshLiveStatus";
@@ -1413,7 +1414,10 @@ export default function StatusPage() {
             What&apos;s running right now
           </h1>
           <p className="mt-2 text-[14px] text-[var(--fg-muted)]">
-            Machines connected to the ClosedMesh network and the models they&apos;re currently serving.
+            Machines connected to the ClosedMesh network and the models they&apos;re currently serving.{" "}
+            <Link href="/metrics" className="text-[var(--accent)] hover:underline">
+              Weekly metrics →
+            </Link>
             {lastUpdated && (
               <span className="ml-1">
                 Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.

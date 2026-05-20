@@ -1,0 +1,417 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { PublicHeader } from "../../components/PublicHeader";
+import { MeshLiveStatus } from "../../components/MeshLiveStatus";
+import type { KpiSnapshot } from "../../lib/kpi-snapshot";
+import type { NodeSummary } from "../../lib/use-mesh-status";
+
+type KpiDashboard = {
+  storeReady: boolean;
+  week: string;
+  previousWeek: string;
+  flagship_default: string;
+  latest: KpiSnapshot | null;
+  previous: KpiSnapshot | null;
+};
+
+type MeshStatus = {
+  online: boolean;
+  nodeCount: number;
+  models: string[];
+  nodes: NodeSummary[];
+};
+
+function prettyModel(id: string): string {
+  return id
+    .replace(/\.gguf$/i, "")
+    .replace(/-Q\d+(_K(_[SM])?|_0|_1)?$/i, "")
+    .replace(/-UD-Q\d+(_K(_[SM]|_XL))?$/i, "");
+}
+
+function backendLabel(backend: string): string {
+  const map: Record<string, string> = {
+    metal: "Apple Metal",
+    cuda: "NVIDIA CUDA",
+    rocm: "AMD ROCm",
+    vulkan: "Vulkan",
+    cpu: "CPU",
+  };
+  return map[backend] ?? backend;
+}
+
+function formatTps(v: number | null): string {
+  if (v == null) return "—";
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} tok/s`;
+}
+
+function formatDelta(
+  cur: number | null,
+  prev: number | null,
+  opts?: { suffix?: string; lowerIsBetter?: boolean },
+): string | null {
+  if (cur == null || prev == null) return null;
+  const suffix = opts?.suffix ?? "";
+  if (cur === prev) return null;
+  const better = opts?.lowerIsBetter ? cur < prev : cur > prev;
+  const pct =
+    prev !== 0 ? Math.round(((cur - prev) / Math.abs(prev)) * 100) : null;
+  const arrow = better ? "↑" : "↓";
+  const pctPart = pct != null ? ` (${pct > 0 ? "+" : ""}${pct}%)` : "";
+  return `${arrow} ${formatTps(cur)} from ${formatTps(prev)}${pctPart}${suffix}`;
+}
+
+function formatCountDelta(cur: number, prev: number, label: string): string | null {
+  if (cur === prev) return null;
+  return `${cur > prev ? "↑" : "↓"} ${prev} → ${cur} ${label}`;
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  delta,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  delta?: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-4">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
+        {label}
+      </div>
+      <div className="text-2xl font-semibold tabular-nums tracking-tight text-[var(--fg)]">
+        {value}
+      </div>
+      {delta ? (
+        <div className="text-[11px] text-[var(--accent)]">{delta}</div>
+      ) : null}
+      {hint ? (
+        <div className="text-[11px] text-[var(--fg-muted)]">{hint}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function SharingRow({ node }: { node: NodeSummary }) {
+  const models = [
+    ...new Set([
+      ...node.servingModels,
+      ...(node.capability?.loadedModels ?? []),
+    ]),
+  ];
+  const host =
+    node.hostname?.startsWith("ip-")
+      ? "Entry node"
+      : (node.hostname ?? node.id.slice(0, 8));
+  const backend = node.capability?.backend;
+  const vram = node.capability?.vramGb ?? node.vramGb;
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-[12px]">
+      <div>
+        <span className="font-medium text-[var(--fg)]">{host}</span>
+        {backend ? (
+          <span className="ml-2 text-[var(--fg-muted)]">
+            {backendLabel(backend)}
+            {vram > 0 ? ` · ${vram} GB` : ""}
+          </span>
+        ) : null}
+      </div>
+      <div className="text-[var(--fg-muted)]">
+        {models.length === 0
+          ? "No models loaded"
+          : models.map(prettyModel).join(", ")}
+      </div>
+    </div>
+  );
+}
+
+export default function MetricsPage() {
+  const [dashboard, setDashboard] = useState<KpiDashboard | null>(null);
+  const [live, setLive] = useState<MeshStatus | null>(null);
+  const [kpiError, setKpiError] = useState(false);
+  const [liveError, setLiveError] = useState(false);
+  const [updated, setUpdated] = useState<Date | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+
+    async function tick() {
+      try {
+        const [kpiRes, statusRes] = await Promise.all([
+          fetch("/api/kpi-snapshot?dashboard=1", { cache: "no-store" }),
+          fetch("/api/status", { cache: "no-store" }),
+        ]);
+        if (cancelled) return;
+        if (kpiRes.ok) {
+          setDashboard((await kpiRes.json()) as KpiDashboard);
+          setKpiError(false);
+        } else {
+          setKpiError(true);
+        }
+        if (statusRes.ok) {
+          setLive((await statusRes.json()) as MeshStatus);
+          setLiveError(false);
+        } else {
+          setLiveError(true);
+        }
+        setUpdated(new Date());
+      } catch {
+        if (!cancelled) {
+          setKpiError(true);
+          setLiveError(true);
+        }
+      } finally {
+        if (!cancelled) {
+          timer = window.setTimeout(tick, 30_000);
+        }
+      }
+    }
+
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, []);
+
+  const flagship =
+    dashboard?.latest?.flagship_model ??
+    dashboard?.flagship_default ??
+    "Qwen3-32B-Q4_K_M";
+  const latest = dashboard?.latest;
+  const prev = dashboard?.previous;
+  const lf = latest?.flagship;
+  const pf = prev?.flagship;
+
+  const liveContributors = (live?.nodes ?? []).filter(
+    (n) => !(n.hostname ?? "").startsWith("ip-"),
+  );
+  const livePooled = liveContributors.reduce(
+    (sum, n) => sum + (n.capability?.vramGb ?? n.vramGb ?? 0),
+    0,
+  );
+  const liveBackends = [
+    ...new Set(
+      liveContributors
+        .map((n) => n.capability?.backend)
+        .filter((b): b is string => !!b),
+    ),
+  ].sort();
+  const sharingNow = liveContributors.filter(
+    (n) =>
+      n.servingModels.length > 0 ||
+      (n.capability?.loadedModels?.length ?? 0) > 0,
+  );
+
+  return (
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--fg)]">
+      <PublicHeader status={<MeshLiveStatus variant="header" />} />
+      <main className="mx-auto max-w-5xl px-6 py-10">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--accent)]">
+              Mesh metrics
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+              Capacity, speed, and sharing
+            </h1>
+            <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--fg-muted)]">
+              Weekly KPI rollups from hourly snapshots, plus a live view of
+              what the mesh is serving right now. Updated every 30 seconds.
+            </p>
+          </div>
+          <div className="flex gap-3 text-[12px]">
+            <Link
+              href="/status"
+              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+            >
+              Full status →
+            </Link>
+            {updated ? (
+              <span className="text-[var(--fg-muted)]">
+                {updated.toLocaleTimeString()}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Weekly KPI */}
+        <section className="mb-10">
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <h2 className="text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
+              Weekly KPI · {dashboard?.week ?? "…"}
+            </h2>
+            {dashboard?.previousWeek && prev ? (
+              <span className="text-[10px] text-[var(--fg-muted)]">
+                vs {dashboard.previousWeek}
+              </span>
+            ) : null}
+          </div>
+
+          {!dashboard && !kpiError && (
+            <div className="h-28 animate-pulse rounded-xl bg-[var(--bg-elev)]" />
+          )}
+
+          {kpiError && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-[12px] text-red-400">
+              Could not load stored KPIs.
+            </div>
+          )}
+
+          {dashboard && !dashboard.storeReady && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-4 text-[12px] text-[var(--fg-muted)]">
+              KPI history is not configured yet. Live mesh data below still
+              updates in real time.
+            </div>
+          )}
+
+          {latest && (
+            <>
+              <p className="mb-4 text-[13px] text-[var(--fg-muted)]">
+                Flagship model:{" "}
+                <span className="font-medium text-[var(--fg)]">
+                  {prettyModel(flagship)}
+                </span>
+                {latest.captured_at ? (
+                  <span className="ml-2 text-[11px]">
+                    (snapshot {new Date(latest.captured_at).toLocaleString()})
+                  </span>
+                ) : null}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard
+                  label="Mesh p50 throughput"
+                  value={formatTps(lf?.tps_p50_median ?? null)}
+                  hint={
+                    (lf?.tps_sample_count ?? 0) === 0
+                      ? "Run inference on this model to measure"
+                      : `${lf?.tps_sample_count ?? 0} peer(s) reporting`
+                  }
+                  delta={formatDelta(
+                    lf?.tps_p50_median ?? null,
+                    pf?.tps_p50_median ?? null,
+                  )}
+                />
+                <StatCard
+                  label="Contributors (flagship)"
+                  value={String(lf?.contributors ?? 0)}
+                  delta={
+                    pf
+                      ? formatCountDelta(
+                          lf?.contributors ?? 0,
+                          pf.contributors,
+                          "contributors",
+                        )
+                      : null
+                  }
+                />
+                <StatCard
+                  label="Pooled VRAM"
+                  value={`${latest.pooled_vram_gb} GB`}
+                  delta={
+                    prev
+                      ? formatCountDelta(
+                          Math.round(latest.pooled_vram_gb),
+                          Math.round(prev.pooled_vram_gb),
+                          "GB pooled",
+                        )
+                      : null
+                  }
+                />
+                <StatCard
+                  label="Mesh peers"
+                  value={String(latest.node_count)}
+                  hint={
+                    latest.backends.length > 0
+                      ? latest.backends.map(backendLabel).join(" · ")
+                      : undefined
+                  }
+                  delta={
+                    prev
+                      ? formatCountDelta(
+                          latest.node_count,
+                          prev.node_count,
+                          "peers",
+                        )
+                      : null
+                  }
+                />
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* Live now */}
+        <section className="mb-10">
+          <h2 className="mb-3 text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
+            Right now
+          </h2>
+
+          {liveError && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-[12px] text-red-400">
+              Mesh unreachable — retrying.
+            </div>
+          )}
+
+          {live && live.online && (
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <StatCard
+                label="Contributors"
+                value={String(liveContributors.length)}
+              />
+              <StatCard
+                label="Pooled VRAM"
+                value={
+                  livePooled >= 100
+                    ? `${Math.round(livePooled)} GB`
+                    : `${livePooled.toFixed(1)} GB`
+                }
+              />
+              <StatCard
+                label="Models routable"
+                value={String(live.models.length)}
+              />
+            </div>
+          )}
+
+          {liveBackends.length > 0 && (
+            <p className="mb-4 text-[12px] text-[var(--fg-muted)]">
+              Backends live:{" "}
+              {liveBackends.map(backendLabel).join(" · ")}
+            </p>
+          )}
+        </section>
+
+        {/* Sharing */}
+        <section>
+          <h2 className="mb-3 text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
+            Sharing now
+          </h2>
+          {!live && !liveError && (
+            <div className="space-y-2">
+              <div className="h-12 animate-pulse rounded-lg bg-[var(--bg-elev)]" />
+              <div className="h-12 animate-pulse rounded-lg bg-[var(--bg-elev)]" />
+            </div>
+          )}
+          {live && sharingNow.length === 0 && (
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-6 text-center text-[12px] text-[var(--fg-muted)]">
+              No contributors are serving a model yet.
+            </div>
+          )}
+          {sharingNow.length > 0 && (
+            <div className="space-y-2">
+              {sharingNow.map((n) => (
+                <SharingRow key={n.id} node={n} />
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}

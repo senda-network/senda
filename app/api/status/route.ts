@@ -970,7 +970,7 @@ export async function GET(req: Request) {
     // entry — which the entry's own /api/status cannot report on by
     // construction. `listReports` returns at most a few-minute-old
     // entries; older reports are dropped on read.
-    const reports = listReports();
+    const reports = await listReports();
     if (reports.length > 0) {
       const selfId = runtime?.node_id ?? "local";
       nodes = mergePeerReports(nodes, reports, selfId);

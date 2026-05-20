@@ -46,3 +46,6 @@ internal/
 .forgemesh/
 models/*.gguf
 .env.production
+.env.production.local
+.vercel
+.env*.local
