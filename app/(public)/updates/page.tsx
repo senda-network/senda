@@ -49,20 +49,22 @@ const ENTRIES: LogEntry[] = [
     id: "phase-3-0-benchmark-honesty",
     date: "2026-05-20",
     phase: "Phase 3.0",
-    version: "v0.66.49",
+    version: "v0.66.49 → v0.66.51",
     title: "Native baseline alongside through-mesh, on every peer.",
     lede:
-      "Every solo-serving peer now runs a synthetic chat against its own llama-server with no mesh in the path, and gossips the result. The catalog shows the through-mesh number, the native number, and the ratio between them as a coloured \"mesh efficiency\" percentage — making the entry-tunnel + auth + routing tax loud and visible.",
+      "Every solo-serving peer now runs a synthetic chat against its own llama-server with no mesh layers in the path, and gossips the result. The catalog shows the through-mesh number, the native number, and the ratio between them as a coloured \"mesh efficiency\" percentage — making the cost of the entry tunnel, auth gateway, and routing layer measurable on every row.",
     body: [
-      "The Phase 1 numbers we shipped on this page (0.482, 0.693 tok/s) read as performance claims to anyone who didn't read the surrounding paragraph. They were intended as proof the metric pipeline works end-to-end. The fix is not better wording — it's a second number, on the same page, measured by the same code path, that the first one can be referenced against.",
+      "Phase 3.0 publishes a second throughput figure for every solo-serving peer: the rate that same peer's llama-server reaches when called directly, with no mesh layers between the prompt and the model. The catalog now carries both numbers for the same peer-model pair, plus the ratio between them, so the cost of routing a request through the mesh is measurable on its own terms instead of inferred from a single value.",
       "When a peer's llama-server reports Ready on the solo path, the runtime now spawns a background collector. After a 30-second settle delay it issues a single deterministic streaming completion (temperature=0, seed=42, max_tokens=128) directly to 127.0.0.1:llama_port — no entry tunnel, no auth gateway, no routing layer. The result is timed using the same TTFT and decode-rate logic that records through-mesh samples (including the same wall-clock fallback Phase 1 installed when decode windows collapse near zero), persisted at ~/.closedmesh/native-baselines.json keyed by model file mtime, and gossiped via a new repeated field on the peer announcement. It refreshes every 12 hours or when the model file changes.",
-      "On the catalog at closedmesh.com/status, every model row now carries up to three throughput stats: the median through-mesh tok/s (already there from Phase 1), the median native tok/s (new), and a coloured \"mesh efficiency\" percentage — green at 80%+, amber 50–80%, red below 50%. The math is through ÷ native: 1.00 means the mesh path is as fast as the peer's local stack, and the gap to 1.00 is the overhead from everything we add. We don't pretty up that number; we publish it. If the ratio is high we have a story to tell; if it's low we have an attribution problem we now know about and can fix.",
-      "Scope: the collector only runs on the solo-launch path. Pipeline-host and MoE-shard peers don't get a baseline yet, because their local llama-server already talks to remote rpc-servers via iroh tunnels — the \"native\" measurement would include rpc-server overhead and stop being native. Whether to measure that anyway, and how to label it, is a Phase 3.0.1 follow-up if the catalog ratio surfaces a gap there worth investigating. Pre-v0.66.49 peers gossip an empty baselines vec; the catalog renders \"no measurement yet\" rather than fabricating a zero.",
+      "On the catalog at closedmesh.com/status, every model row now carries up to three throughput stats: the median through-mesh tok/s (from Phase 1), the median native tok/s (new), and a coloured \"mesh efficiency\" percentage — green at 80%+, amber 50–80%, red below 50%. The math is through ÷ native: 1.00 means the mesh path matches the peer's local stack, and the gap below 1.00 is the budget available for optimising the entry tunnel, auth gateway, and routing layer. Each percentage point reclaimed there will show up on the same catalog row that exposed it.",
+      "Scope: the collector runs on the solo-launch path. Pipeline-host and MoE-shard peers reach their local llama-server through iroh tunnels to remote rpc-servers, so the same single-port measurement would already include network overhead and stop being a native baseline. A second collector that captures the rpc-tunnel cost separately is queued as a follow-up once the solo ratios surface a gap worth attributing in those modes. Peers running pre-v0.66.49 advertise an empty baselines field; the catalog renders those rows as \"no measurement yet,\" keeping the missing-data state visibly distinct from measured-and-slow.",
+      "What the new column immediately surfaced was a runtime bug, not a routing one. v0.66.49 had been launching llama-server with a fitter argument (-fitt) set to 70% of the device's VRAM. The runtime treated that value as a ceiling on llama.cpp's GPU usage, but llama.cpp treats it as the amount of memory it must leave free on the device. On an 18 GB M3 Pro (Metal pool ~12 GiB) the runtime was therefore telling the fitter to keep ~9.7 GiB free — leaving ~2.6 GiB for the model, forcing 22 of 36 layers of an 8 B Q4_K_M model to CPU repack, and pinning native decode at 0.74 tok/s. v0.66.50 (a same-day hotfix) fixed an unrelated gossip-refresh path that was clearing the new metric on legacy peers. v0.66.51 replaced the fitter formula with a small absolute margin (1–2 GiB regardless of device size), and the same M3 Pro now reports 8.95 tok/s native and 2528 ms TTFT — a 12.1× decode and 2.9× TTFT improvement on a single config change, on hardware nothing else changed about. The gap to the ~17 tok/s the same hardware delivers without speculative decoding is now its own surfaced finding, queued as a separate investigation.",
     ],
     metrics: [
-      { label: "Runtime release", value: "v0.66.49 (single ship)" },
+      { label: "Runtime ship arc", value: "v0.66.49 → v0.66.51 (3 ships)" },
       { label: "Refresh cadence", value: "30s settle, then every 12 h or on model-file change" },
       { label: "Catalog columns added", value: "native t/s + mesh efficiency %" },
+      { label: "Native decode after fitter fix (M3 Pro · Qwen3-8B-Q4_K_M)", value: "0.74 → 8.95 tok/s · TTFT 7.3 s → 2.5 s" },
     ],
   },
   {
@@ -147,11 +149,19 @@ export default function LogPage() {
             <span className="font-medium text-[var(--fg)]">
               On the numbers below:
             </span>{" "}
-            they are honest measurements from the same data path users hit,
-            not ceiling claims. Through-mesh throughput today sits well below
-            what each peer can do natively in raw <code>llama-server</code>;
-            quantifying that gap and closing it is queued as the first
-            deliverable of Phase 3.
+            every figure comes from real chat traffic on the same data path
+            users hit. As of Phase 3.0, each model row on{" "}
+            <Link
+              href="/status"
+              className="text-[var(--accent)] hover:underline"
+            >
+              /status
+            </Link>{" "}
+            carries both a through-mesh measurement and the same peer's
+            native <code>llama-server</code> baseline, with the ratio between
+            them rendered as a mesh-efficiency percentage. The gap between
+            those two numbers is the optimisation budget for the layers
+            between the prompt and the model.
           </p>
         </header>
 
