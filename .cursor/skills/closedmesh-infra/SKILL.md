@@ -40,6 +40,18 @@ The only two allowed repos:
 | Reverse proxy on Lightsail | **Caddy** (host, not Docker) | port 443 → container port 9337 |
 | Mesh entry node process | **Docker** container `mesh-entry` on Lightsail | image `mesh-entry:latest` |
 
+### Local dev ports — stay off common defaults
+
+Every locally-bound port in this stack avoids common dev defaults (3000, 5173, 8000, 8080) so running `npm run dev` or the desktop app doesn't steal a port from the user's other projects. The rationale is documented in `desktop/src/sidecar.rs` next to `PREFERRED_PORT`. Do not regress this — if you add a new local service, pick a high uncommon port and add it here.
+
+| Service | Port | Where it's set |
+|---------|------|----------------|
+| Website (`npm run dev` / `npm run start`) | `9338` | `package.json` `dev` / `start` scripts (`--port 9338`) |
+| Runtime OpenAI API (`closedmesh serve`) | `9337` | `scripts/dev.sh` `API_PORT` default |
+| Runtime admin console | `3131` | `scripts/dev.sh` `ADMIN_PORT` default |
+| Desktop controller (bundled Next.js) | `42141` | `desktop/src/sidecar.rs` `PREFERRED_PORT` |
+| Entry iroh QUIC bind | `42140` | Lightsail systemd unit `--bind-port` |
+
 ## Debugging this user's Mac is debugging YOUR workspace — DO NOT delegate
 
 **The user runs the desktop app on this same Mac. Your `Shell` tool runs on this same Mac.** When debugging the local desktop runtime, llama-server, rpc-server, or anything that emits files under `~/.closedmesh/`, **YOU read them yourself.** Never paste a `tail`/`grep`/`cat` snippet and ask the user to run it and paste back — that doubles latency, breaks flow, and (correctly) infuriates them.

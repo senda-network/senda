@@ -84,6 +84,7 @@ fi
 
 info "Runtime API:   $API_URL"
 info "Runtime admin: http://127.0.0.1:${ADMIN_PORT}"
+info "Website:       http://127.0.0.1:9338"
 info "Starting Next.js dev server…"
 
 cd "$REPO_ROOT"
