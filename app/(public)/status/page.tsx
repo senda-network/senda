@@ -8,6 +8,10 @@ import { nodeDisplayState } from "../../lib/node-display-state";
 import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
 import { normalizeModelId } from "../../lib/model-id";
 import type { NodeSummary } from "../../lib/use-mesh-status";
+import {
+  MIN_PIPELINE_ELECTION_PEER_VERSION,
+  peerSupportsPipelineElection,
+} from "../../lib/pipeline-election-version";
 
 type MeshNode = NodeSummary;
 
@@ -96,6 +100,8 @@ type WarmingVerdict =
        * stall, not a memory shortfall.
        */
       hostingCount: number;
+      /** Loading peers on runtimes too old for pipeline election — excluded from counts. */
+      outdatedBlockers: { hostname: string; version: string | null }[];
     }
   | {
       kind: "underprovisioned";
@@ -112,6 +118,7 @@ function warmingUpVerdict(
   warmingPeerCountForModel = 1,
   pooledGbForModel = 0,
   hostingCountForModel = 0,
+  outdatedBlockers: { hostname: string; version: string | null }[] = [],
 ): WarmingVerdict | null {
   const modelId = node.servingModels[0];
   if (!modelId) return null;
@@ -133,6 +140,7 @@ function warmingUpVerdict(
       pooledGb: pooledGbForModel,
       neededGb: catalog.minVramGb,
       hostingCount: hostingCountForModel,
+      outdatedBlockers,
     };
   }
   // Use the smaller of the two reported numbers — `vramGb` (top-level)
@@ -990,6 +998,22 @@ function WarmingUpCard({
                       {" "}— the model won&apos;t finish loading until more
                       capacity joins the mesh.
                     </>
+                  ) : verdict.outdatedBlockers.length > 0 ? (
+                    <>
+                      <span className="font-semibold text-amber-300">
+                        {verdict.outdatedBlockers.length === 1
+                          ? `${verdict.outdatedBlockers[0]!.hostname} (v${verdict.outdatedBlockers[0]!.version ?? "?"})`
+                          : `${verdict.outdatedBlockers.length} outdated peers`}
+                      </span>{" "}
+                      {verdict.outdatedBlockers.length === 1 ? "is" : "are"}{" "}
+                      on a runtime below v
+                      {MIN_PIPELINE_ELECTION_PEER_VERSION} and are excluded
+                      from pipeline election. The other{" "}
+                      {verdict.peerCount} machine
+                      {verdict.peerCount === 1 ? "" : "s"} can elect a host
+                      without {verdict.outdatedBlockers.length === 1 ? "them" : "those peers"}
+                      once everyone on current runtimes restarts or auto-upgrades.
+                    </>
                   ) : hostStalled ? (
                     <>
                       Capacity fits, but{" "}
@@ -1340,6 +1364,10 @@ export default function StatusPage() {
   // "Be the first to share" lie + collapsed accordion.
   const warmingPeerCountsByModel = new Map<string, number>();
   const pooledGbByModel = new Map<string, number>();
+  const outdatedBlockersByModel = new Map<
+    string,
+    { hostname: string; version: string | null }[]
+  >();
   // Per-model: how many peers across the whole mesh — warming AND
   // working — have hosted_models actually pointing at this model.
   // Zero means election is stuck; this is the deadlock signal that
@@ -1356,6 +1384,15 @@ export default function StatusPage() {
     if (n.state !== "loading") continue;
     const modelId = n.servingModels[0];
     if (!modelId) continue;
+    if (!peerSupportsPipelineElection(n.version)) {
+      const blockers = outdatedBlockersByModel.get(modelId) ?? [];
+      blockers.push({
+        hostname: prettyHostname(n.hostname),
+        version: n.version,
+      });
+      outdatedBlockersByModel.set(modelId, blockers);
+      continue;
+    }
     warmingPeerCountsByModel.set(
       modelId,
       (warmingPeerCountsByModel.get(modelId) ?? 0) + 1,
@@ -1375,6 +1412,7 @@ export default function StatusPage() {
     }
   }
   const warmingUpNodes = unavailableNodes
+    .filter((n) => peerSupportsPipelineElection(n.version))
     .map((n) => ({
       node: n,
       verdict: warmingUpVerdict(
@@ -1382,6 +1420,7 @@ export default function StatusPage() {
         warmingPeerCountsByModel.get(n.servingModels[0] ?? "") ?? 1,
         pooledGbByModel.get(n.servingModels[0] ?? "") ?? 0,
         hostingCountByModel.get(n.servingModels[0] ?? "") ?? 0,
+        outdatedBlockersByModel.get(n.servingModels[0] ?? "") ?? [],
       ),
     }))
     .filter((x): x is { node: typeof x.node; verdict: WarmingVerdict } =>
