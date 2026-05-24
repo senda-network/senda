@@ -1,30 +1,149 @@
 import { getRedis, kvConfigured } from "./redis";
 import {
+  type KpiMilestone,
   type KpiSnapshot,
-  isoWeekLabel,
-  previousIsoWeekLabel,
+  KNOWN_MILESTONES,
+  KPI_LAST_GOOD_KEY,
+  KPI_LAST_GOOD_TTL_SEC,
+  KPI_MILESTONES_KEY,
+  KPI_MILESTONES_TTL_SEC,
   KPI_HOUR_TTL_SEC,
   KPI_WEEK_TTL_SEC,
+  KPI_WEEK_PREFIX,
+  isoWeekLabel,
   kpiHourKey,
   kpiWeekKey,
-  KPI_WEEK_PREFIX,
+  mergeWeekSnapshots,
+  milestoneFromSnapshot,
+  previousIsoWeekLabel,
+  snapshotFromMilestone,
+  snapshotQuality,
 } from "./kpi-snapshot";
 
 export async function saveKpiSnapshot(
   snapshot: KpiSnapshot,
   at = new Date(),
-): Promise<{ hourKey: string; weekKey: string; backend: "redis" | "none" }> {
+  opts?: { hostHostname?: string | null },
+): Promise<{
+  hourKey: string;
+  weekKey: string;
+  backend: "redis" | "none";
+  weekMerged: boolean;
+  milestoneAdded: string | null;
+}> {
   const hourKey = kpiHourKey(at);
   const weekKey = kpiWeekKey(at);
   const redis = getRedis();
   if (!redis) {
-    return { hourKey, weekKey, backend: "none" };
+    return {
+      hourKey,
+      weekKey,
+      backend: "none",
+      weekMerged: false,
+      milestoneAdded: null,
+    };
   }
-  await Promise.all([
+
+  const existingWeek = await redis.get<KpiSnapshot>(weekKey);
+  const mergedWeek = mergeWeekSnapshots(existingWeek, snapshot);
+
+  const writes: Promise<unknown>[] = [
     redis.set(hourKey, snapshot, { ex: KPI_HOUR_TTL_SEC }),
-    redis.set(weekKey, snapshot, { ex: KPI_WEEK_TTL_SEC }),
-  ]);
-  return { hourKey, weekKey, backend: "redis" };
+    redis.set(weekKey, mergedWeek, { ex: KPI_WEEK_TTL_SEC }),
+  ];
+
+  const lastGood = await redis.get<KpiSnapshot>(KPI_LAST_GOOD_KEY);
+  if (!lastGood || snapshotQuality(snapshot) >= snapshotQuality(lastGood)) {
+    writes.push(
+      redis.set(KPI_LAST_GOOD_KEY, snapshot, { ex: KPI_LAST_GOOD_TTL_SEC }),
+    );
+  }
+
+  await Promise.all(writes);
+
+  const milestoneAdded = await recordMilestones(snapshot, opts?.hostHostname);
+
+  return {
+    hourKey,
+    weekKey,
+    backend: "redis",
+    weekMerged: !!existingWeek && mergedWeek !== snapshot,
+    milestoneAdded,
+  };
+}
+
+async function recordMilestones(
+  snap: KpiSnapshot,
+  hostHostname?: string | null,
+): Promise<string | null> {
+  const redis = getRedis();
+  if (!redis) return null;
+
+  await ensureKnownMilestones(redis);
+
+  const auto = milestoneFromSnapshot(snap, hostHostname);
+  if (!auto) return null;
+
+  const existing = (await redis.get<KpiMilestone[]>(KPI_MILESTONES_KEY)) ?? [];
+  const ids = new Set(existing.map((m) => m.id));
+
+  // Also record per-model first-serve (dedupe by model id across weeks).
+  const modelSlug = auto.model?.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const stableId = modelSlug ? `first-serve-${modelSlug}` : auto.id;
+  if (ids.has(stableId) || ids.has(auto.id)) return null;
+
+  const entry: KpiMilestone = { ...auto, id: stableId };
+  const next = [entry, ...existing].slice(0, 50);
+  await redis.set(KPI_MILESTONES_KEY, next, { ex: KPI_MILESTONES_TTL_SEC });
+  return stableId;
+}
+
+/** One-time idempotent seed for milestones before automated capture existed. */
+export async function ensureKnownMilestones(
+  redis = getRedis(),
+): Promise<number> {
+  if (!redis) return 0;
+  const existing = (await redis.get<KpiMilestone[]>(KPI_MILESTONES_KEY)) ?? [];
+  const ids = new Set(existing.map((m) => m.id));
+  const toAdd = KNOWN_MILESTONES.filter((m) => !ids.has(m.id));
+  if (toAdd.length > 0) {
+    const next = [...toAdd, ...existing].slice(0, 50);
+    await redis.set(KPI_MILESTONES_KEY, next, { ex: KPI_MILESTONES_TTL_SEC });
+  }
+  await ensureLastGoodBackfill(redis);
+  return toAdd.length;
+}
+
+async function ensureLastGoodBackfill(redis: NonNullable<ReturnType<typeof getRedis>>) {
+  const lastGood = await redis.get<KpiSnapshot>(KPI_LAST_GOOD_KEY);
+  if (lastGood && snapshotQuality(lastGood) > 5_000) return;
+
+  const backfill = KNOWN_MILESTONES.map(snapshotFromMilestone).sort(
+    (a, b) => snapshotQuality(b) - snapshotQuality(a),
+  )[0];
+  if (!backfill) return;
+
+  await redis.set(KPI_LAST_GOOD_KEY, backfill, { ex: KPI_LAST_GOOD_TTL_SEC });
+
+  const weekKey = kpiWeekKey(new Date(backfill.captured_at));
+  const existingWeek = await redis.get<KpiSnapshot>(weekKey);
+  await redis.set(
+    weekKey,
+    mergeWeekSnapshots(existingWeek, backfill),
+    { ex: KPI_WEEK_TTL_SEC },
+  );
+}
+
+export async function appendMilestone(
+  milestone: KpiMilestone,
+): Promise<boolean> {
+  const redis = getRedis();
+  if (!redis) return false;
+  const existing = (await redis.get<KpiMilestone[]>(KPI_MILESTONES_KEY)) ?? [];
+  if (existing.some((m) => m.id === milestone.id)) return false;
+  const next = [milestone, ...existing].slice(0, 50);
+  await redis.set(KPI_MILESTONES_KEY, next, { ex: KPI_MILESTONES_TTL_SEC });
+  return true;
 }
 
 export async function getKpiWeek(
@@ -39,6 +158,19 @@ export async function getKpiLatestWeek(): Promise<KpiSnapshot | null> {
   return getKpiWeek(isoWeekLabel(new Date()));
 }
 
+export async function getKpiLastGood(): Promise<KpiSnapshot | null> {
+  const redis = getRedis();
+  if (!redis) return null;
+  return redis.get<KpiSnapshot>(KPI_LAST_GOOD_KEY);
+}
+
+export async function getKpiMilestones(): Promise<KpiMilestone[]> {
+  const redis = getRedis();
+  if (!redis) return [...KNOWN_MILESTONES];
+  await ensureKnownMilestones(redis);
+  return (await redis.get<KpiMilestone[]>(KPI_MILESTONES_KEY)) ?? KNOWN_MILESTONES;
+}
+
 export function kpiStoreReady(): boolean {
   return kvConfigured();
 }
@@ -49,6 +181,8 @@ export type KpiDashboardPayload = {
   previousWeek: string;
   latest: KpiSnapshot | null;
   previous: KpiSnapshot | null;
+  lastGood: KpiSnapshot | null;
+  milestones: KpiMilestone[];
 };
 
 export async function getKpiDashboard(
@@ -56,6 +190,7 @@ export async function getKpiDashboard(
 ): Promise<KpiDashboardPayload> {
   const week = isoWeekLabel(at);
   const previousWeek = previousIsoWeekLabel(at);
+
   if (!kvConfigured()) {
     return {
       storeReady: false,
@@ -63,11 +198,25 @@ export async function getKpiDashboard(
       previousWeek,
       latest: null,
       previous: null,
+      lastGood: null,
+      milestones: KNOWN_MILESTONES,
     };
   }
-  const [latest, previous] = await Promise.all([
+
+  const [latest, previous, lastGood, milestones] = await Promise.all([
     getKpiWeek(week),
     getKpiWeek(previousWeek),
+    getKpiLastGood(),
+    getKpiMilestones(),
   ]);
-  return { storeReady: true, week, previousWeek, latest, previous };
+
+  return {
+    storeReady: true,
+    week,
+    previousWeek,
+    latest,
+    previous,
+    lastGood,
+    milestones,
+  };
 }

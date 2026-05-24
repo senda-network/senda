@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PublicHeader } from "../../components/PublicHeader";
 import { MeshLiveStatus } from "../../components/MeshLiveStatus";
-import type { KpiSnapshot } from "../../lib/kpi-snapshot";
+import {
+  type KpiMilestone,
+  type KpiSnapshot,
+  snapshotQuality,
+} from "../../lib/kpi-snapshot";
 import type { NodeSummary } from "../../lib/use-mesh-status";
 
 type KpiDashboard = {
@@ -14,6 +18,8 @@ type KpiDashboard = {
   flagship_default: string;
   latest: KpiSnapshot | null;
   previous: KpiSnapshot | null;
+  lastGood: KpiSnapshot | null;
+  milestones: KpiMilestone[];
 };
 
 type MeshStatus = {
@@ -67,6 +73,16 @@ function formatCountDelta(cur: number, prev: number, label: string): string | nu
   return `${cur > prev ? "↑" : "↓"} ${prev} → ${cur} ${label}`;
 }
 
+function snapshotHasSignal(snap: KpiSnapshot | null): boolean {
+  if (!snap) return false;
+  return (
+    snap.node_count > 0 ||
+    snap.models_available > 0 ||
+    snap.pooled_vram_gb > 0 ||
+    snap.flagship.contributors > 0
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -92,6 +108,38 @@ function StatCard({
       {hint ? (
         <div className="text-[11px] text-[var(--fg-muted)]">{hint}</div>
       ) : null}
+    </div>
+  );
+}
+
+function MilestoneCard({ m }: { m: KpiMilestone }) {
+  return (
+    <div className="rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/5 px-4 py-4">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--accent)]">
+        Milestone · {new Date(m.at).toLocaleDateString()}
+      </div>
+      <div className="mt-1 text-[15px] font-medium text-[var(--fg)]">
+        {m.title}
+      </div>
+      <p className="mt-2 text-[12px] leading-relaxed text-[var(--fg-muted)]">
+        {m.detail}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-[var(--fg-muted)]">
+        {m.model ? (
+          <span>{prettyModel(m.model)}</span>
+        ) : null}
+        {m.peer_count != null ? <span>{m.peer_count} peers</span> : null}
+        {m.pooled_vram_gb != null ? (
+          <span>{m.pooled_vram_gb} GB pooled</span>
+        ) : null}
+        {m.host_hostname ? <span>Host: {m.host_hostname}</span> : null}
+        {m.measured_tps != null ? (
+          <span>{m.measured_tps.toFixed(1)} tok/s (measured)</span>
+        ) : null}
+        {m.measured_ttft_ms != null ? (
+          <span>TTFT {(m.measured_ttft_ms / 1000).toFixed(1)}s</span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -179,11 +227,32 @@ export default function MetricsPage() {
     };
   }, []);
 
+  const weeklyDisplay = (() => {
+    const latest = dashboard?.latest;
+    const lastGood = dashboard?.lastGood;
+    if (!latest && !lastGood) return null;
+    if (!latest) return lastGood;
+    if (!lastGood) return latest;
+    if (
+      (latest.flagship.contributors === 0 || latest.models_available === 0) &&
+      (lastGood.flagship.contributors > 0 || lastGood.models_available > 0)
+    ) {
+      return lastGood;
+    }
+    if (
+      snapshotQuality(lastGood) > snapshotQuality(latest) &&
+      !snapshotHasSignal(latest)
+    ) {
+      return lastGood;
+    }
+    return snapshotHasSignal(latest) ? latest : lastGood;
+  })();
+
   const flagship =
-    dashboard?.latest?.flagship_model ??
+    weeklyDisplay?.flagship_model ??
     dashboard?.flagship_default ??
-    "Qwen3-32B-Q4_K_M";
-  const latest = dashboard?.latest;
+    "DeepSeek-R1-Distill-70B-Q4_K_M";
+  const latest = weeklyDisplay;
   const prev = dashboard?.previous;
   const lf = latest?.flagship;
   const pf = prev?.flagship;
@@ -191,6 +260,7 @@ export default function MetricsPage() {
   const liveContributors = (live?.nodes ?? []).filter(
     (n) => !(n.hostname ?? "").startsWith("ip-"),
   );
+  const meshLive = liveContributors.length > 0;
   const livePooled = liveContributors.reduce(
     (sum, n) => sum + (n.capability?.vramGb ?? n.vramGb ?? 0),
     0,
@@ -208,6 +278,8 @@ export default function MetricsPage() {
       (n.capability?.loadedModels?.length ?? 0) > 0,
   );
 
+  const milestones = dashboard?.milestones ?? [];
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--fg)]">
       <PublicHeader status={<MeshLiveStatus variant="header" />} />
@@ -218,11 +290,11 @@ export default function MetricsPage() {
               Mesh metrics
             </div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-              Capacity, speed, and sharing
+              Capacity, speed, and milestones
             </h1>
             <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--fg-muted)]">
-              Weekly KPI rollups from hourly snapshots, plus a live view of
-              what the mesh is serving right now. Updated every 30 seconds.
+              Milestones persist when the mesh sleeps. Weekly KPIs use hourly
+              snapshots from the mesh entry and keep peak values for the week.
             </p>
           </div>
           <div className="flex gap-3 text-[12px]">
@@ -239,6 +311,20 @@ export default function MetricsPage() {
             ) : null}
           </div>
         </div>
+
+        {/* Milestones — always show when we have any */}
+        {milestones.length > 0 && (
+          <section className="mb-10">
+            <h2 className="mb-3 text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
+              Milestones
+            </h2>
+            <div className="space-y-3">
+              {milestones.map((m) => (
+                <MilestoneCard key={m.id} m={m} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Weekly KPI */}
         <section className="mb-10">
@@ -265,8 +351,15 @@ export default function MetricsPage() {
 
           {dashboard && !dashboard.storeReady && (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-4 text-[12px] text-[var(--fg-muted)]">
-              KPI history is not configured yet. Live mesh data below still
-              updates in real time.
+              KPI history is not configured yet. Milestones above still show
+              known wins; link Upstash Redis on Vercel for hourly capture.
+            </div>
+          )}
+
+          {latest && !snapshotHasSignal(latest) && dashboard?.lastGood && (
+            <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-[12px] text-amber-200/90">
+              Mesh is offline — showing last peak capture (
+              {new Date(dashboard.lastGood.captured_at).toLocaleString()}).
             </div>
           )}
 
@@ -283,6 +376,12 @@ export default function MetricsPage() {
                   </span>
                 ) : null}
               </p>
+              {(latest.routable_models?.length ?? 0) > 0 && (
+                <p className="mb-4 text-[12px] text-[var(--fg-muted)]">
+                  Routable at capture:{" "}
+                  {(latest.routable_models ?? []).map(prettyModel).join(", ")}
+                </p>
+              )}
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
                   label="Mesh p50 throughput"
@@ -358,7 +457,14 @@ export default function MetricsPage() {
             </div>
           )}
 
-          {live && live.online && (
+          {live && !meshLive && !liveError && (
+            <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-4 text-[12px] text-[var(--fg-muted)]">
+              No contributor machines online. Milestones and last peak above
+              are unchanged — wake the cohort to refresh live stats.
+            </div>
+          )}
+
+          {live && meshLive && (
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
               <StatCard
                 label="Contributors"
@@ -400,7 +506,9 @@ export default function MetricsPage() {
           )}
           {live && sharingNow.length === 0 && (
             <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-6 text-center text-[12px] text-[var(--fg-muted)]">
-              No contributors are serving a model yet.
+              {meshLive
+                ? "Peers online but none serving a model yet."
+                : "No contributors serving — see milestones for last win."}
             </div>
           )}
           {sharingNow.length > 0 && (

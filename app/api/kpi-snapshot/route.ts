@@ -6,11 +6,19 @@
  *
  * Read (no auth): GET /api/kpi-snapshot?week=2026-W21
  *                 GET /api/kpi-snapshot?latest=1
+ *                 GET /api/kpi-snapshot?dashboard=1
  */
 
 import { NextResponse } from "next/server";
-import { buildKpiSnapshot, type KpiStatusInput } from "../../lib/kpi-snapshot";
 import {
+  buildKpiSnapshot,
+  meshRuntimeToKpiInput,
+  pickFlagshipModel,
+  type KpiStatusInput,
+  type MeshRuntimeStatus,
+} from "../../lib/kpi-snapshot";
+import {
+  ensureKnownMilestones,
   getKpiDashboard,
   getKpiLatestWeek,
   getKpiWeek,
@@ -23,7 +31,11 @@ export const dynamic = "force-dynamic";
 
 const DEFAULT_FLAGSHIP =
   process.env.CLOSEDMESH_KPI_FLAGSHIP_MODEL?.trim() ||
-  "Qwen3-32B-Q4_K_M";
+  "DeepSeek-R1-Distill-70B-Q4_K_M";
+
+const DEFAULT_MESH_STATUS_URL =
+  process.env.CLOSEDMESH_KPI_STATUS_URL?.trim() ||
+  "https://mesh.closedmesh.com/api/status";
 
 function trimmedEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -35,12 +47,8 @@ function trimmedEnv(...keys: string[]): string | undefined {
   return undefined;
 }
 
-function statusBaseUrl(): string {
-  const explicit = trimmedEnv("CLOSEDMESH_KPI_STATUS_URL");
-  if (explicit) return explicit.replace(/\/api\/status\/?$/, "");
-  // Always use the public site for status — VERCEL_URL points at a
-  // deployment hostname that may be SSO/deployment-protection gated (401).
-  return "https://closedmesh.com";
+function meshBaseUrl(): string {
+  return DEFAULT_MESH_STATUS_URL.replace(/\/api\/status\/?$/, "");
 }
 
 function cronAuthorized(req: Request): boolean {
@@ -50,32 +58,65 @@ function cronAuthorized(req: Request): boolean {
   return auth === `Bearer ${secret}`;
 }
 
-async function fetchStatusJson(): Promise<{
+async function fetchRoutableModels(base: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${base}/v1/models`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { data?: Array<{ id: string }> };
+    return (data.data ?? []).map((m) => m.id).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchMeshKpiInput(): Promise<{
   status: KpiStatusInput;
   statusUrl: string;
+  routableModels: string[];
+  hostHostname: string | null;
 }> {
-  const base = statusBaseUrl();
+  const base = meshBaseUrl();
   const statusUrl = `${base}/api/status`;
-  const res = await fetch(statusUrl, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`status fetch failed: ${res.status}`);
+  const [statusRes, routableModels] = await Promise.all([
+    fetch(statusUrl, { cache: "no-store" }),
+    fetchRoutableModels(base),
+  ]);
+  if (!statusRes.ok) {
+    throw new Error(`mesh status fetch failed: ${statusRes.status}`);
   }
-  const body = (await res.json()) as KpiStatusInput & { nodes?: KpiStatusInput["nodes"] };
+  const body = (await statusRes.json()) as MeshRuntimeStatus;
+  const status = meshRuntimeToKpiInput(body);
+  status.models = routableModels;
+
+  const host = (body.peers ?? []).find((p) =>
+    (p.role ?? "").toLowerCase().startsWith("host"),
+  );
+
   return {
-    status: {
-      online: !!body.online,
-      nodeCount: body.nodeCount ?? 0,
-      models: body.models ?? [],
-      nodes: body.nodes ?? [],
-    },
+    status,
     statusUrl,
+    routableModels,
+    hostHostname: host?.hostname ?? null,
   };
 }
 
-async function captureSnapshot(flagship: string) {
-  const { status, statusUrl } = await fetchStatusJson();
-  const snapshot = buildKpiSnapshot(status, flagship, statusUrl);
-  const saved = await saveKpiSnapshot(snapshot);
+async function captureSnapshot(flagshipParam?: string | null) {
+  const { status, statusUrl, routableModels, hostHostname } =
+    await fetchMeshKpiInput();
+  const flagship = pickFlagshipModel(
+    status.nodes,
+    routableModels,
+    flagshipParam,
+    DEFAULT_FLAGSHIP,
+  );
+  const snapshot = buildKpiSnapshot(
+    status,
+    flagship,
+    statusUrl,
+    new Date(),
+    routableModels,
+  );
+  const saved = await saveKpiSnapshot(snapshot, new Date(), { hostHostname });
   return { snapshot, saved, storeReady: kpiStoreReady() };
 }
 
@@ -84,14 +125,18 @@ export async function GET(req: Request) {
   const week = url.searchParams.get("week");
   const latest = url.searchParams.get("latest");
   const dashboard = url.searchParams.get("dashboard");
+  const seed = url.searchParams.get("seed");
 
-  if (cronAuthorized(req) || url.searchParams.get("capture") === "1") {
-    if (!cronAuthorized(req)) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  // Idempotent milestone backfill (cron or manual with secret).
+  if (seed === "milestones" && cronAuthorized(req)) {
+    const added = await ensureKnownMilestones();
+    return NextResponse.json({ ok: true, action: "seed-milestones", added });
+  }
+
+  if (cronAuthorized(req)) {
     try {
       const flagship =
-        url.searchParams.get("model")?.trim() || DEFAULT_FLAGSHIP;
+        url.searchParams.get("model")?.trim() || undefined;
       const result = await captureSnapshot(flagship);
       return NextResponse.json({
         ok: true,
@@ -108,6 +153,9 @@ export async function GET(req: Request) {
   }
 
   if (dashboard === "1" || dashboard === "true") {
+    if (kpiStoreReady()) {
+      await ensureKnownMilestones();
+    }
     const data = await getKpiDashboard();
     return NextResponse.json({
       ...data,
@@ -122,9 +170,11 @@ export async function GET(req: Request) {
         read_week: "?week=2026-W21",
         read_latest: "?latest=1",
         dashboard: "?dashboard=1",
+        seed_milestones: "?seed=milestones (auth required)",
       },
       storeReady: kpiStoreReady(),
       flagship_default: DEFAULT_FLAGSHIP,
+      mesh_status_url: DEFAULT_MESH_STATUS_URL,
     });
   }
 
@@ -161,7 +211,7 @@ export async function POST(req: Request) {
   if (!cronAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  let flagship = DEFAULT_FLAGSHIP;
+  let flagship: string | undefined;
   try {
     const body = (await req.json()) as { model?: string };
     if (body.model?.trim()) flagship = body.model.trim();
