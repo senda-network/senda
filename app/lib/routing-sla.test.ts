@@ -1,0 +1,192 @@
+import { describe, expect, it } from "vitest";
+import { evaluateSla, type SlaPeer } from "./routing-sla";
+
+function peer(overrides: Partial<SlaPeer>): SlaPeer {
+  return {
+    id: "test-peer",
+    hostname: "test",
+    state: "serving",
+    serving_models: [],
+    hosted_models: [],
+    measured_tps_p50_by_model: {},
+    measured_ttft_ms_p50_by_model: {},
+    capability: { loaded_models: [] },
+    ...overrides,
+  };
+}
+
+describe("evaluateSla — daily-driver tier (TTFT <= 3000 ms, TPS >= 8)", () => {
+  const model = "Qwen3-8B-Q4_K_M";
+
+  it("returns no-peer-with-model when nobody hosts the model", () => {
+    const result = evaluateSla(model, [
+      peer({ hosted_models: ["Llama-3.1-8B-Instruct-Q4_K_M"] }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("no-peer-with-model");
+    expect(result.candidatePeerCount).toBe(0);
+    expect(result.tier).toBe("daily_driver");
+  });
+
+  it("returns no-measurements when host exists but hasn't reported timings", () => {
+    const result = evaluateSla(model, [
+      peer({ hosted_models: [model] }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("no-measurements");
+    expect(result.candidatePeerCount).toBe(1);
+    expect(result.bestPeerTtftMs).toBeNull();
+    expect(result.bestPeerTps).toBeNull();
+  });
+
+  it("passes when a single peer meets both thresholds", () => {
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 14 },
+        measured_ttft_ms_p50_by_model: { [model]: 1_800 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(true);
+    expect(result.reason).toBe("meets-sla");
+    expect(result.bestPeerTtftMs).toBe(1_800);
+    expect(result.bestPeerTps).toBe(14);
+  });
+
+  it("flags ttft-too-high when TPS passes but TTFT fails", () => {
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 12 },
+        measured_ttft_ms_p50_by_model: { [model]: 5_000 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("ttft-too-high");
+    expect(result.bestPeerTtftMs).toBe(5_000);
+    expect(result.bestPeerTps).toBe(12);
+  });
+
+  it("flags tps-too-low when TTFT passes but TPS fails", () => {
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 2.5 },
+        measured_ttft_ms_p50_by_model: { [model]: 2_500 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("tps-too-low");
+  });
+
+  it("flags both-too-low when both thresholds fail", () => {
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 1.0 },
+        measured_ttft_ms_p50_by_model: { [model]: 9_700 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("both-too-low");
+  });
+
+  it("passes when at least one of many peers meets SLA", () => {
+    const result = evaluateSla(model, [
+      peer({
+        id: "slow",
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 3 },
+        measured_ttft_ms_p50_by_model: { [model]: 4_000 },
+      }),
+      peer({
+        id: "fast",
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 20 },
+        measured_ttft_ms_p50_by_model: { [model]: 1_200 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(true);
+    expect(result.candidatePeerCount).toBe(2);
+  });
+
+  it("ignores peers in unusable states", () => {
+    const result = evaluateSla(model, [
+      peer({
+        state: "loading",
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 30 },
+        measured_ttft_ms_p50_by_model: { [model]: 1_000 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("no-peer-with-model");
+  });
+
+  it("treats capability.loaded_models as a host signal alongside hosted_models", () => {
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [],
+        capability: { loaded_models: [model] },
+        measured_tps_p50_by_model: { [model]: 10 },
+        measured_ttft_ms_p50_by_model: { [model]: 2_500 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(true);
+  });
+});
+
+describe("evaluateSla — capacity tier (TTFT <= 15000 ms, TPS >= 0.8)", () => {
+  const model = "DeepSeek-R1-Distill-70B-Q4_K_M";
+
+  it("classifies the model as capacity tier", () => {
+    const result = evaluateSla(model, [
+      peer({ hosted_models: [model] }),
+    ]);
+    expect(result.tier).toBe("capacity");
+  });
+
+  it("passes for the measured DeepSeek-70B run (TTFT 9.7 s, 1.0 tok/s)", () => {
+    // Numbers come straight from the May 24 milestone capture.
+    // Capacity tier is permissive enough that the actual measured
+    // production behaviour clears the gate — we want this row routable
+    // as a proof-of-capacity demo, not blackholed.
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 1.0 },
+        measured_ttft_ms_p50_by_model: { [model]: 9_700 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(true);
+    expect(result.reason).toBe("meets-sla");
+  });
+
+  it("would fail the same measurements at daily-driver tier", () => {
+    // Sanity: the same numbers under the daily-driver tier MUST miss.
+    // This is the load-bearing test for the reframe — capacity tier
+    // is the only tier under which a 1.0 tok/s response is acceptable.
+    const dailyDriverModel = "Qwen3-8B-Q4_K_M";
+    const result = evaluateSla(dailyDriverModel, [
+      peer({
+        hosted_models: [dailyDriverModel],
+        measured_tps_p50_by_model: { [dailyDriverModel]: 1.0 },
+        measured_ttft_ms_p50_by_model: { [dailyDriverModel]: 9_700 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("both-too-low");
+  });
+
+  it("fails capacity tier when decode collapses below 0.8 tok/s", () => {
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 0.3 },
+        measured_ttft_ms_p50_by_model: { [model]: 12_000 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("tps-too-low");
+  });
+});

@@ -2,6 +2,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { applyCors, preflightResponse } from "../_cors";
 import { pickDefaultModelByTier } from "../../lib/model-tiers";
+import { evaluateSla, fetchMeshPeersCached } from "../../lib/routing-sla";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -232,6 +233,27 @@ export async function POST(req: Request) {
 
   const modelId = parsed.body.model ?? (await pickDefaultModel());
 
+  // Phase 4.B — SLA gate. Today we only OBSERVE: every chat response
+  // gets `x-closedmesh-sla-status` + `x-closedmesh-served-by` so we
+  // can watch live traffic and see how often the mesh meets SLA for
+  // real chat requests before Day 3 turns on the fallback branch.
+  // Cached fetch (~5 s TTL) keeps the hot path ~free in steady state.
+  const peers = await fetchMeshPeersCached();
+  const sla = evaluateSla(modelId, peers);
+
+  const slaHeaders: Record<string, string> = {
+    "x-closedmesh-served-by": "mesh",
+    "x-closedmesh-sla-status": sla.meetsSla ? "meet" : sla.reason,
+    "x-closedmesh-sla-tier": sla.tier,
+    "x-closedmesh-sla-candidates": String(sla.candidatePeerCount),
+  };
+  if (sla.bestPeerTtftMs !== null) {
+    slaHeaders["x-closedmesh-sla-best-ttft-ms"] = String(sla.bestPeerTtftMs);
+  }
+  if (sla.bestPeerTps !== null) {
+    slaHeaders["x-closedmesh-sla-best-tps"] = sla.bestPeerTps.toFixed(2);
+  }
+
   const result = streamText({
     model: closedmesh.chatModel(modelId),
     system: SYSTEM_PROMPT,
@@ -250,6 +272,7 @@ export async function POST(req: Request) {
     req,
     result.toUIMessageStreamResponse({
       onError: friendlyChatError,
+      headers: slaHeaders,
     }),
   );
 }
