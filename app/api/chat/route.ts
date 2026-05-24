@@ -3,6 +3,11 @@ import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { applyCors, preflightResponse } from "../_cors";
 import { pickDefaultModelByTier } from "../../lib/model-tiers";
 import { evaluateSla, fetchMeshPeersCached } from "../../lib/routing-sla";
+import {
+  consumeFallbackBudget,
+  decideFallback,
+  getOpenRouterProvider,
+} from "../../lib/fallback-provider";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -233,46 +238,126 @@ export async function POST(req: Request) {
 
   const modelId = parsed.body.model ?? (await pickDefaultModel());
 
-  // Phase 4.B — SLA gate. Today we only OBSERVE: every chat response
-  // gets `x-closedmesh-sla-status` + `x-closedmesh-served-by` so we
-  // can watch live traffic and see how often the mesh meets SLA for
-  // real chat requests before Day 3 turns on the fallback branch.
-  // Cached fetch (~5 s TTL) keeps the hot path ~free in steady state.
+  // Phase 4.B — SLA gate inputs. Cached fetch (~5 s TTL) so the
+  // hot path is essentially free in steady state.
   const peers = await fetchMeshPeersCached();
   const sla = evaluateSla(modelId, peers);
 
-  const slaHeaders: Record<string, string> = {
-    "x-closedmesh-served-by": "mesh",
+  // Phase 4.C — decide whether to send this request to the mesh or
+  // to a fallback provider. The decision is pure (see
+  // `decideFallback`); rate-limit consumption is the only side
+  // effect, and it only happens when the decision says fallback.
+  let decision = decideFallback(modelId, sla);
+  let budgetRemaining: number | null = null;
+  if (decision.useFallback) {
+    const clientIp = getClientIp(req);
+    const budget = await consumeFallbackBudget(clientIp);
+    if (!budget.allowed) {
+      // Anti-abuse: when an IP burns through its hourly budget the
+      // request drops back to the mesh (degraded but works). This
+      // is the explicit "fallback is not a free OpenRouter proxy"
+      // guard from the strategy doc.
+      decision = {
+        useFallback: false,
+        verdict: "fallback-rate-limited",
+        fallbackModelSlug: null,
+      };
+    } else {
+      budgetRemaining = budget.remaining;
+    }
+  }
+
+  const servedBy = decision.useFallback ? "fallback" : "mesh";
+  const headers: Record<string, string> = {
+    "x-closedmesh-served-by": servedBy,
     "x-closedmesh-sla-status": sla.meetsSla ? "meet" : sla.reason,
     "x-closedmesh-sla-tier": sla.tier,
     "x-closedmesh-sla-candidates": String(sla.candidatePeerCount),
+    "x-closedmesh-fallback-status": decision.verdict,
   };
   if (sla.bestPeerTtftMs !== null) {
-    slaHeaders["x-closedmesh-sla-best-ttft-ms"] = String(sla.bestPeerTtftMs);
+    headers["x-closedmesh-sla-best-ttft-ms"] = String(sla.bestPeerTtftMs);
   }
   if (sla.bestPeerTps !== null) {
-    slaHeaders["x-closedmesh-sla-best-tps"] = sla.bestPeerTps.toFixed(2);
+    headers["x-closedmesh-sla-best-tps"] = sla.bestPeerTps.toFixed(2);
+  }
+  if (decision.useFallback) {
+    headers["x-closedmesh-fallback-provider"] = "openrouter";
+    headers["x-closedmesh-fallback-model"] = decision.fallbackModelSlug ?? "";
+    if (budgetRemaining !== null) {
+      headers["x-closedmesh-fallback-budget-remaining"] = String(budgetRemaining);
+    }
   }
 
-  const result = streamText({
-    model: closedmesh.chatModel(modelId),
-    system: SYSTEM_PROMPT,
-    messages: convertToModelMessages(parsed.body.messages),
-    // The AI SDK retries up to 2x on 5xx by default. For a peer-to-peer
-    // mesh this is actively harmful: a 503 from the runtime almost always
-    // means "no host elected" or "host saturated", neither of which is
-    // resolved by hammering it 200ms later. Worse, the retries can trip
-    // the entry node's per-IP rate limit, turning a clean 503 into a
-    // 429 and confusing the actual diagnosis. One attempt; let the user
-    // (or chat UI) decide whether to retry.
-    maxRetries: 0,
-  });
+  // Both branches use the same `streamText` protocol, so the AI SDK
+  // chunk format is identical to the caller. The chat UI does not
+  // need to know whether it got mesh or fallback — only the
+  // headers and `/metrics` distinguish them.
+  let result;
+  if (decision.useFallback) {
+    const provider = getOpenRouterProvider();
+    if (!provider) {
+      // Shouldn't reach here because `decideFallback` checks the
+      // key, but guard belt-and-braces in case env state shifts.
+      decision = {
+        useFallback: false,
+        verdict: "fallback-disabled",
+        fallbackModelSlug: null,
+      };
+      headers["x-closedmesh-served-by"] = "mesh";
+      headers["x-closedmesh-fallback-status"] = "fallback-disabled";
+      result = streamText({
+        model: closedmesh.chatModel(modelId),
+        system: SYSTEM_PROMPT,
+        messages: convertToModelMessages(parsed.body.messages),
+        maxRetries: 0,
+      });
+    } else {
+      result = streamText({
+        model: provider.chatModel(decision.fallbackModelSlug!),
+        system: SYSTEM_PROMPT,
+        messages: convertToModelMessages(parsed.body.messages),
+        maxRetries: 1,
+      });
+    }
+  } else {
+    result = streamText({
+      model: closedmesh.chatModel(modelId),
+      system: SYSTEM_PROMPT,
+      messages: convertToModelMessages(parsed.body.messages),
+      // The AI SDK retries up to 2x on 5xx by default. For a peer-to-peer
+      // mesh this is actively harmful: a 503 from the runtime almost always
+      // means "no host elected" or "host saturated", neither of which is
+      // resolved by hammering it 200ms later. Worse, the retries can trip
+      // the entry node's per-IP rate limit, turning a clean 503 into a
+      // 429 and confusing the actual diagnosis. One attempt; let the user
+      // (or chat UI) decide whether to retry.
+      maxRetries: 0,
+    });
+  }
 
   return applyCors(
     req,
     result.toUIMessageStreamResponse({
       onError: friendlyChatError,
-      headers: slaHeaders,
+      headers,
     }),
   );
+}
+
+/**
+ * Best-effort client IP for the per-IP fallback budget. Vercel sets
+ * `x-forwarded-for` on every request; we pick the first hop (the
+ * actual client) and fall through to `x-real-ip` then to a constant
+ * placeholder so the Redis key is still deterministic in dev.
+ */
+function getClientIp(req: Request): string {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const real = req.headers.get("x-real-ip");
+  if (real) return real.trim();
+  return "unknown";
 }
