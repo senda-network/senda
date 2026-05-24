@@ -19,6 +19,7 @@ import {
   snapshotFromMilestone,
   snapshotQuality,
 } from "./kpi-snapshot";
+import { getMeshShareRolling, type MeshShareWindow } from "./mesh-share";
 
 export async function saveKpiSnapshot(
   snapshot: KpiSnapshot,
@@ -183,6 +184,10 @@ export type KpiDashboardPayload = {
   previous: KpiSnapshot | null;
   lastGood: KpiSnapshot | null;
   milestones: KpiMilestone[];
+  meshShare: {
+    rolling24h: MeshShareWindow;
+    rolling7d: MeshShareWindow;
+  };
 };
 
 export async function getKpiDashboard(
@@ -200,15 +205,22 @@ export async function getKpiDashboard(
       previous: null,
       lastGood: null,
       milestones: KNOWN_MILESTONES,
+      meshShare: {
+        rolling24h: { hours: 24, mesh: 0, fallback: 0, pct: null },
+        rolling7d: { hours: 168, mesh: 0, fallback: 0, pct: null },
+      },
     };
   }
 
-  const [latest, previous, lastGood, milestones] = await Promise.all([
-    getKpiWeek(week),
-    getKpiWeek(previousWeek),
-    getKpiLastGood(),
-    getKpiMilestones(),
-  ]);
+  const [latest, previous, lastGood, milestones, rolling24h, rolling7d] =
+    await Promise.all([
+      getKpiWeek(week),
+      getKpiWeek(previousWeek),
+      getKpiLastGood(),
+      getKpiMilestones(),
+      getMeshShareRolling(24, at),
+      getMeshShareRolling(168, at),
+    ]);
 
   return {
     storeReady: true,
@@ -218,5 +230,6 @@ export async function getKpiDashboard(
     previous,
     lastGood,
     milestones,
+    meshShare: { rolling24h, rolling7d },
   };
 }

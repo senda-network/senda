@@ -8,6 +8,7 @@ import {
   decideFallback,
   getOpenRouterProvider,
 } from "../../lib/fallback-provider";
+import { recordServedByDecision } from "../../lib/mesh-share";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -268,6 +269,13 @@ export async function POST(req: Request) {
   }
 
   const servedBy = decision.useFallback ? "fallback" : "mesh";
+
+  // Phase 4 headline KPI: fire-and-forget mesh_share_pct counter.
+  // We intentionally do NOT `await` this — an Upstash blip must
+  // never gate the chat stream. The function is internally guarded
+  // against errors for the same reason.
+  void recordServedByDecision(servedBy);
+
   const headers: Record<string, string> = {
     "x-closedmesh-served-by": servedBy,
     "x-closedmesh-sla-status": sla.meetsSla ? "meet" : sla.reason,

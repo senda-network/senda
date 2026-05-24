@@ -11,6 +11,13 @@ import {
 } from "../../lib/kpi-snapshot";
 import type { NodeSummary } from "../../lib/use-mesh-status";
 
+type MeshShareWindow = {
+  hours: number;
+  mesh: number;
+  fallback: number;
+  pct: number | null;
+};
+
 type KpiDashboard = {
   storeReady: boolean;
   week: string;
@@ -20,6 +27,10 @@ type KpiDashboard = {
   previous: KpiSnapshot | null;
   lastGood: KpiSnapshot | null;
   milestones: KpiMilestone[];
+  meshShare?: {
+    rolling24h: MeshShareWindow;
+    rolling7d: MeshShareWindow;
+  };
 };
 
 type MeshStatus = {
@@ -139,6 +150,71 @@ function MilestoneCard({ m }: { m: KpiMilestone }) {
         {m.measured_ttft_ms != null ? (
           <span>TTFT {(m.measured_ttft_ms / 1000).toFixed(1)}s</span>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function MeshSharePanel({
+  meshShare,
+}: {
+  meshShare: { rolling24h: MeshShareWindow; rolling7d: MeshShareWindow };
+}) {
+  const { rolling24h, rolling7d } = meshShare;
+  const total24 = rolling24h.mesh + rolling24h.fallback;
+  const total7 = rolling7d.mesh + rolling7d.fallback;
+  const hasData = total24 > 0 || total7 > 0;
+
+  return (
+    <section className="mb-10">
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h2 className="text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
+          Mesh share
+        </h2>
+        <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          % served by community hardware
+        </span>
+      </div>
+      {!hasData ? (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-4 text-[12px] text-[var(--fg-muted)]">
+          No requests have been served in the rolling window yet. This is the
+          fraction of chat traffic served by mesh peers vs the fallback
+          provider, and the headline number the network grows over time.
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MeshShareCard label="Last 24 hours" window={rolling24h} />
+          <MeshShareCard label="Last 7 days" window={rolling7d} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MeshShareCard({
+  label,
+  window,
+}: {
+  label: string;
+  window: MeshShareWindow;
+}) {
+  const total = window.mesh + window.fallback;
+  const pct = window.pct;
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-4">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+        {label}
+      </div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-3xl font-semibold tabular-nums text-[var(--fg)]">
+          {pct == null ? "—" : `${pct.toFixed(pct >= 10 ? 0 : 1)}%`}
+        </span>
+        <span className="text-[11px] text-[var(--fg-muted)]">mesh</span>
+      </div>
+      <div className="mt-2 text-[11px] text-[var(--fg-muted)] tabular-nums">
+        {total === 0
+          ? "no requests recorded"
+          : `${window.mesh.toLocaleString()} mesh · ${window.fallback.toLocaleString()} fallback · ${total.toLocaleString()} total`}
       </div>
     </div>
   );
@@ -324,6 +400,11 @@ export default function MetricsPage() {
               ))}
             </div>
           </section>
+        )}
+
+        {/* Mesh share — the headline routable-network KPI */}
+        {dashboard?.meshShare && (
+          <MeshSharePanel meshShare={dashboard.meshShare} />
         )}
 
         {/* Weekly KPI */}
