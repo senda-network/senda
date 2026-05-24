@@ -46,6 +46,43 @@ type LogEntry = {
 
 const ENTRIES: LogEntry[] = [
   {
+    id: "phase-4-routable-network",
+    date: "2026-05-24",
+    phase: "Phase 4",
+    title:
+      "Routable network with model tiers, an SLA gate, and protocol-subsidized fallback.",
+    lede:
+      "ClosedMesh is now a network that routes to the mesh when a per-model latency SLA can be met, and falls through transparently to a configured external provider when it can't. mesh_share_pct — the fraction of chat traffic served by community hardware — became the headline KPI on /metrics.",
+    body: [
+      "The catalog on closedmesh.com/status now sorts every model into one of three tiers. Daily-driver covers models a single contributor can serve at chat-viable latency (8B–14B class: Qwen3-8B, Llama-3.1-8B-Instruct, Qwen2.5-Coder-7B, DeepSeek-R1-Distill-Qwen-14B, Llama-3.2-3B). Capacity covers the 27B–70B-class models that only fit on beefy single peers or pooled splits — they remain routable on /v1/models, but render collapsed behind a \"show capacity tier\" toggle with explicit \"expected 10–15 s to first token, 1–2 tok/s decode through the mesh today\" copy on the card. Experimental is the safe default for unmapped or newly-added entries. The chat default on closedmesh.com is now always a daily-driver-tier model when one is being served; the mesh hosting both Qwen3-8B and DeepSeek-70B no longer defaults a first-time visitor to a 70B chat. Both the website's model picker and the /api/chat server-side default resolve through the same tier-aware function so the two surfaces agree.",
+      "Every /api/chat request now passes through an SLA gate before routing. The gate reads the per-model TTFT_p50 and tok/s_p50 figures the mesh already gossips (from Phase 1) against per-tier targets: daily-driver passes at ≤ 3 s TTFT and ≥ 8 tok/s; capacity passes at ≤ 15 s TTFT and ≥ 0.8 tok/s. The evaluation is emitted on every response as x-closedmesh-sla-status (one of meets-sla, no-peer-with-model, no-measurements, ttft-too-high, tps-too-low, both-too-low), with x-closedmesh-sla-tier, x-closedmesh-sla-candidates, and the best measured TTFT/tok-s when available. The headers are stable across both mesh-served and fallback-served responses, so an SDK caller can reason about routing without server logs.",
+      "When the gate misses on a daily-driver-tier model, /api/chat routes the request to a configured external provider (today: OpenRouter, OpenAI-compatible). The stream protocol is identical to the mesh path so the chat UI doesn't branch. Three guards keep this from drifting into a free proxy: the fallback is daily-driver only (capacity-tier misses stay on the mesh), only models with an explicit mapping fall back (today: Qwen3-8B, Llama-3.1-8B-Instruct, Qwen2.5-Coder-7B-Instruct, DeepSeek-R1-Distill-Qwen-14B, Llama-3.2-3B), and a per-IP per-hour budget caps usage (default 20/hour). Over-budget IPs drop back to a mesh attempt. The route activates only when the external provider's API key is set in the environment — without one, the gate still evaluates and emits its decision header (x-closedmesh-fallback-status: fallback-disabled), but the request stays on the mesh path.",
+      "mesh_share_pct landed as the new headline metric on /metrics. Every chat request fires a fire-and-forget counter in Redis bucketed by hour and served-by value (mesh or fallback); the dashboard reads rolling-24h and rolling-7d windows and renders two cards above the weekly KPI panel. Each card shows the percentage prominently and the raw mesh / fallback / total counts beneath. The first data point recorded on prod read 100% mesh (1 request, 0 fallback, 1 total) — fallback hadn't fired because the external provider key wasn't yet configured. The metric is the right shape: it starts wherever it is, it moves with what the network actually does, and it gives a single number to drive week-over-week. The capacity-tier 70B serves from the 2026-05-23 milestone capture sit in the milestones section above the metric, where they belong as proof-of-capacity rather than as a claim about chat speed.",
+    ],
+    metrics: [
+      {
+        label: "Catalog tiers",
+        value: "daily-driver · capacity · experimental",
+      },
+      {
+        label: "Daily-driver SLA",
+        value: "TTFT ≤ 3 s · tok/s ≥ 8",
+      },
+      {
+        label: "Capacity SLA",
+        value: "TTFT ≤ 15 s · tok/s ≥ 0.8",
+      },
+      {
+        label: "Fallback rate limit",
+        value: "20 requests / IP / hour",
+      },
+      {
+        label: "First mesh_share_pct sample",
+        value: "100% (1 mesh, 0 fallback, rolling 24h)",
+      },
+    ],
+  },
+  {
     id: "phase-3-0-benchmark-honesty",
     date: "2026-05-20",
     phase: "Phase 3.0",
