@@ -17,7 +17,7 @@ for a in "$@"; do
 done
 
 BASE="${ARGS[0]:-${CLOSEDMESH_KPI_STATUS_URL:-https://mesh.closedmesh.com/api/status}}"
-FLAGSHIP="${ARGS[1]:-${CLOSEDMESH_KPI_FLAGSHIP_MODEL:-DeepSeek-R1-Distill-70B-Q4_K_M}}"
+FLAGSHIP="${ARGS[1]:-${CLOSEDMESH_KPI_FLAGSHIP_MODEL:-Qwen3-8B-Q4_K_M}}"
 
 # Allow passing full status URL (mesh entry or website proxy path).
 if [[ "$BASE" == */api/status ]]; then

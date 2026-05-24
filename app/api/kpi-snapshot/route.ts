@@ -31,7 +31,7 @@ export const dynamic = "force-dynamic";
 
 const DEFAULT_FLAGSHIP =
   process.env.CLOSEDMESH_KPI_FLAGSHIP_MODEL?.trim() ||
-  "DeepSeek-R1-Distill-70B-Q4_K_M";
+  "Qwen3-8B-Q4_K_M";
 
 const DEFAULT_MESH_STATUS_URL =
   process.env.CLOSEDMESH_KPI_STATUS_URL?.trim() ||
