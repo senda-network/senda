@@ -1,22 +1,24 @@
 /**
  * Phase 4.B — per-model routing SLA gate.
  *
- * Given a model id and the current mesh peer list, decide whether the
- * mesh can serve a request for that model at chat-viable latency. The
- * decision is purely a function of measurements the mesh already
- * gossips (Phase 1 `measured_tps_p50_by_model` + Phase 3.0
- * `native_tps_p50_by_model`) and the per-tier targets in
+ * Given a model id and the current mesh peer list, decide whether
+ * the mesh can serve a request for that model at chat-viable
+ * latency. The decision is purely a function of measurements the
+ * mesh already gossips (Phase 1 `measured_tps_p50_by_model` +
+ * Phase 3.0 `native_tps_p50_by_model`) and the per-tier targets in
  * `model-tiers.ts`.
  *
  * Outputs an `SlaEvaluation` so the call site can act on it without
- * re-deriving anything: today (Day 2) `/api/chat` emits the result as
- * a response header and still forwards to the mesh. Day 3 flips the
- * routing branch — `meetsSla=false` will dispatch to a fallback
- * provider instead.
+ * re-deriving anything. The same gate runs on both supply paths
+ * the product offers: a "meets SLA" verdict streams the request
+ * from a mesh peer (the peer earns the peer-payout rate when
+ * Phase 5 is on); a "misses SLA" verdict streams from the external
+ * provider configured in `fallback-provider.ts` (cost-of-goods,
+ * covered by the customer's payment under Phase 5's rate card).
  *
  * Pure, no I/O. Cached entry fetcher lives below as
- * `fetchMeshPeersCached` so the gate is cheap to call from the chat
- * hot path.
+ * `fetchMeshPeersCached` so the gate is cheap to call from the
+ * chat hot path.
  */
 
 import { getModelTier, SLA_TARGETS_BY_TIER, type ModelTier } from "./model-tiers";

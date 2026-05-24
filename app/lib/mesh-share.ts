@@ -1,11 +1,18 @@
 /**
  * Phase 4 — `mesh_share_pct` accounting.
  *
- * The headline KPI for the routable-network reframe: what fraction
- * of inference requests get served by community hardware (the mesh)
- * vs by the protocol-subsidized fallback. Starts low when the mesh
- * is sparse, grows over time as we add capable peers and improve
- * routing.
+ * The headline KPI for the inference API: what fraction of requests
+ * are served by community hardware (the mesh) vs the external
+ * provider configured in `fallback-provider.ts`. In Phase 4 this
+ * is the routing-primitive health metric on the free `/chat`
+ * testbed. In Phase 5 the same counter — read off the same Redis
+ * buckets — becomes the margin-mix lever on the paid API:
+ * mesh-served requests carry the (typically larger) mesh margin
+ * and pay out to peers, fallback-served requests cover
+ * external-provider COGS out of the customer's payment. Every
+ * percentage point of `mesh_share_pct` is a percentage point of
+ * revenue that flows to a peer instead of out to an external
+ * provider.
  *
  * Storage shape (Upstash Redis):
  *
@@ -67,11 +74,10 @@ export async function recordServedByDecision(
       await redis.expire(key, BUCKET_TTL_SEC);
     }
   } catch {
-    // Anti-pattern to silently swallow Redis errors in general,
-    // but the headline metric must never break the chat path —
-    // an Upstash blip cannot turn into a 500 on /api/chat. The
-    // counter is a side concern; the streamed response is the
-    // product.
+    // Silently swallow Redis errors in this counter only: the
+    // streamed response is what the customer paid for (or what the
+    // testbed promises today); the KPI counter is bookkeeping that
+    // must never be allowed to 500 the request.
   }
 }
 

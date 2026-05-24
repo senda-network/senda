@@ -177,9 +177,9 @@ function MeshSharePanel({
       </div>
       {!hasData ? (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-4 text-[12px] text-[var(--fg-muted)]">
-          No requests have been served in the rolling window yet. This is the
-          fraction of chat traffic served by mesh peers vs the fallback
-          provider, and the headline number the network grows over time.
+          No requests in the rolling window yet. This is the fraction of API
+          traffic served by community hardware — mesh peers are the network&rsquo;s
+          supply, and this number grows as more capable peers come online.
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">

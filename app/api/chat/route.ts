@@ -244,20 +244,20 @@ export async function POST(req: Request) {
   const peers = await fetchMeshPeersCached();
   const sla = evaluateSla(modelId, peers);
 
-  // Phase 4.C — decide whether to send this request to the mesh or
-  // to a fallback provider. The decision is pure (see
-  // `decideFallback`); rate-limit consumption is the only side
-  // effect, and it only happens when the decision says fallback.
+  // Phase 4.C — pick the supply path for this request. The decision
+  // is pure (see `decideFallback`); the only side effect is
+  // consuming the testbed's per-IP per-hour budget, and that
+  // happens only when the decision routes to the external provider.
   let decision = decideFallback(modelId, sla);
   let budgetRemaining: number | null = null;
   if (decision.useFallback) {
     const clientIp = getClientIp(req);
     const budget = await consumeFallbackBudget(clientIp);
     if (!budget.allowed) {
-      // Anti-abuse: when an IP burns through its hourly budget the
-      // request drops back to the mesh (degraded but works). This
-      // is the explicit "fallback is not a free OpenRouter proxy"
-      // guard from the strategy doc.
+      // The free `/chat` testbed bounds external-supply use per IP
+      // per hour while we're not yet billing. Over-budget callers
+      // route to the mesh path on this surface. Phase 5's paid API
+      // replaces this with the customer's credit balance.
       decision = {
         useFallback: false,
         verdict: "fallback-rate-limited",
@@ -270,10 +270,11 @@ export async function POST(req: Request) {
 
   const servedBy = decision.useFallback ? "fallback" : "mesh";
 
-  // Phase 4 headline KPI: fire-and-forget mesh_share_pct counter.
-  // We intentionally do NOT `await` this — an Upstash blip must
-  // never gate the chat stream. The function is internally guarded
-  // against errors for the same reason.
+  // Phase 4 headline KPI: fire-and-forget `mesh_share_pct` counter.
+  // The streamed response is what the customer paid for (or what
+  // the testbed promises today); the counter is bookkeeping and
+  // must never gate the response — internally guarded for the same
+  // reason.
   void recordServedByDecision(servedBy);
 
   const headers: Record<string, string> = {
@@ -354,10 +355,11 @@ export async function POST(req: Request) {
 }
 
 /**
- * Best-effort client IP for the per-IP fallback budget. Vercel sets
- * `x-forwarded-for` on every request; we pick the first hop (the
- * actual client) and fall through to `x-real-ip` then to a constant
- * placeholder so the Redis key is still deterministic in dev.
+ * Best-effort client IP for the testbed's per-IP per-hour budget
+ * on external-supply use. Vercel sets `x-forwarded-for` on every
+ * request; pick the first hop (the actual client), fall through to
+ * `x-real-ip`, then to a constant placeholder so the Redis key is
+ * still deterministic in dev.
  */
 function getClientIp(req: Request): string {
   const xff = req.headers.get("x-forwarded-for");

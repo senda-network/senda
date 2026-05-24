@@ -1,33 +1,43 @@
 /**
- * Phase 4.C — protocol-subsidized fallback provider.
+ * Phase 4.C — external-supply fallback provider.
  *
- * When the per-model SLA gate (`routing-sla.ts`) reports that the
- * mesh cannot meet the daily-driver tier's latency budget for the
- * requested model, the chat route delegates to an external,
- * OpenAI-compatible provider so the user always gets a working
- * answer. Today the only concrete provider is OpenRouter; the
- * factory pattern leaves room to swap or chain providers later.
+ * ClosedMesh is a paid inference API (Phase 5) with two supply
+ * paths: the mesh (our differentiated supply, mesh peers earn from
+ * each request they serve) and an external OpenAI-compatible
+ * provider (cost-of-goods that guarantees uptime so the API is
+ * sellable). The per-model SLA gate in `routing-sla.ts` decides
+ * which supply path each request takes. This module is the
+ * external-supply path.
  *
- * Three guards constrain when fallback fires — together they
- * implement the "fallback exists, but it cannot become a free
- * OpenRouter proxy" guarantee from the strategy doc:
+ * Today the only concrete provider is OpenRouter; the factory
+ * pattern leaves room to add Together / Groq / direct provider
+ * keys later. The same provider abstraction runs on both the free
+ * `closedmesh.com/chat` testbed (today, Phase 4) and the paid API
+ * surface (Phase 5) — what changes between the two is the billing
+ * layer wrapping this module, not this module itself.
  *
- *   1. **Tier allowlist.** Only daily-driver tier models route to
- *      fallback. Requesting a capacity-tier model that misses SLA
- *      stays on the mesh (the user opted into "slow but mesh-served"
- *      by picking that model).
- *   2. **Mapping required.** Fallback fires only when the requested
- *      mesh model has a concrete external equivalent in
- *      `FALLBACK_MODEL_MAP`. Unknown models stay on the mesh.
- *   3. **Per-IP per-hour budget.** Hard cap on fallback requests per
- *      client IP (default 20/hour, override via env). Enforced
- *      separately in `consumeFallbackBudget` against Redis.
+ * Three policy knobs scope when external supply fires today on the
+ * free `/chat` testbed:
+ *
+ *   1. **Tier allowlist.** External supply is enabled for
+ *      daily-driver-tier models only. Capacity-tier requests stay
+ *      on the mesh — the network is the demo for those models, and
+ *      the catalog row says so before the user clicks through.
+ *   2. **Mapping required.** External supply fires only for models
+ *      with a concrete entry in `FALLBACK_MODEL_MAP`. The mapping
+ *      is hand-maintained against the external provider's catalog.
+ *   3. **Per-IP per-hour budget.** Bounded usage on the free
+ *      testbed (default 20/hour/IP, override via env) so
+ *      external-provider cost is predictable while we're not yet
+ *      billing. Phase 5's paid API replaces this with the
+ *      customer's credit balance — the rate card is constructed so
+ *      the customer's payment covers both supply paths plus margin.
  *
  * The provider activates only when `OPENROUTER_API_KEY` is set in
- * the environment. Without it, `fallbackProviderReady` returns
- * false and the chat route stays on its current mesh-only path,
- * which means we can ship the code path before provisioning the
- * key and flip it on by setting the env var.
+ * the environment. Without it, the route stays on the mesh-only
+ * path and emits `x-closedmesh-fallback-status: fallback-disabled`
+ * on every response — so the code path can ship before the key is
+ * provisioned and flip on by setting the env var.
  */
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -108,13 +118,15 @@ export type FallbackDecision = {
  * decision matrix without mocking Redis.
  *
  * Decision precedence:
- *  1. If the SLA gate passes, mesh wins. No fallback.
- *  2. If the requested model is not daily-driver tier, mesh wins
- *     (capacity tier opts into "slow but mesh-served"; we don't
- *     burn fallback dollars on 70B-class).
- *  3. If we have no fallback key or no model mapping, mesh wins.
- *  4. Otherwise fallback wins (subject to the budget check the
- *     route makes against `consumeFallbackBudget`).
+ *  1. If the SLA gate passes, the request streams from the mesh.
+ *  2. If the requested model is not daily-driver tier, the request
+ *     streams from the mesh — the network is the demo for capacity-
+ *     tier models, and the catalog row carries that expectation.
+ *  3. If we have no external-provider key or no model mapping, the
+ *     request streams from the mesh.
+ *  4. Otherwise the request streams from the external provider
+ *     (subject to the testbed budget check the route makes against
+ *     `consumeFallbackBudget`).
  */
 export function decideFallback(
   modelId: string,
@@ -205,13 +217,16 @@ export type BudgetResult =
   | { allowed: false; reason: "rate-limited"; remaining: 0 };
 
 /**
- * Atomically increment the per-IP per-hour counter and return
- * whether the call is within budget. When Redis isn't configured
- * (local dev, tests) the call is always allowed — production sets
- * `kvConfigured()`, dev doesn't.
+ * Atomically increment the per-IP per-hour counter on the free
+ * `/chat` testbed and return whether the call is within today's
+ * budget. When Redis isn't configured (local dev, tests) the call
+ * is always allowed.
  *
- * Hard cap defaults to 20/hour/IP; override via
- * `CLOSEDMESH_FALLBACK_HOURLY_BUDGET`.
+ * Default cap 20/hour/IP, override via
+ * `CLOSEDMESH_FALLBACK_HOURLY_BUDGET`. Phase 5's paid API replaces
+ * this counter with the customer's credit balance — the rate card
+ * is constructed so each request's price covers the supply cost
+ * (mesh peer payout or external-provider COGS) plus margin.
  */
 export async function consumeFallbackBudget(
   clientIp: string,
