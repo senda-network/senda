@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { applyCors, preflightResponse } from "../_cors";
+import { pickDefaultModelByTier } from "../../lib/model-tiers";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -61,8 +62,18 @@ async function pickDefaultModel(): Promise<string> {
     });
     if (!res.ok) throw new Error(String(res.status));
     const data = (await res.json()) as { data?: Array<{ id: string }> };
-    const id = data.data?.[0]?.id;
-    if (id) return id;
+    const routable = (data.data ?? []).map((m) => m.id);
+    // Phase 4.A — pick by tier, not by listing order. The runtime
+    // returns whichever Host happens to be first; without this gate a
+    // chat request with no `model` field on a mesh that's currently
+    // hosting both Qwen3-8B and DeepSeek-70B could land on the 70B
+    // (~1 tok/s through-mesh measured 2026-05-23) just because the
+    // listing happened to put it first.
+    const tierPreferred = pickDefaultModelByTier(
+      routable,
+      process.env.CLOSEDMESH_MODEL ?? process.env.MESH_LLM_MODEL ?? null,
+    );
+    if (tierPreferred) return tierPreferred;
   } catch {
     // fall through to env-default
   }

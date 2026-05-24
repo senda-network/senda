@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useMeshModels } from "../lib/use-mesh-models";
 import type { MeshModel } from "../lib/use-mesh-status";
+import { getModelTier, tierRank } from "../lib/model-tiers";
 
 const STORAGE_KEY = "closedmesh:selectedModel";
 
@@ -22,18 +23,24 @@ function pretty(id: string): string {
 
 /**
  * Pick a sensible default when the visitor hasn't explicitly chosen yet
- * (or their previous choice has dropped out of the inventory). We prefer
- * the first warm model with at least one active node — that's the route
- * most likely to actually serve a request without waiting for an
- * election. Falls through to the first listed model otherwise.
+ * (or their previous choice has dropped out of the inventory).
+ *
+ * Phase 4.A — prefer warm daily-driver tier first, then warm any tier,
+ * then any model. Without this gate the dropdown would happily default
+ * to a capacity-tier model (e.g. DeepSeek-70B) if it happened to come
+ * up first in the routable list, and a brand-new visitor would hit
+ * the 9.7 s TTFT / 1 tok/s wall on their first "Hi there" — exactly
+ * the UX failure the routable-network reframe is built to avoid.
  */
 function pickDefault(models: MeshModel[]): string | undefined {
-  const warm = models.find(
-    (m) => m.status === "warm" && m.nodeCount > 0,
-  );
-  if (warm) return warm.name;
-  if (models.length > 0) return models[0].name;
-  return undefined;
+  if (models.length === 0) return undefined;
+  const byTier = (m: MeshModel) => tierRank(getModelTier(m.name));
+  const sortedWarm = models
+    .filter((m) => m.status === "warm" && m.nodeCount > 0)
+    .sort((a, b) => byTier(a) - byTier(b));
+  if (sortedWarm.length > 0) return sortedWarm[0].name;
+  const sortedAny = [...models].sort((a, b) => byTier(a) - byTier(b));
+  return sortedAny[0]?.name;
 }
 
 export type ModelSelectorProps = {

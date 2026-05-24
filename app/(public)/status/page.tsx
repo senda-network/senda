@@ -7,6 +7,13 @@ import { MeshLiveStatus } from "../../components/MeshLiveStatus";
 import { nodeDisplayState } from "../../lib/node-display-state";
 import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
 import { normalizeModelId } from "../../lib/model-id";
+import {
+  getModelTier,
+  tierRank,
+  TIER_LABELS,
+  TIER_DESCRIPTIONS,
+  type ModelTier,
+} from "../../lib/model-tiers";
 import type { NodeSummary } from "../../lib/use-mesh-status";
 import {
   MIN_PIPELINE_ELECTION_PEER_VERSION,
@@ -299,14 +306,29 @@ function median(values: number[]): number | null {
  *     "measured zero" is to let this UI tell users "we'd report it if
  *     we had it, we don't yet".
  */
-/** Phase 2: solo catalog rows first, pooled-split rows below a divider. */
+/**
+ * Phase 4.A — split routable models by tier first, then by topology
+ * within each tier (solo above pooled-split).
+ *
+ * Daily-driver tier is the headline catalog. Capacity + experimental
+ * are collapsed by default behind toggles in the rendering code; this
+ * helper just groups so the renderer can decide what to show.
+ */
 function partitionCatalogModels(
   models: string[],
   nodes: MeshNode[],
-): { solo: string[]; split: string[] } {
-  const solo: string[] = [];
-  const split: string[] = [];
-  for (const model of models) {
+): Record<ModelTier, { solo: string[]; split: string[] }> {
+  const empty = () => ({ solo: [] as string[], split: [] as string[] });
+  const buckets: Record<ModelTier, { solo: string[]; split: string[] }> = {
+    daily_driver: empty(),
+    capacity: empty(),
+    experimental: empty(),
+  };
+  const sorted = [...models].sort(
+    (a, b) => tierRank(getModelTier(a)) - tierRank(getModelTier(b)),
+  );
+  for (const model of sorted) {
+    const tier = getModelTier(model);
     let hostCount = 0;
     let workerCount = 0;
     for (const n of nodes) {
@@ -320,15 +342,148 @@ function partitionCatalogModels(
       }
     }
     if (hostCount > 0 || workerCount > 0) {
-      split.push(model);
+      buckets[tier].split.push(model);
     } else {
-      solo.push(model);
+      buckets[tier].solo.push(model);
     }
   }
-  return { solo, split };
+  return buckets;
+}
+
+/**
+ * Small tier badge rendered to the right of the model name in each
+ * `CatalogRow`. Colour-coded so the headline tier reads at a glance:
+ * green daily-driver, amber capacity (slow-by-design), neutral
+ * experimental.
+ */
+function TierBadge({ tier }: { tier: ModelTier }) {
+  const styles: Record<ModelTier, string> = {
+    daily_driver:
+      "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+    capacity: "border-amber-500/40 bg-amber-500/10 text-amber-300",
+    experimental: "border-slate-500/40 bg-slate-500/10 text-slate-300",
+  };
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] ${styles[tier]}`}
+    >
+      {TIER_LABELS[tier]}
+    </span>
+  );
+}
+
+/**
+ * Phase 4.A — tier-aware catalog block. Daily-driver tier renders
+ * expanded; capacity and experimental tiers render collapsed behind
+ * a toggle with the SLA-style copy from `TIER_DESCRIPTIONS`.
+ *
+ * Why daily-driver renders open and capacity does not: the
+ * 5-machine DeepSeek-70B serve on 2026-05-23 measured ~1.0 tok/s
+ * through the mesh entry. Putting that row at the top alongside
+ * Qwen3-8B reads as "the product is slow," when the truthful framing
+ * is that capacity-tier is opt-in, proof-of-capacity, expected to be
+ * slow today, and not the chat default.
+ */
+function CatalogSection({
+  models,
+  nodes,
+}: {
+  models: string[];
+  nodes: MeshNode[];
+}) {
+  const buckets = partitionCatalogModels(models, nodes);
+  const [showCapacity, setShowCapacity] = useState(false);
+  const [showExperimental, setShowExperimental] = useState(false);
+
+  const renderRows = (tier: ModelTier) => {
+    const { solo, split } = buckets[tier];
+    if (solo.length === 0 && split.length === 0) return null;
+    return (
+      <div className="space-y-2">
+        {solo.map((m) => (
+          <CatalogRow key={m} model={m} nodes={nodes} />
+        ))}
+        {split.length > 0 && solo.length > 0 && (
+          <div className="py-1 text-center text-[10px] uppercase tracking-widest text-[var(--fg-muted)]">
+            — pooled splits —
+          </div>
+        )}
+        {split.map((m) => (
+          <CatalogRow key={m} model={m} nodes={nodes} />
+        ))}
+      </div>
+    );
+  };
+
+  const tierCount = (tier: ModelTier) =>
+    buckets[tier].solo.length + buckets[tier].split.length;
+
+  const collapsedTier = (
+    tier: ModelTier,
+    open: boolean,
+    setOpen: (next: boolean) => void,
+  ) => {
+    const count = tierCount(tier);
+    if (count === 0) return null;
+    return (
+      <div className="mt-6">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left hover:border-[var(--accent)]/40"
+        >
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <TierBadge tier={tier} />
+              <span className="text-[13px] font-semibold text-[var(--fg)]">
+                {count} {count === 1 ? "model" : "models"}
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] text-[var(--fg-muted)]">
+              {TIER_DESCRIPTIONS[tier]}
+            </div>
+          </div>
+          <span className="shrink-0 text-[11px] text-[var(--fg-muted)]">
+            {open ? "Hide" : "Show"}
+          </span>
+        </button>
+        {open && <div className="mt-3">{renderRows(tier)}</div>}
+      </div>
+    );
+  };
+
+  const dailyCount = tierCount("daily_driver");
+
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-3">
+        <div className="text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
+          Catalog
+        </div>
+        <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+          Daily driver
+        </div>
+      </div>
+      {dailyCount > 0 ? (
+        <>
+          <p className="mb-3 text-[11px] text-[var(--fg-muted)]">
+            {TIER_DESCRIPTIONS.daily_driver}
+          </p>
+          {renderRows("daily_driver")}
+        </>
+      ) : (
+        <p className="mb-3 text-[11px] text-[var(--fg-muted)]">
+          No daily-driver model is currently being served by the mesh.
+        </p>
+      )}
+      {collapsedTier("capacity", showCapacity, setShowCapacity)}
+      {collapsedTier("experimental", showExperimental, setShowExperimental)}
+    </div>
+  );
 }
 
 function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
+  const tier = getModelTier(model);
   const contributors = nodes.filter(
     (n) =>
       n.servingModels.includes(model) ||
@@ -421,6 +576,7 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
           <span className="truncate text-[14px] font-semibold text-[var(--fg)]">
             {prettyModelName(model)}
           </span>
+          <TierBadge tier={tier} />
         </div>
         <div className="shrink-0 text-[11px] text-[var(--fg-muted)] tabular-nums">
           {contributorCount === 0
@@ -1523,34 +1679,10 @@ export default function StatusPage() {
                 the row renders a "no measurements yet" line instead of
                 fabricating zeros. */}
             {status.models.length > 0 && (
-              <div>
-                <div className="mb-3 text-[11px] uppercase tracking-widest text-[var(--fg-muted)]">
-                  Catalog
-                </div>
-                <div className="space-y-2">
-                  {(() => {
-                    const { solo, split } = partitionCatalogModels(
-                      status.models,
-                      status.nodes,
-                    );
-                    return (
-                      <>
-                        {solo.map((m) => (
-                          <CatalogRow key={m} model={m} nodes={status.nodes} />
-                        ))}
-                        {split.length > 0 && solo.length > 0 && (
-                          <div className="py-1 text-center text-[10px] uppercase tracking-widest text-[var(--fg-muted)]">
-                            — pooled splits —
-                          </div>
-                        )}
-                        {split.map((m) => (
-                          <CatalogRow key={m} model={m} nodes={status.nodes} />
-                        ))}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
+              <CatalogSection
+                models={status.models}
+                nodes={status.nodes}
+              />
             )}
 
             {/* Working nodes — peers that are currently useful or have
