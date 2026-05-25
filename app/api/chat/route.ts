@@ -161,6 +161,20 @@ export function parseChatBody(raw: unknown): ChatBodyParseResult {
         error: `\`messages[${i}]\` must be an object`,
       };
     }
+    // AI SDK v5 contract: every UIMessage has a `parts` array. Without
+    // it, `convertToModelMessages` calls `.map` on `undefined` and the
+    // route 500s with an empty body. We saw this in the wild on
+    // 2026-05-25 when a client sent legacy `{role, content}` messages
+    // against the v5 deployment. Reject cleanly with a 400 that names
+    // the fix instead of letting it surface as an opaque 500.
+    const mObj = m as Record<string, unknown>;
+    if (!Array.isArray(mObj.parts)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `\`messages[${i}].parts\` must be an array — this endpoint uses the AI SDK v5 UIMessage shape (\`{ id, role, parts: [{ type: "text", text }] }\`); legacy \`{ role, content }\` messages are not accepted`,
+      };
+    }
   }
   let model: string | undefined;
   if (body.model !== undefined) {

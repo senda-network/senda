@@ -70,6 +70,29 @@ describe("parseChatBody", () => {
     if (result.ok) expect(result.body.messages).toEqual([]);
   });
 
+  test("rejects legacy {role, content} messages with a 400 that names the v5 fix", () => {
+    const result = parseChatBody({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toMatch(/parts.*must be an array/);
+      expect(result.error).toMatch(/UIMessage/);
+    }
+  });
+
+  test("rejects messages where `parts` is present but not an array", () => {
+    const result = parseChatBody({
+      messages: [{ role: "user", parts: "hi" }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(400);
+      expect(result.error).toMatch(/messages\[0\]\.parts/);
+    }
+  });
+
   test("rejects non-string `model` values", () => {
     const result = parseChatBody({ messages: [], model: 7 });
     expect(result.ok).toBe(false);
