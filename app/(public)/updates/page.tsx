@@ -46,6 +46,40 @@ type LogEntry = {
 
 const ENTRIES: LogEntry[] = [
   {
+    id: "phase-4-pipeline-coverage",
+    date: "2026-05-25",
+    phase: "Phase 4",
+    version: "v0.66.55",
+    title:
+      "Pipeline-served models started contributing to the SLA gate that decides routing.",
+    lede:
+      "The routing primitive shipped on 2026-05-24 read per-model TTFT and tok/s samples on every chat request, but those samples were silently missing for any model the runtime served through a planner + strong-model pipeline. v0.66.55 closed the gap; the SLA gate now sees real measurements regardless of which serving mode produced them.",
+    body: [
+      "Phase 1 instrumented the runtime's backend proxy to record a per-model TTFT and tok/s sample on every successful local chat completion, and Phase 4 built the SLA gate that reads those samples to decide whether to route a request to the mesh. Between the two, a code path went unmeasured: when a host runs a model as a planner + strong-model pipeline (the path that splits a 32B–70B model's layers across a beefy host and one or more remote layer-workers), the response flowed through a separate proxy that streamed the strong-model's reply straight to the client without ever calling the sample-recording hook. Every pipeline-served chat looked fine to the user, then left the rolling-1h marketplace metric empty for that model — the same model that needed the metric most because the pipeline path is the only way some catalog rows ever get served.",
+      "v0.66.55 (cut 2026-05-25) closed the gap. The pipeline proxy now measures the same TTFT and decode-duration instants the direct proxy uses, parses the OpenAI usage chunk out of the SSE tail (streaming) or the JSON body (non-streaming) to get the completion-token count, and calls the same sample-recording hook on 2xx responses with non-zero token counts. The recording site emits a single info-level log line per request that names whether the sample was recorded and, when it wasn't, the precise reason (non_2xx_status, usage_chunk_missing, zero_completion_tokens, client_disconnected) — so the default ~/.closedmesh/logs/stderr.log is self-diagnostic for the same defect class the next time it appears, without needing an environment variable to surface anything.",
+      "The fix was proved end-to-end against a 3-peer pipeline of personal desktops serving DeepSeek-R1-Distill-70B-Q4_K_M. One chat through closedmesh.com/chat produced a 24925 ms TTFT and 1.09 tok/s decode sample, the SLA gate read it on the next request (x-closedmesh-sla-best-ttft-ms: 24925, x-closedmesh-sla-best-tps: 1.09, x-closedmesh-sla-status: ttft-too-high), and the hourly snapshot job wrote it to the same Redis bucket Phase 4 reads on /metrics. Before v0.66.55 those headers had stayed at no-measurements for every pipeline-served model regardless of how many chats hit it; the value transition from null to a real number is the entire verifiable surface of the fix.",
+      "A separate event the same day: Qwen3-32B-Q4_K_M was elected onto a 3-peer cohort of one Mac Mini-class Metal device (14.5 GB) and two CUDA peers (17.2 GB, 8.6 GB), pooled 40.3 GB. The largest single peer in the cohort happened to fit the model's weights with mmap-spill (the runtime lets the OS page non-resident weights from disk-resident RAM) and elected to serve it solo while the other two finished loading. Single-peer mmap-spill on the 17.2 GB CUDA device produced a 1047 ms TTFT_best and 3.981 tok/s p50 — the best capacity-tier figures the mesh has measured on personal hardware (the 2026-05-23 DeepSeek-70B reading on rented GPUs was ~10 s and ~1 tok/s). The first-serve milestone for that model is now visible on /metrics.",
+    ],
+    metrics: [
+      {
+        label: "DeepSeek-R1-Distill-70B-Q4_K_M (3-peer pipeline)",
+        value: "24925 ms TTFT · 1.09 tok/s",
+      },
+      {
+        label: "Qwen3-32B-Q4_K_M (single CUDA peer, mmap spill)",
+        value: "1047 ms TTFT · 3.98 tok/s",
+      },
+      {
+        label: "Pooled VRAM (3 contributors)",
+        value: "40.3 GB",
+      },
+      {
+        label: "Catalog rows with a measurement (pipeline path)",
+        value: "0 → 1 with v0.66.55",
+      },
+    ],
+  },
+  {
     id: "phase-4-routable-network",
     date: "2026-05-24",
     phase: "Phase 4",
