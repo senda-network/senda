@@ -46,6 +46,39 @@ type LogEntry = {
 
 const ENTRIES: LogEntry[] = [
   {
+    id: "phase-4-qwen3-8b-daily-driver",
+    date: "2026-05-25",
+    phase: "Phase 4",
+    version: "v0.66.56",
+    title:
+      "Qwen3-8B-Q4_K_M cleared the daily-driver SLA on a single contributor; the status classifier stopped advertising phantom splits.",
+    lede:
+      "A single CUDA peer (RTX 4080 SUPER, 17.2 GB) serving Qwen3-8B-Q4_K_M as the daily-driver-tier default produced 45.26 tok/s decode and 82 ms TTFT_p50 — about 37× under the tier's TTFT ceiling and 5.7× over its tok/s floor. Same release closed a status-classifier defect that had been advertising N-peer split groups for models the elected host was serving solo.",
+    body: [
+      "Phase 4 set the daily-driver tier's SLA at ≤ 3 s TTFT and ≥ 8 tok/s. Today's measurement on a single peer hosting Qwen3-8B-Q4_K_M came in at 82 ms TTFT_p50 and 45.26 tok/s decode through the mesh, with the peer's own native baseline (a synthetic chat against its own llama-server on 127.0.0.1, bypassing every tunnel) at 49 ms TTFT and 77.80 tok/s. The mesh path costs about 33 ms of TTFT and roughly 42% of the decode throughput against that native baseline — overhead that's well inside the SLA on this model class. The peer was elected via the existing solo-bias election (Qwen3-8B's ~5 GB Q4 weights fit on any peer with ≥ 5.5 GB fast memory after the 1.1× headroom), and a first-serve milestone for the model is now visible on /metrics.",
+      "Separately, the status classifier had been overstating the mesh's serving topology. When multiple peers all opted to share the same model and the elected host fit the model solo, the election left the other peers in NodeRole::Worker as warm standby — they were not actually running rpc-server for the host. The /api/status classifier still saw them in the cohort and rendered the host as serving_mode: split_host with an N-peer split_group covering the pooled VRAM of every standby peer, while tagging the standby peers themselves as pipeline_worker. The runtime had elected solo correctly; only the wire-level peer payload was lying about it.",
+      "v0.66.56 added a model-size-aware honesty gate to both classifiers (classify_peer_split_role for remote peers, classify_local_split_role for self): if the elected host's fast memory is ≥ 1.1× the model's GGUF size — the same threshold the election uses for min_vram_for_solo — the classifier returns no split_role and no split_group for everyone in the cohort, same shape as a true solo serve. The host's NodeRole::Host and the model's catalog row keep advertising the model normally; only the phantom split-group payload goes away. When the gate has no evidence the host can solo (no peer has scanned the model on disk and the GGUF size is unknown in the mesh), the classifier falls through to its previous behaviour, so genuine pipeline splits like the 2026-05-25 DeepSeek-R1-Distill-70B-Q4_K_M cohort continue to render correctly. Two regression tests pin both branches.",
+    ],
+    metrics: [
+      {
+        label: "Qwen3-8B-Q4_K_M (single CUDA contributor, mesh path)",
+        value: "82 ms TTFT · 45.26 tok/s",
+      },
+      {
+        label: "Qwen3-8B-Q4_K_M (same peer, native baseline)",
+        value: "49 ms TTFT · 77.80 tok/s",
+      },
+      {
+        label: "Daily-driver SLA headroom (TTFT / tok/s)",
+        value: "37× · 5.7×",
+      },
+      {
+        label: "Status classifier honesty gate",
+        value: "host-can-solo ⇒ no phantom split_group",
+      },
+    ],
+  },
+  {
     id: "phase-4-pipeline-coverage",
     date: "2026-05-25",
     phase: "Phase 4",
