@@ -83,6 +83,14 @@ that don't fit on any single peer (see
 [`closedmesh-llm`](https://github.com/closedmesh/closedmesh-llm)),
 but they are no longer the default route.
 
+Because anyone can join, the mesh **verifies that a peer actually runs
+the model it advertises**. Each peer publishes a deterministic
+model-identity fingerprint, and the network re-runs an unpredictable
+synthetic probe and compares — so a peer can't claim a large model while
+quietly serving a smaller one or canned text. Verification uses only
+synthetic probes, never real user prompts. The mechanism lives in the
+runtime ([model-identity verification](https://github.com/closedmesh/closedmesh-llm/blob/main/docs/VERIFICATION.md)).
+
 ## Hardware support
 
 The installer detects your platform and pulls the matching runtime

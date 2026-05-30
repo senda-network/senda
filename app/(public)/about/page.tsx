@@ -223,6 +223,10 @@ export default function AboutPage() {
               body="Two peers cooperate per session — a small fast draft proposes 4–8 tokens, a larger verifier accepts them in one batched pass. The network hop amortises across many tokens, both peers earn for the same session."
             />
             <Feature
+              title="Peers are verified"
+              body="Anyone can join, so the mesh checks that a peer actually runs the model it advertises. Each peer publishes a deterministic model-identity fingerprint and the network re-runs an unpredictable synthetic probe to compare — a peer can't claim a big model while quietly serving a smaller one. The probes are synthetic; real prompts are never replayed."
+            />
+            <Feature
               title="OpenAI-compatible"
               body="Every peer exposes a standard /v1/chat/completions endpoint. Drop-in for any tool that speaks OpenAI — agents, IDE plugins, internal scripts."
             />

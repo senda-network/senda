@@ -46,6 +46,21 @@ type LogEntry = {
 
 const ENTRIES: LogEntry[] = [
   {
+    id: "phase-3-peer-verification",
+    date: "2026-05-30",
+    phase: "Phase 3",
+    version: "v0.66.57",
+    title:
+      "The mesh started verifying that peers serve the model they claim.",
+    lede:
+      "Each peer now publishes a deterministic model-identity fingerprint, and entry nodes re-run an unpredictable synthetic probe to check a peer is actually running the model it advertises — not a smaller one, and not canned text. It shipped in observe mode: verdicts are logged, routing is untouched for now.",
+    body: [
+      "The native-baseline column shipped in Phase 3.0 keeps peers honest about speed — it measures what each peer's own hardware can do, with no mesh layers in the path. It does not catch a peer that serves at the claimed speed while quietly running a smaller, cheaper model than it advertises, or returning pre-written text. On an open network where anyone can join, that gap matters: the runtime now captures a model-identity fingerprint from the same deterministic temperature=0 probe that produces the timing baseline — a hash of the greedy-decoded output plus a prefix of the decoded tokens. A different or smaller model produces a different greedy decode for the same fixed prompt and diverges within the first few tokens. The fingerprint is gossiped alongside the timing baseline.",
+      "An entry node samples peer-model pairs and re-checks them. When the entry also serves the model itself, it generates a fresh, randomised probe on the fly, runs it against its own server for ground truth, and sends the identical probe to the peer under test — because the probe is unpredictable, a peer can't recognise \"the test\" and serve the real model only for it. The comparison is tolerant by design: it checks agreement on a bounded prefix of the output rather than demanding an exact byte-for-byte match, because even greedy decoding legitimately diverges in the tail across Metal, CUDA and Vulkan backends from floating-point differences. The prefix is the stable, model-identifying part.",
+      "Two deliberate constraints. First, privacy: verification only ever replays synthetic probes the verifier generates — it never samples, replays, or duplicates a real user's prompt. Re-running a real request on a second machine would be a stronger check, but it would expose that prompt to a node that played no part in serving it, and that trade isn't worth making. Second, caution: the layer shipped in observe mode. The audit loop logs its verdicts and does not change routing. The one consequential action — temporarily removing a peer from rotation for a model after repeated, consecutive mismatches — exists as a reversible, time-boxed demotion that stays off until the verdict logs from real peers are clean. A false accusation against an honest contributor is the failure mode we most want to avoid, so the consequence ships last.",
+    ],
+  },
+  {
     id: "phase-4-qwen3-8b-daily-driver",
     date: "2026-05-25",
     phase: "Phase 4",
