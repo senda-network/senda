@@ -1,7 +1,10 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { applyCors, preflightResponse } from "../_cors";
-import { pickDefaultModelByTier } from "../../lib/model-tiers";
+import {
+  DEFAULT_DAILY_DRIVER_MODEL,
+  pickDefaultModelByTier,
+} from "../../lib/model-tiers";
 import { evaluateSla, fetchMeshPeersCached } from "../../lib/routing-sla";
 import {
   consumeFallbackBudget,
@@ -85,7 +88,9 @@ async function pickDefaultModel(): Promise<string> {
     // fall through to env-default
   }
   return (
-    process.env.CLOSEDMESH_MODEL ?? process.env.MESH_LLM_MODEL ?? "Qwen3-8B"
+    process.env.CLOSEDMESH_MODEL ??
+    process.env.MESH_LLM_MODEL ??
+    DEFAULT_DAILY_DRIVER_MODEL
   );
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_DAILY_DRIVER_MODEL,
   getModelTier,
   pickDefaultModelByTier,
   tierRank,
@@ -52,14 +53,45 @@ describe("pickDefaultModelByTier", () => {
     expect(pickDefaultModelByTier(routable)).toBe("Qwen3-8B-Q4_K_M");
   });
 
-  it("falls back to capacity when no daily-driver is routable", () => {
+  it("prefers the canonical daily-driver when several are routable", () => {
+    const routable = [
+      "Llama-3.1-8B-Instruct-Q4_K_M",
+      "Qwen3-8B-Q4_K_M",
+    ];
+    expect(pickDefaultModelByTier(routable)).toBe(DEFAULT_DAILY_DRIVER_MODEL);
+  });
+
+  it("returns the first daily-driver when the canonical one isn't routable", () => {
+    const routable = [
+      "Llama-3.1-8B-Instruct-Q4_K_M",
+      "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M",
+    ];
+    expect(pickDefaultModelByTier(routable)).toBe(
+      "Llama-3.1-8B-Instruct-Q4_K_M",
+    );
+  });
+
+  it("never auto-defaults to a capacity model — falls to the canonical daily-driver when only capacity is routable", () => {
     const routable = [
       "DeepSeek-R1-Distill-70B-Q4_K_M",
       "Qwen3-32B-Q4_K_M",
     ];
-    expect(pickDefaultModelByTier(routable)).toBe(
+    // Deliberately NOT one of the routable ids: a capacity-only mesh
+    // yields an honest "no peer serving this model" error downstream
+    // rather than a surprise ~1 tok/s stream.
+    expect(pickDefaultModelByTier(routable)).toBe(DEFAULT_DAILY_DRIVER_MODEL);
+    expect(routable).not.toContain(pickDefaultModelByTier(routable));
+  });
+
+  it("honours an explicit `preferred` even when it is a capacity model", () => {
+    const routable = [
+      "Qwen3-8B-Q4_K_M",
       "DeepSeek-R1-Distill-70B-Q4_K_M",
-    );
+    ];
+    // Operator's explicit CLOSEDMESH_MODEL pin wins over the tier gate.
+    expect(
+      pickDefaultModelByTier(routable, "DeepSeek-R1-Distill-70B-Q4_K_M"),
+    ).toBe("DeepSeek-R1-Distill-70B-Q4_K_M");
   });
 
   it("honours `preferred` when it is routable", () => {

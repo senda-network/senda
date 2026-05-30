@@ -160,11 +160,34 @@ export const TIER_DESCRIPTIONS: Record<ModelTier, string> = {
 };
 
 /**
- * Pick the default chat model from a routable model list, preferring
- * daily-driver tier first, then capacity, then experimental, with
- * `preferred` taking priority within each tier when present.
+ * Canonical daily-driver model id used as the default when no other
+ * daily-driver is being served. Shared by `app/api/chat/route.ts`
+ * (server) and `ModelSelector.tsx` (client) so every surface agrees on
+ * the same flagship and the chat default never silently lands on a
+ * capacity-tier model.
+ */
+export const DEFAULT_DAILY_DRIVER_MODEL = "Qwen3-8B-Q4_K_M";
+
+/**
+ * Pick the default chat model from a routable model list.
  *
- * Returns `undefined` when the input list is empty. Used by both
+ * The invariant this enforces: **the chat default is always a
+ * daily-driver.** A capacity-tier model (32B–70B class, ~1 tok/s
+ * through-mesh) must never become the default just because it happens
+ * to be the only thing currently routable — a brand-new visitor hitting
+ * "Hi there" against a 70B is the exact UX failure the routable-network
+ * reframe exists to avoid.
+ *
+ * Resolution order:
+ *   1. An explicit `preferred` (operator's `CLOSEDMESH_MODEL`) when it's
+ *      routable — an explicit pin wins, including a capacity model.
+ *   2. The canonical daily-driver if it's routable, else the first
+ *      routable daily-driver.
+ *   3. `DEFAULT_DAILY_DRIVER_MODEL` even when it isn't routable — so a
+ *      capacity-only mesh produces an honest "no peer is serving this
+ *      model" error downstream rather than a slow, surprising stream.
+ *
+ * Returns `undefined` only for an empty input list. Used by both
  * `app/api/chat/route.ts` server-side and `ModelSelector.tsx`
  * client-side so the default agrees across surfaces.
  */
@@ -174,8 +197,13 @@ export function pickDefaultModelByTier(
 ): string | undefined {
   if (routableModels.length === 0) return undefined;
   if (preferred && routableModels.includes(preferred)) return preferred;
-  const sorted = [...routableModels].sort(
-    (a, b) => tierRank(getModelTier(a)) - tierRank(getModelTier(b)),
+  const dailyDrivers = routableModels.filter(
+    (m) => getModelTier(m) === "daily_driver",
   );
-  return sorted[0];
+  if (dailyDrivers.length > 0) {
+    return dailyDrivers.includes(DEFAULT_DAILY_DRIVER_MODEL)
+      ? DEFAULT_DAILY_DRIVER_MODEL
+      : dailyDrivers[0];
+  }
+  return DEFAULT_DAILY_DRIVER_MODEL;
 }

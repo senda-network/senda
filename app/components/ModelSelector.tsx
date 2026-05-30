@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useMeshModels } from "../lib/use-mesh-models";
 import type { MeshModel } from "../lib/use-mesh-status";
-import { getModelTier, tierRank } from "../lib/model-tiers";
+import { DEFAULT_DAILY_DRIVER_MODEL, getModelTier } from "../lib/model-tiers";
 
 const STORAGE_KEY = "closedmesh:selectedModel";
 
@@ -25,22 +25,33 @@ function pretty(id: string): string {
  * Pick a sensible default when the visitor hasn't explicitly chosen yet
  * (or their previous choice has dropped out of the inventory).
  *
- * Phase 4.A — prefer warm daily-driver tier first, then warm any tier,
- * then any model. Without this gate the dropdown would happily default
- * to a capacity-tier model (e.g. DeepSeek-70B) if it happened to come
- * up first in the routable list, and a brand-new visitor would hit
- * the 9.7 s TTFT / 1 tok/s wall on their first "Hi there" — exactly
- * the UX failure the routable-network reframe is built to avoid.
+ * Phase 4.A invariant — the default is *always* a daily-driver. We never
+ * auto-select a capacity-tier model (e.g. DeepSeek-70B, ~1 tok/s
+ * through-mesh): a brand-new visitor hitting "Hi there" on a 70B is the
+ * exact UX failure the routable-network reframe is built to avoid.
+ *
+ * Order: a warm daily-driver (prefer the canonical flagship), else any
+ * daily-driver in inventory, else `undefined` — which surfaces "auto" in
+ * the dropdown and lets the server default produce an honest "no peer is
+ * serving this model" error. A visitor who wants a capacity model picks
+ * it explicitly from the list (where the capacity tier copy is visible).
  */
 function pickDefault(models: MeshModel[]): string | undefined {
   if (models.length === 0) return undefined;
-  const byTier = (m: MeshModel) => tierRank(getModelTier(m.name));
-  const sortedWarm = models
-    .filter((m) => m.status === "warm" && m.nodeCount > 0)
-    .sort((a, b) => byTier(a) - byTier(b));
-  if (sortedWarm.length > 0) return sortedWarm[0].name;
-  const sortedAny = [...models].sort((a, b) => byTier(a) - byTier(b));
-  return sortedAny[0]?.name;
+  const isDaily = (m: MeshModel) => getModelTier(m.name) === "daily_driver";
+  const preferCanonical = (names: string[]): string | undefined => {
+    if (names.length === 0) return undefined;
+    return names.includes(DEFAULT_DAILY_DRIVER_MODEL)
+      ? DEFAULT_DAILY_DRIVER_MODEL
+      : names[0];
+  };
+  const warmDaily = preferCanonical(
+    models
+      .filter((m) => isDaily(m) && m.status === "warm" && m.nodeCount > 0)
+      .map((m) => m.name),
+  );
+  if (warmDaily) return warmDaily;
+  return preferCanonical(models.filter(isDaily).map((m) => m.name));
 }
 
 export type ModelSelectorProps = {
