@@ -11,6 +11,12 @@ third-party AI API in the loop, and no signup — prompts are not tied
 to an identity, and the runtime is open source so what each peer can
 do is auditable.
 
+It's built for the work open-weight models already do well — summarizing
+documents and codebases, classifying and labeling data at scale,
+long-running background agents, synthetic-data generation — where keeping
+data in-house and keeping per-token costs flat matter more than shaving a
+second off every reply.
+
 Apple Silicon is the hero hardware: an M-series Mac with 36–128 GB of
 unified memory turns a $2.5–4.5k laptop into a 30B–70B-capable
 inference box at speeds Windows GPU setups at the same price can't

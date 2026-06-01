@@ -101,6 +101,55 @@ export default function AboutPage() {
         </div>
       </section>
 
+      {/* What it's for — lead with the use case, then the durable
+          advantages that make those use cases hold up. The one honest
+          expectation ("not for shaving a second off every reply") lives
+          in the paragraph, not in a column of weaknesses. */}
+      <section className="border-b border-[var(--border)]">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <div className="mb-10 max-w-2xl">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
+              What it&apos;s for
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+              Built for the work you keep in-house.
+            </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
+              ClosedMesh is private, low-cost inference on hardware people
+              already own — built for the work open-weight models do well:
+              summarizing documents and codebases, classifying and labeling
+              data at scale, long-running background agents, synthetic-data
+              generation. Your prompts go to a peer in the mesh, never to a
+              third-party AI provider. It&apos;s for teams where keeping data
+              in-house and keeping per-token costs flat matter more than
+              shaving a second off every reply.
+            </p>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FitCard
+              title="Great fit"
+              items={[
+                "Summarizing documents and codebases",
+                "Classifying or labeling data at scale",
+                "Long-running background agents and pipelines",
+                "Synthetic-data generation",
+                "Anything private or high-volume where an instant answer isn't the point",
+              ]}
+            />
+            <FitCard
+              title="Why it holds up"
+              items={[
+                "Private by default — prompts go to a peer, never a third-party AI provider",
+                "Predictable cost — your own hardware and the mesh, not a metered per-token bill",
+                "No lock-in — OpenAI-compatible API, fully open-source runtime",
+                "Verified peers — each one proves it runs the model it advertises",
+              ]}
+            />
+          </div>
+        </div>
+      </section>
+
       {/* The two layers */}
       <section className="border-b border-[var(--border)]">
         <div className="mx-auto max-w-5xl px-6 py-20">
@@ -367,6 +416,25 @@ function Feature({ title, body }: { title: string; body: string }) {
       <p className="mt-2 text-[13px] leading-relaxed text-[var(--fg-muted)]">
         {body}
       </p>
+    </div>
+  );
+}
+
+function FitCard({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6">
+      <div className="text-sm font-semibold tracking-tight">{title}</div>
+      <ul className="mt-4 flex flex-col gap-2.5 text-[14px] leading-relaxed text-[var(--fg)]/90">
+        {items.map((it) => (
+          <li key={it} className="flex gap-2.5">
+            <span
+              className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--accent)]"
+              aria-hidden
+            />
+            <span>{it}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
