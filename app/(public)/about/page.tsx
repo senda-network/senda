@@ -2,13 +2,29 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "../../components/Logo";
 import { MeshLiveStats } from "../../components/MeshLiveStats";
+import {
+  ArchitectureDiagram,
+  Feature,
+  NumberedStep,
+} from "../../components/marketing";
 
 export const metadata: Metadata = {
   title: "How ClosedMesh works",
   description:
-    "One collective computer made of every machine that joins. A peer-to-peer mesh that runs open-weight models end-to-end on the hardware contributors already own — Apple Silicon Macs, NVIDIA / AMD / Intel GPU boxes — with no third-party AI provider in the middle.",
+    "The technical deep dive: why the unit of work is a session and not a token, how peers cooperate, how requests route, what the privacy and trust model actually is, and what ClosedMesh deliberately isn't.",
 };
 
+/**
+ * /about — the engineer's deep dive.
+ *
+ * The homepage (`/`) is the marketing read: what it is, why a mesh, what
+ * it's for. This page is the other reader from the whitepaper — the senior
+ * LLM-systems engineer who wants to know *why* the architecture is shaped
+ * the way it is. So it leads with the physics (sessions, not tokens),
+ * walks the cooperation primitives and the request path, and is honest
+ * about the trust model and the limits. Content mirrors internal
+ * WHITEPAPER.md §§1–3, 8, 9 (kept public-safe).
+ */
 export default function AboutPage() {
   return (
     <div className="min-h-dvh bg-[var(--bg)] text-[var(--fg)]">
@@ -51,100 +67,65 @@ export default function AboutPage() {
               <Logo size={42} />
             </div>
             <div className="max-w-3xl">
-              <h1 className="text-balance text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--accent)]">
+                How it works · deep dive
+              </div>
+              <h1 className="mt-3 text-balance text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
                 One collective computer.
                 <span className="block text-[var(--fg-muted)]">
                   Made of every machine that joins.
                 </span>
               </h1>
               <p className="mt-5 max-w-2xl text-pretty text-base leading-relaxed text-[var(--fg-muted)] sm:text-lg">
-                ClosedMesh runs open-weight models end-to-end on the
-                hardware contributors already own. An M3 Max or M4 Max
-                with 64–128 GB of unified memory is genuinely capable
-                of serving 30B–70B parameter models at full quality;
-                smaller M-series chips and dedicated GPU boxes serve
-                smaller models well. The mesh&apos;s job is to find the
-                best peer for each session and pair two peers via
-                speculative decoding when one peer isn&apos;t enough.
-                Chat from closedmesh.com or the desktop app, no install
-                required. Add a node from any capable machine to grow
-                capacity for the swarm. No third-party AI provider in
-                the middle.
+                ClosedMesh runs open-weight models end-to-end on the hardware
+                contributors already own. The interesting part isn&apos;t that
+                it&apos;s peer-to-peer — plenty of those have failed — it&apos;s
+                that the whole design is built around the one constraint that
+                killed the others: the physics of residential internet. This
+                page is the honest version of how that works.
               </p>
             </div>
 
-            {/* Live stats island — reading the entry node every 30s. The
-                swarm is the product, so the marketing surface should look
-                like a status page, not a brochure. */}
+            {/* Live stats island — reading the entry node every 30s. */}
             <div className="w-full max-w-3xl">
               <MeshLiveStats />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 text-[12px]">
-              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                Apple Silicon native
-              </span>
-              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                Replication-first
-              </span>
-              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                Speculative decoding across peers
-              </span>
-              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                OpenAI-compatible runtime
-              </span>
-              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[var(--fg-muted)]">
-                Mac · Linux · Windows
-              </span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* What it's for — lead with the use case, then the durable
-          advantages that make those use cases hold up. The one honest
-          expectation ("not for shaving a second off every reply") lives
-          in the paragraph, not in a column of weaknesses. */}
+      {/* The physics — sessions, not tokens */}
       <section className="border-b border-[var(--border)]">
         <div className="mx-auto max-w-5xl px-6 py-20">
           <div className="mb-10 max-w-2xl">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
-              What it&apos;s for
+              The constraint
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-              Built for the work you keep in-house.
+              The unit of work is a session, not a token.
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              ClosedMesh is private, low-cost inference on hardware people
-              already own — built for the work open-weight models do well:
-              summarizing documents and codebases, classifying and labeling
-              data at scale, long-running background agents, synthetic-data
-              generation. Your prompts go to a peer in the mesh, never to a
-              third-party AI provider. It&apos;s for teams where keeping data
-              in-house and keeping per-token costs flat matter more than
-              shaving a second off every reply.
+              Datacenter GPUs talk to each other over NVLink and InfiniBand at
+              roughly 50–200 microseconds round-trip. Residential internet is
+              20–200 milliseconds — three to four orders of magnitude slower,
+              and two to three orders worse on bandwidth. No amount of clever
+              code closes that gap. Every architectural decision below follows
+              from taking it seriously instead of pretending it away.
             </p>
           </div>
 
-          <div className="grid gap-5 sm:grid-cols-2">
-            <FitCard
-              title="Great fit"
-              items={[
-                "Summarizing documents and codebases",
-                "Classifying or labeling data at scale",
-                "Long-running background agents and pipelines",
-                "Synthetic-data generation",
-                "Anything private or high-volume where an instant answer isn't the point",
-              ]}
+          <div className="grid gap-5 sm:grid-cols-3">
+            <Feature
+              title="Per-token cross-peer traffic is fatal"
+              body="Put the network on the per-token critical path and a 70B model that should decode around 30 tokens/sec collapses below 1 under real-world latency. This is exactly where Petals, BitTensor inference, and the earlier Mesh-LLM forks died."
             />
-            <FitCard
-              title="Why it holds up"
-              items={[
-                "Private by default — prompts go to a peer, never a third-party AI provider",
-                "Predictable cost — your own hardware and the mesh, not a metered per-token bill",
-                "No lock-in — OpenAI-compatible API, fully open-source runtime",
-                "Verified peers — each one proves it runs the model it advertises",
-              ]}
+            <Feature
+              title="Per-session cross-peer traffic is fine"
+              body="A one-second setup and a few-millisecond handoff per thousand tokens is invisible to a user. So ClosedMesh routes a whole session to one peer — it doesn't stitch fragments of a forward pass across slow links mid-decode."
+            />
+            <Feature
+              title="Speculative decoding is the exception"
+              body="It's the one multi-peer pattern where a single network hop amortises across a whole batch of tokens. That's why it's the only cross-peer cooperation ClosedMesh leans on, and why it's the path to models bigger than one peer can solo."
             />
           </div>
         </div>
@@ -188,7 +169,7 @@ export default function AboutPage() {
                 "Replication-first: a model that fits on one peer runs there end-to-end, full quality, zero per-token network overhead.",
                 "Speculative decoding across two peers — small fast draft + larger verifier — for the mid-tier where one peer isn't enough.",
                 "Capability-aware routing: requests only go to peers that can actually serve them.",
-                "Pipeline-split and MoE expert-shard available as a power-user fallback for models that don't fit any single peer.",
+                "Built on an Iroh QUIC overlay with a gossip protocol for capability announcement.",
               ]}
               footer={
                 <a
@@ -205,22 +186,59 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Diagram */}
+      {/* Cooperation primitives */}
       <section className="border-b border-[var(--border)]">
         <div className="mx-auto max-w-5xl px-6 py-20">
           <div className="mb-10 max-w-2xl">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
-              How it works
+              Cooperation
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-              Two roles. One mesh.
+              Four ways peers work together.
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              Anyone can chat — at closedmesh.com or in the desktop app —
-              without running anything themselves. Inference is served by
+              In order of how often they&apos;re the right answer. The first is
+              the common case the whole system is tuned for; the last is a
+              power-user fallback we&apos;d rather you didn&apos;t need.
+            </p>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Feature
+              title="Replication — the default"
+              body="One peer serves a whole session end-to-end at full quality. A model that fits on one machine runs there, with zero per-token network overhead. This is the common case and the one ClosedMesh optimises for."
+            />
+            <Feature
+              title="Speculative pairs — the mid-tier"
+              body="Two peers cooperate: a small fast draft proposes 4–8 tokens, a larger verifier accepts them in a single batched pass. The WAN hop amortises across the batch, so both peers earn for one session without the network choking decode."
+            />
+            <Feature
+              title="Inter-model collaboration"
+              body="Several peers can quietly contribute to one answer — a multi-modal input handled by one model, a second opinion from another. The caller still sees a single streamed response."
+            />
+            <Feature
+              title="Pipeline / expert split — the fallback"
+              body="For models too large for any single peer, weights can be split across machines. It's documented and available, but deprecated as a daily driver: it puts the network back on the critical path, which the physics above says to avoid."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Request flow */}
+      <section className="border-b border-[var(--border)]">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <div className="mb-10 max-w-2xl">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
+              The path of a request
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+              From your keystroke to a peer and back.
+            </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
+              Anyone can chat without running anything. Inference is served by
               peers who&apos;ve chosen to contribute compute by running the
-              ClosedMesh LLM runtime on their own hardware. Anybody can be
-              one, both, or neither.
+              ClosedMesh LLM runtime on their own hardware. Anybody can be one,
+              both, or neither.
             </p>
           </div>
 
@@ -234,59 +252,69 @@ export default function AboutPage() {
             />
             <NumberedStep
               n={2}
-              title="Mesh entry"
-              body="Requests land at the public mesh entry point and are routed to a peer that can serve the requested model — by capability, by load, by latency."
+              title="Mesh entry + routing"
+              body="Requests land at the public mesh entry point. A capability-aware router picks a peer that can actually serve the requested model — by backend, memory, loaded models, load, and latency — using session-sticky hashing so follow-up turns prefer the peer that already holds the KV cache."
             />
             <NumberedStep
               n={3}
               title="Compute peers"
-              body="Volunteered nodes running ClosedMesh LLM serve each session end-to-end on whichever peer fits the model. Auto-routes around offline ones; can pair two peers via speculative decoding for the mid-tier."
+              body="Volunteered nodes serve each session end-to-end on whichever peer fits the model. The router auto-routes around offline ones, and can pair two peers via speculative decoding for the mid-tier."
             />
           </div>
         </div>
       </section>
 
-      {/* Properties grid */}
+      {/* Privacy & trust */}
       <section className="border-b border-[var(--border)]">
         <div className="mx-auto max-w-5xl px-6 py-20">
           <div className="mb-10 max-w-2xl">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
-              Why a mesh
+              Privacy &amp; trust
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-              Capacity is everywhere. ClosedMesh just uses it.
+              What you&apos;re trusting — and what you&apos;re not.
             </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
+              The honest version: when you chat, you&apos;re trusting the peer
+              your session lands on, the mesh entry node, and the chat UI. You
+              are <span className="text-[var(--fg)]">not</span> trusting any
+              third-party AI provider. That&apos;s the trade — here&apos;s what
+              backs it.
+            </p>
           </div>
 
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-2">
             <Feature
-              title="No third-party AI provider"
-              body="Prompts go to a peer running an open-weight model on hardware that someone in the mesh owns. No OpenAI, Anthropic or Google in the loop — nothing to revoke, no provider terms to read."
+              title="Open-source runtime"
+              body="Every peer runs the same open-source runtime, so what a peer can and can't do is auditable. There's no closed black box deciding what happens to your prompt."
             />
             <Feature
-              title="Apple Silicon is the hero"
-              body="On the right configuration — M3 Max or M4 Max with 64–128 GB of unified memory — a $2.5–4.5k laptop becomes a 30B–70B-capable inference box at speeds same-price Windows GPU setups can't match. Smaller M-series chips serve 7B–13B-class models well. CUDA / ROCm / Vulkan boxes happily join too — each shines at different model sizes."
+              title="Session pseudonymity"
+              body="No login. A peer doesn't know who you are unless your prompt reveals it, and sessions aren't tied to an identity. Traffic to the entry node is TLS-encrypted."
             />
             <Feature
-              title="Speculative decoding across peers"
-              body="Two peers cooperate per session — a small fast draft proposes 4–8 tokens, a larger verifier accepts them in one batched pass. The network hop amortises across many tokens, both peers earn for the same session."
+              title="Verified peers"
+              body="Each peer publishes a deterministic model-identity fingerprint, and the network re-runs an unpredictable synthetic probe to confirm it actually serves the model it advertises. A peer can't claim a big model while quietly serving a smaller one. Only synthetic probes are replayed — never your prompts."
             />
             <Feature
-              title="Peers are verified"
-              body="Anyone can join, so the mesh checks that a peer actually runs the model it advertises. Each peer publishes a deterministic model-identity fingerprint and the network re-runs an unpredictable synthetic probe to compare — a peer can't claim a big model while quietly serving a smaller one. The probes are synthetic; real prompts are never replayed."
+              title="Run your own peer"
+              body="For work you don't want to trust to anyone else, the runtime other peers run is the runtime you can run yourself. Nothing about the design forces you to share compute or rent it from others."
             />
-            <Feature
-              title="OpenAI-compatible"
-              body="Every peer exposes a standard /v1/chat/completions endpoint. Drop-in for any tool that speaks OpenAI — agents, IDE plugins, internal scripts."
-            />
-            <Feature
-              title="Auto-route around failure"
-              body="Laptops sleep. Workstations reboot. The mesh keeps serving — requests are dispatched only to live, capability-matched peers."
-            />
-            <Feature
-              title="One-step contribute"
-              body="Want to lend compute? Download the desktop app or curl the runtime. It registers a launchd / systemd / scheduled-task autostart and joins the mesh."
-            />
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6">
+            <div className="text-sm font-semibold tracking-tight text-amber-200">
+              The honest limit
+            </div>
+            <p className="mt-2 text-[14px] leading-relaxed text-amber-100/80">
+              The peer serving your session has to read the prompt to run
+              inference — that&apos;s inherent to inference, not a ClosedMesh
+              choice. End-to-end confidentiality from the serving peer (e.g.
+              trusted-execution-environment hardware) is a research bet we
+              haven&apos;t shipped, and we&apos;re not going to pretend
+              otherwise. Until then, the mitigations are reputation, the verify
+              system, and the option to run your own peer.
+            </p>
           </div>
         </div>
       </section>
@@ -304,11 +332,51 @@ export default function AboutPage() {
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
               The installer detects OS, CPU architecture and GPU vendor, then
               pulls the matching runtime build. You can also pin a backend
-              explicitly for unusual setups.
+              explicitly for unusual setups. Apple Silicon is the hero hardware
+              — M-series unified memory is what makes a consumer machine
+              genuinely capable of 30B–70B models — but the mesh is
+              heterogeneous on purpose.
             </p>
           </div>
 
           <HardwareMatrix />
+        </div>
+      </section>
+
+      {/* What it isn't */}
+      <section className="border-b border-[var(--border)]">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <div className="mb-10 max-w-2xl">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
+              Limits
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+              What ClosedMesh isn&apos;t.
+            </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
+              Stating the obvious objections before you do. ClosedMesh is for
+              latency-tolerant, private, high-volume work — not for everything.
+            </p>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Feature
+              title="Not a frontier-model network"
+              body="There are no GPT-class closed weights here. ClosedMesh serves open-weight models, which have caught up on most non-frontier work but aren't the top of the leaderboard."
+            />
+            <Feature
+              title="Not the fastest median chat"
+              body="A hosted API wins on first-token latency for a single quick reply. ClosedMesh is the wrong tool for shaving a second off every message and the right one for work where an instant answer isn't the point."
+            />
+            <Feature
+              title="Not a training network"
+              body="No gradient passes across the mesh. The residential-WAN physics that make per-token cross-peer traffic fatal make distributed training a non-starter — it's explicitly out of scope."
+            />
+            <Feature
+              title="Not fungible compute"
+              body="The unit is a session of a specific model served at measured quality — not an interchangeable GPU-second. A token from a 0.6B draft and a token from a 70B verifier are different products, and ClosedMesh prices them that way."
+            />
+          </div>
         </div>
       </section>
 
@@ -385,60 +453,6 @@ function LayerCard({
   );
 }
 
-function NumberedStep({
-  n,
-  title,
-  body,
-}: {
-  n: number;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-5">
-      <div className="flex items-baseline gap-3">
-        <span className="font-mono text-[11px] text-[var(--accent)]">
-          0{n}
-        </span>
-        <div className="text-sm font-semibold">{title}</div>
-      </div>
-      <p className="mt-2 text-[13px] leading-relaxed text-[var(--fg-muted)]">
-        {body}
-      </p>
-    </div>
-  );
-}
-
-function Feature({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6">
-      <div className="text-sm font-semibold tracking-tight">{title}</div>
-      <p className="mt-2 text-[13px] leading-relaxed text-[var(--fg-muted)]">
-        {body}
-      </p>
-    </div>
-  );
-}
-
-function FitCard({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6">
-      <div className="text-sm font-semibold tracking-tight">{title}</div>
-      <ul className="mt-4 flex flex-col gap-2.5 text-[14px] leading-relaxed text-[var(--fg)]/90">
-        {items.map((it) => (
-          <li key={it} className="flex gap-2.5">
-            <span
-              className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--accent)]"
-              aria-hidden
-            />
-            <span>{it}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function HardwareMatrix() {
   const rows: Array<{ os: string; arch: string; backend: string }> = [
     { os: "macOS", arch: "Apple Silicon", backend: "Metal" },
@@ -474,260 +488,6 @@ function HardwareMatrix() {
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function ArchitectureDiagram() {
-  const accent = "var(--accent)";
-  const fg = "var(--fg)";
-  const fgMuted = "var(--fg-muted)";
-  const elev = "var(--bg-elev)";
-  const border = "var(--border)";
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6 sm:p-10">
-      <svg
-        viewBox="0 0 880 320"
-        className="h-auto w-full"
-        role="img"
-        aria-label="ClosedMesh architecture: chat clients to mesh entry point to peer compute"
-      >
-        <defs>
-          <marker
-            id="cm-arrow"
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" fill={fgMuted} />
-          </marker>
-        </defs>
-
-        {/* Browser */}
-        <g>
-          <rect
-            x="20"
-            y="100"
-            width="180"
-            height="120"
-            rx="14"
-            fill={elev}
-            stroke={border}
-          />
-          <text
-            x="110"
-            y="135"
-            textAnchor="middle"
-            fontFamily="ui-sans-serif, system-ui"
-            fontSize="13"
-            fontWeight={600}
-            fill={fg}
-          >
-            Chat client
-          </text>
-          <text
-            x="110"
-            y="158"
-            textAnchor="middle"
-            fontFamily="ui-monospace, monospace"
-            fontSize="11"
-            fill={fgMuted}
-          >
-            closedmesh.com
-          </text>
-          <text
-            x="110"
-            y="190"
-            textAnchor="middle"
-            fontFamily="ui-sans-serif, system-ui"
-            fontSize="11"
-            fill={fgMuted}
-          >
-            or desktop app
-          </text>
-        </g>
-
-        {/* Arrow 1 */}
-        <line
-          x1="200"
-          y1="160"
-          x2="298"
-          y2="160"
-          stroke={fgMuted}
-          strokeWidth="1.5"
-          markerEnd="url(#cm-arrow)"
-        />
-        <text
-          x="249"
-          y="148"
-          textAnchor="middle"
-          fontFamily="ui-monospace, monospace"
-          fontSize="10"
-          fill={fgMuted}
-        >
-          /api/chat
-        </text>
-
-        {/* Local controller */}
-        <g>
-          <rect
-            x="300"
-            y="100"
-            width="200"
-            height="120"
-            rx="14"
-            fill={elev}
-            stroke={border}
-          />
-          <text
-            x="400"
-            y="135"
-            textAnchor="middle"
-            fontFamily="ui-sans-serif, system-ui"
-            fontSize="13"
-            fontWeight={600}
-            fill={fg}
-          >
-            Mesh entry
-          </text>
-          <text
-            x="400"
-            y="158"
-            textAnchor="middle"
-            fontFamily="ui-monospace, monospace"
-            fontSize="11"
-            fill={fgMuted}
-          >
-            OpenAI-compatible /v1
-          </text>
-          <text
-            x="400"
-            y="190"
-            textAnchor="middle"
-            fontFamily="ui-sans-serif, system-ui"
-            fontSize="11"
-            fill={fgMuted}
-          >
-            capability-aware router
-          </text>
-        </g>
-
-        {/* Arrow 2 */}
-        <line
-          x1="500"
-          y1="160"
-          x2="598"
-          y2="160"
-          stroke={fgMuted}
-          strokeWidth="1.5"
-          markerEnd="url(#cm-arrow)"
-        />
-        <text
-          x="549"
-          y="148"
-          textAnchor="middle"
-          fontFamily="ui-monospace, monospace"
-          fontSize="10"
-          fill={fgMuted}
-        >
-          /v1
-        </text>
-
-        {/* Mesh group */}
-        <g>
-          <rect
-            x="600"
-            y="40"
-            width="260"
-            height="240"
-            rx="14"
-            fill="transparent"
-            stroke={border}
-            strokeDasharray="4 4"
-          />
-          <text
-            x="730"
-            y="62"
-            textAnchor="middle"
-            fontFamily="ui-sans-serif, system-ui"
-            fontSize="11"
-            fill={fgMuted}
-          >
-            ClosedMesh LLM peers
-          </text>
-
-          {/* Three peer dots with center hub */}
-          {/* center hub */}
-          <circle cx="730" cy="170" r="6" fill={fg} opacity="0.85" />
-          {/* peers */}
-          <circle cx="730" cy="100" r="9" fill={accent} />
-          <circle cx="660" cy="220" r="9" fill={accent} />
-          <circle cx="800" cy="220" r="9" fill={accent} />
-          {/* mesh edges */}
-          <line
-            x1="730"
-            y1="109"
-            x2="730"
-            y2="164"
-            stroke={fg}
-            strokeOpacity="0.5"
-            strokeWidth="1.2"
-          />
-          <line
-            x1="668"
-            y1="214"
-            x2="724"
-            y2="174"
-            stroke={fg}
-            strokeOpacity="0.5"
-            strokeWidth="1.2"
-          />
-          <line
-            x1="792"
-            y1="214"
-            x2="736"
-            y2="174"
-            stroke={fg}
-            strokeOpacity="0.5"
-            strokeWidth="1.2"
-          />
-          {/* peer labels */}
-          <text
-            x="730"
-            y="86"
-            textAnchor="middle"
-            fontFamily="ui-monospace, monospace"
-            fontSize="10"
-            fill={fgMuted}
-          >
-            M-series Mac
-          </text>
-          <text
-            x="660"
-            y="246"
-            textAnchor="middle"
-            fontFamily="ui-monospace, monospace"
-            fontSize="10"
-            fill={fgMuted}
-          >
-            CUDA · 4090
-          </text>
-          <text
-            x="800"
-            y="246"
-            textAnchor="middle"
-            fontFamily="ui-monospace, monospace"
-            fontSize="10"
-            fill={fgMuted}
-          >
-            Vulkan laptop
-          </text>
-        </g>
-      </svg>
     </div>
   );
 }

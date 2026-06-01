@@ -59,6 +59,15 @@ export type ChatExperienceProps = {
   centered?: boolean;
   /** Tagline under the composer. Each surface can supply its own framing. */
   footnote?: React.ReactNode;
+  /**
+   * Seed text for the composer on mount, and a signal to autofocus the
+   * textarea. Used by the homepage hero, which expands a collapsed
+   * composer into this full surface and carries whatever the visitor had
+   * already typed (or the suggestion they clicked) across the transition.
+   * Left undefined on the local /chat surface, which keeps its current
+   * behaviour of mounting empty and unfocused.
+   */
+  initialInput?: string;
 };
 
 /**
@@ -76,8 +85,9 @@ export function ChatExperience({
   scrollerClassName,
   centered = true,
   footnote,
+  initialInput,
 }: ChatExperienceProps) {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialInput ?? "");
   const [threadId, setThreadId] = useState<string | null>(null);
   const [hydratedMessages, setHydratedMessages] = useState<UIMessage[]>([]);
   const [hydrated, setHydrated] = useState(false);
@@ -105,6 +115,25 @@ export function ChatExperience({
     setThreadId(id);
     setHydratedMessages(readPersistedMessages(id));
     setHydrated(true);
+  }, []);
+
+  // When the surface mounts with a seed (homepage hero expansion), focus
+  // the composer and place the caret at the end so the visitor can keep
+  // typing seamlessly. Runs once; `initialInput` is a mount-time prop.
+  useEffect(() => {
+    if (initialInput === undefined) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    el.focus();
+    const len = el.value.length;
+    try {
+      el.setSelectionRange(len, len);
+    } catch {
+      // some browsers throw on setSelectionRange for detached nodes
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const transport = useMemo(
