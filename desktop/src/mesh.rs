@@ -2562,6 +2562,13 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
     // upgrades stranded on 0.1.42.
     std::thread::sleep(std::time::Duration::from_secs(2));
 
+    // The agent is now unloaded, so nothing holds an fd on the runtime's
+    // stdout/stderr — the one safe window to trim them. launchd never rotates
+    // StandardOutPath/StandardErrorPath, so this is our defensive cap against
+    // unbounded growth (a 5.6 GB stdout.log was seen in the wild before the
+    // RTT path-telemetry was demoted to debug). No-op unless a file is oversized.
+    cap_runtime_logs();
+
     let plist_str = plist_path.display().to_string();
 
     // Up to three bootstrap attempts spaced 0s / 3s / 5s apart. We've
@@ -2631,6 +2638,77 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
         std::thread::sleep(std::time::Duration::from_secs(2));
         start_service();
     }
+}
+
+/// Defensive size cap for the launchd-managed runtime's stdout/stderr logs.
+///
+/// launchd has no built-in rotation for `StandardOutPath` / `StandardErrorPath`,
+/// so any high-volume logging grows the files without bound — we saw a 5.6 GB
+/// `stdout.log` in the wild from per-gossip-cycle RTT telemetry (since demoted
+/// to debug in the runtime). This is the belt-and-braces net for any future
+/// regression. MUST be called only while the agent is booted out (no open fd):
+/// truncating a file a process still holds open would keep the writer's offset
+/// and re-inflate it as a sparse hole. We keep the last `KEEP_TAIL_BYTES` so
+/// recent context survives for the in-app /logs page.
+#[cfg(target_os = "macos")]
+fn cap_runtime_logs() {
+    const MAX_BYTES: u64 = 50 * 1024 * 1024; // trim when over 50 MB
+    const KEEP_TAIL_BYTES: u64 = 5 * 1024 * 1024; // retain the last 5 MB
+
+    let Some(home) = dirs::home_dir() else {
+        return;
+    };
+    let log_dir = home.join("Library/Logs/closedmesh");
+    for name in ["stdout.log", "stderr.log"] {
+        let path = log_dir.join(name);
+        let size = match std::fs::metadata(&path) {
+            Ok(m) => m.len(),
+            Err(_) => continue,
+        };
+        if size <= MAX_BYTES {
+            continue;
+        }
+        match trim_log_to_tail(&path, KEEP_TAIL_BYTES) {
+            Ok(()) => eprintln!(
+                "[closedmesh] log cap: trimmed {} ({size} bytes → last {KEEP_TAIL_BYTES} bytes)",
+                path.display()
+            ),
+            Err(e) => eprintln!(
+                "[closedmesh] log cap: failed to trim {} ({size} bytes): {e}",
+                path.display()
+            ),
+        }
+    }
+}
+
+/// Rewrite `path` so it contains only its final `keep_tail` bytes, dropping any
+/// partial leading line and prepending a marker. Atomic via temp-file + rename;
+/// the caller guarantees no process holds the file open.
+#[cfg(target_os = "macos")]
+fn trim_log_to_tail(path: &std::path::Path, keep_tail: u64) -> std::io::Result<()> {
+    use std::io::{Read, Seek, SeekFrom, Write};
+
+    let mut f = std::fs::File::open(path)?;
+    let size = f.metadata()?.len();
+    let start = size.saturating_sub(keep_tail);
+    f.seek(SeekFrom::Start(start))?;
+    let mut tail = Vec::new();
+    f.read_to_end(&mut tail)?;
+    drop(f);
+
+    let tmp = path.with_extension("log.tmp");
+    {
+        let mut out = std::fs::File::create(&tmp)?;
+        out.write_all(b"... [closedmesh log trimmed by size cap \xe2\x80\x94 older lines dropped] ...\n")?;
+        // Skip a leading partial line so the first retained record is whole.
+        let body = match tail.iter().position(|&b| b == b'\n') {
+            Some(nl) => &tail[nl + 1..],
+            None => &tail[..],
+        };
+        out.write_all(body)?;
+        out.flush()?;
+    }
+    std::fs::rename(&tmp, path)
 }
 
 #[cfg(target_os = "macos")]
