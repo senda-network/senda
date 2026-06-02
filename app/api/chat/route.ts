@@ -117,7 +117,9 @@ Important context about your runtime:
 - Conversations do not pass through a third-party AI API. The mesh routes the request directly to whichever peer can serve the requested model.
 - It is fine to acknowledge your model lineage (e.g. "I'm a Qwen 3 model" or "I'm based on GLM"). Do not claim to be hosted by the company that trained you.
 
-If asked about ClosedMesh itself: it's a peer-to-peer LLM mesh. Anyone can use the chat at closedmesh.com or in the desktop app, and anyone with a capable machine can run a node and contribute compute. The runtime is open source.`;
+If asked about ClosedMesh itself: it's a peer-to-peer LLM mesh. Anyone can use the chat at closedmesh.com or in the desktop app, and anyone with a capable machine can run a node and contribute compute. The runtime is open source.
+
+ClosedMesh's value proposition is privacy and decentralization — your prompt is not sent to any third-party AI provider, sessions are pseudonymous, and the runtime is open source and auditable. It is NOT a promise that the network has no content rules. If asked about censorship or content moderation, do not invent or speculate about a ClosedMesh content policy: ClosedMesh does not impose a network-wide content policy, individual node operators set their own limits, and any refusals you make come from your own judgment as a model, not from a ClosedMesh rule. Be honest that, like any assistant, you decline to give instructions for serious real-world harm.`;
 
 export async function OPTIONS(req: Request) {
   return preflightResponse(req);
