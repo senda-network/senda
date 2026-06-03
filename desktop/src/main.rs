@@ -679,6 +679,8 @@ fn redirect_stderr_to_desktop_log() {
         return;
     }
     let path = dir.join("desktop.log");
+    // Trim before (re)opening append-only — this is the only moment no fd holds it.
+    cap_desktop_log(&path);
     let Ok(f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -738,6 +740,8 @@ fn redirect_stderr_to_desktop_log() {
         return;
     }
     let path = dir.join("desktop.log");
+    // Trim before (re)opening append-only — this is the only moment no fd holds it.
+    cap_desktop_log(&path);
     let Ok(f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -776,6 +780,63 @@ fn redirect_stderr_to_desktop_log() {
 
 #[cfg(not(any(unix, windows)))]
 fn redirect_stderr_to_desktop_log() {}
+
+/// Defensive size cap for the desktop process's own `desktop.log`.
+///
+/// Unlike the launchd-managed runtime stdout/stderr (capped by
+/// `mesh::cap_runtime_logs`), this file is written directly by the desktop
+/// process — `redirect_stderr_to_desktop_log` `dup2`s/`SetStdHandle`s it over
+/// fd 2 and it's opened append-only — so nothing ever rotates it. Volume is
+/// low (event-driven `eprintln!` from the upgrade / self-heal paths), but
+/// "low and unbounded" is still unbounded over a multi-year install, so this
+/// is the belt-and-braces cap for the same class of bug that produced a
+/// 5.6 GB runtime `stdout.log`. Call it at launch *before* the fd is installed
+/// — the one window where no writer holds the file — so a plain truncate-to-tail
+/// is safe. Keeps the last `KEEP_TAIL` bytes so recent forensics survive.
+#[cfg(any(unix, windows))]
+fn cap_desktop_log(path: &std::path::Path) {
+    use std::io::{Read, Seek, SeekFrom, Write};
+    const MAX_BYTES: u64 = 8 * 1024 * 1024; // trim when over 8 MB
+    const KEEP_TAIL: u64 = 1024 * 1024; // retain the last 1 MB
+
+    let Ok(meta) = std::fs::metadata(path) else {
+        return; // no file yet → nothing to cap
+    };
+    if meta.len() <= MAX_BYTES {
+        return;
+    }
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return;
+    };
+    let start = meta.len().saturating_sub(KEEP_TAIL);
+    if f.seek(SeekFrom::Start(start)).is_err() {
+        return;
+    }
+    let mut tail = Vec::new();
+    if f.read_to_end(&mut tail).is_err() {
+        return;
+    }
+    drop(f);
+    // Drop a leading partial line so the first retained record is whole.
+    let body = match tail.iter().position(|&b| b == b'\n') {
+        Some(nl) => &tail[nl + 1..],
+        None => &tail[..],
+    };
+    let tmp = path.with_extension("log.tmp");
+    let Ok(mut out) = std::fs::File::create(&tmp) else {
+        return;
+    };
+    if out
+        .write_all(b"... [closedmesh desktop.log trimmed by size cap \xe2\x80\x94 older lines dropped] ...\n")
+        .and_then(|_| out.write_all(body))
+        .and_then(|_| out.flush())
+        .is_err()
+    {
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
+    let _ = std::fs::rename(&tmp, path);
+}
 
 /// `time` crate / `chrono` would both be heavier deps than this single
 /// timestamp justifies. We just want something human-readable for the
