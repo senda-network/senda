@@ -5,6 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { Setup } from "../../components/Setup";
 import { type CatalogModel } from "../../lib/model-catalog";
+import {
+  getModelTier,
+  SLA_TARGETS_BY_TIER,
+  type ModelTier,
+} from "../../lib/model-tiers";
 import { useCatalog } from "../../lib/use-catalog";
 import { useMeshStatus, type MeshModel, type NodeSummary } from "../../lib/use-mesh-status";
 import { useMeshModels } from "../../lib/use-mesh-models";
@@ -1726,6 +1731,48 @@ function formatBytes(bytes: number): string {
   return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+// Honest, machine-relative expectation for the recommended model. The
+// recommendation (`pickRecommendedModel`) already guarantees `choice` fits
+// the user's hardware, so the model's tier is the achievable tier for this
+// machine — we reuse the calibrated `SLA_TARGETS_BY_TIER` numbers (and the
+// real-run-calibrated capacity copy) rather than inventing per-machine
+// figures we can't measure before the first token. The point is that a
+// 16 GB-Mac user isn't surprised by the speed after committing to a
+// multi-GB download.
+function quickStartExpectation(modelId: string): {
+  tier: ModelTier;
+  label: string;
+  detail: string;
+} {
+  const tier = getModelTier(modelId);
+  switch (tier) {
+    case "daily_driver": {
+      const sla = SLA_TARGETS_BY_TIER.daily_driver;
+      return {
+        tier,
+        label: "Daily driver",
+        detail: `Chat-viable on hardware like yours — targets under ${Math.round(
+          sla.target_ttft_ms_p50 / 1000,
+        )} s to first token and ${sla.target_tps_p50}+ tok/s decode.`,
+      };
+    }
+    case "capacity":
+      return {
+        tier,
+        label: "Capacity",
+        detail:
+          "A large model: expect roughly 10–15 s to first token and 1–2 tok/s through the mesh. Correctness over speed, not a snappy chat default.",
+      };
+    case "experimental":
+      return {
+        tier,
+        label: "Lightweight",
+        detail:
+          "A small model — boots in seconds and decodes fast, but answers are lower quality than the 8B daily driver.",
+      };
+  }
+}
+
 function QuickStartCard({
   choice,
   alreadyDownloaded,
@@ -1739,6 +1786,7 @@ function QuickStartCard({
   busy: boolean;
   onStart: () => void;
 }) {
+  const expectation = quickStartExpectation(choice.id);
   const isDownloading = phase.kind === "downloading";
   const isLoading = phase.kind === "loading";
   const failed = phase.kind === "failed";
@@ -1781,6 +1829,22 @@ function QuickStartCard({
               </>
             )}
           </div>
+          {!showProgress && (
+            <div className="mt-2.5 flex items-start gap-2 text-[12px] leading-relaxed text-[var(--fg-muted)]">
+              <span
+                className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                  expectation.tier === "daily_driver"
+                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                    : expectation.tier === "capacity"
+                      ? "border-amber-400/40 bg-amber-400/10 text-amber-200"
+                      : "border-[var(--border)] bg-[var(--bg-elev-2)] text-[var(--fg)]"
+                }`}
+              >
+                {expectation.label}
+              </span>
+              <span>{expectation.detail}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
