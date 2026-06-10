@@ -160,6 +160,79 @@ export const TIER_DESCRIPTIONS: Record<ModelTier, string> = {
 };
 
 /**
+ * Illustrative peer-payout rate card, in USD per million completion
+ * tokens served, keyed by tier.
+ *
+ * **These are placeholders, not prices.** ClosedMesh has no payment rail,
+ * no credit ledger, and no treasury today (see `internal/STRATEGY.md`
+ * Phase 5). They exist only to turn the desktop earnings *preview* — "what
+ * your machine served this week" — into a tangible number so a contributor
+ * can see how serving maps to value before the real economy ships. Phase 5
+ * replaces these with a real `(model, tier)` rate card; until then every
+ * surface that renders a dollar figure from these MUST label it as an
+ * estimate, not earnings owed.
+ *
+ * Shape rationale: capacity-tier models are scarcer and more expensive to
+ * serve, so they carry a higher illustrative rate than the abundant
+ * daily-driver tier; experimental is nominal. All well below any plausible
+ * customer rate-card price so the eventual `rate_card > peer_payout`
+ * margin invariant holds.
+ */
+export const PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER: Record<ModelTier, number> = {
+  daily_driver: 0.05,
+  capacity: 0.25,
+  experimental: 0.02,
+};
+
+/** One contributor model's slice of the weekly earnings estimate. */
+export type EarningsByModel = {
+  model: string;
+  tier: ModelTier;
+  tokens: number;
+  usd: number;
+};
+
+/** Result of {@link estimatePeerPayout}. */
+export type EarningsEstimate = {
+  totalTokens: number;
+  totalUsd: number;
+  /** Per-model rows, sorted by USD descending (then tokens, then name). */
+  perModel: EarningsByModel[];
+};
+
+/**
+ * Turn a per-model served-token map (the runtime's
+ * `serving_tokens_7d_by_model`) into an illustrative earnings estimate
+ * using {@link PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER}. Pure + deterministic
+ * so it's unit-testable and identical wherever it's rendered.
+ *
+ * Models with zero tokens are dropped. The dollar figure is intentionally
+ * NOT rounded here — formatting is the caller's job — so the sum of the
+ * per-model rows always equals `totalUsd` exactly.
+ */
+export function estimatePeerPayout(
+  tokensByModel: Record<string, number> | undefined | null,
+): EarningsEstimate {
+  const perModel: EarningsByModel[] = [];
+  let totalTokens = 0;
+  let totalUsd = 0;
+  for (const [model, tokensRaw] of Object.entries(tokensByModel ?? {})) {
+    const tokens = Number.isFinite(tokensRaw) ? Math.max(0, tokensRaw) : 0;
+    if (tokens <= 0) continue;
+    const tier = getModelTier(model);
+    const usd = (tokens / 1_000_000) * PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER[tier];
+    perModel.push({ model, tier, tokens, usd });
+    totalTokens += tokens;
+    totalUsd += usd;
+  }
+  perModel.sort(
+    (a, b) =>
+      b.usd - a.usd || b.tokens - a.tokens || a.model.localeCompare(b.model),
+  );
+  return { totalTokens, totalUsd, perModel };
+}
+
+/**
  * Canonical daily-driver model id used as the default when no other
  * daily-driver is being served. Shared by `app/api/chat/route.ts`
  * (server) and `ModelSelector.tsx` (client) so every surface agrees on

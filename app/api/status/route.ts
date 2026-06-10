@@ -206,6 +206,14 @@ export type NodeSummary = {
   nativeTpsP50ByModel?: Record<string, number>;
   nativeTtftMsP50ByModel?: Record<string, number>;
   /**
+   * Per-model completion tokens this node served over a rolling 7-day
+   * window. Set only on the self node (the runtime keeps this local and
+   * never gossips it), so it's always absent on peers. Drives the desktop
+   * dashboard's earnings preview. Missing/empty = "nothing served this
+   * week" (a brand-new or idle contributor), not an error.
+   */
+  servingTokens7dByModel?: Record<string, number>;
+  /**
    * True when this node is the elected `pipeline_host` for a model but
    * one or more peers in `splitGroup.peerIds` is not yet `state="serving"`.
    * In that case the node is structurally unable to fulfil inference for
@@ -367,6 +375,14 @@ type RuntimeStatus = {
   /** Phase 3.0 benchmark honesty (runtime v0.66.49+) — see `RuntimePeer`. */
   native_tps_p50_by_model?: Record<string, number>;
   native_ttft_ms_p50_by_model?: Record<string, number>;
+  /**
+   * Per-model completion tokens THIS node served over a rolling 7-day
+   * window (runtime v0.66.72+). Local-only and disk-persisted in the
+   * runtime — never gossiped — so it appears only on the local node's
+   * own `/api/status`, never on `peers[]`. Backs the desktop earnings
+   * preview. Missing/empty means "served nothing this week".
+   */
+  serving_tokens_7d_by_model?: Record<string, number>;
   capability?: RuntimeCapability;
   /** rc2 and earlier emit GPU info here rather than inside `capability`. */
   gpus?: RuntimeGpu[];
@@ -807,6 +823,9 @@ function buildNodes(
     // Phase 3.0 benchmark honesty.
     nativeTpsP50ByModel: rt.native_tps_p50_by_model,
     nativeTtftMsP50ByModel: rt.native_ttft_ms_p50_by_model,
+    // Local-only serving tally (runtime v0.66.72+) — self node only;
+    // peers never carry this. Powers the desktop earnings preview.
+    servingTokens7dByModel: rt.serving_tokens_7d_by_model,
     pipelineDegraded: false,
     meshVisibility: normalizeMeshVisibility(rt.mesh_visibility),
   });

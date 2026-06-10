@@ -181,6 +181,14 @@ export type NodeSummary = {
    * as `nativeTpsP50ByModel`.
    */
   nativeTtftMsP50ByModel?: Record<string, number>;
+  /**
+   * Per-model completion tokens THIS machine served over a rolling 7-day
+   * window (runtime v0.66.72+). Local-only and disk-persisted in the
+   * runtime — never gossiped — so it's populated only on the self node and
+   * always absent on peers. Backs the dashboard's earnings preview.
+   * Missing/empty = "served nothing this week", not "served zero".
+   */
+  servingTokens7dByModel?: Record<string, number>;
 };
 
 /**

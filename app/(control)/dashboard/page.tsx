@@ -8,6 +8,9 @@ import { type CatalogModel } from "../../lib/model-catalog";
 import {
   getModelTier,
   SLA_TARGETS_BY_TIER,
+  estimatePeerPayout,
+  PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER,
+  TIER_LABELS,
   type ModelTier,
 } from "../../lib/model-tiers";
 import { useCatalog } from "../../lib/use-catalog";
@@ -876,6 +879,10 @@ export default function DashboardPage() {
             runtimeUpgradeBusy={runtimeUpgradeBusy}
             onRuntimeUpgradeCheck={requestRuntimeUpgradeCheck}
           />
+
+          {!control?.publicDeployment && stableSelfNode && (
+            <EarningsPreviewCard self={stableSelfNode} running={running} />
+          )}
 
           {runtimeUpgradeCardFor && (
             <RuntimeUpgradeToast
@@ -2438,6 +2445,147 @@ function ContributionCard({ self }: { self: NodeSummary }) {
         >
           See the topology →
         </Link>
+      </div>
+    </section>
+  );
+}
+
+/** Compact human token count: 1234 → "1.2k", 4_500_000 → "4.5M". */
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  }
+  if (n >= 1_000) {
+    return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  }
+  return n.toLocaleString();
+}
+
+/**
+ * Format an illustrative dollar estimate. Sub-cent amounts render as
+ * "<$0.01" rather than rounding to "$0.00" — a contributor who served a
+ * few hundred tokens did produce *some* value, and showing "$0.00" reads
+ * as "you earned nothing" which is both discouraging and inaccurate.
+ */
+function formatEstimateUsd(n: number): string {
+  if (n > 0 && n < 0.01) return "<$0.01";
+  return `$${n.toFixed(2)}`;
+}
+
+/**
+ * Earnings *preview* for the local machine.
+ *
+ * Honesty contract (this is the whole point of the card): ClosedMesh has
+ * no payments, no ledger, and no payout today. This renders the runtime's
+ * disk-persisted rolling-7-day served-token tally
+ * (`self.servingTokens7dByModel`) multiplied by an explicitly-illustrative
+ * placeholder rate card. Every figure is labelled an estimate, and the
+ * preview rates are shown inline so nothing is hidden. The intent is to
+ * make the install-and-share loop tangible — "this is what your machine
+ * served, and roughly what that will be worth" — not to imply money owed.
+ *
+ * Self-node only (gated by the caller to the desktop app, since the field
+ * is local-only and never gossiped). Shows a motivating empty state when
+ * the machine hasn't served anything in the window yet.
+ */
+function EarningsPreviewCard({
+  self,
+  running,
+}: {
+  self: NodeSummary;
+  running: boolean;
+}) {
+  const estimate = estimatePeerPayout(self.servingTokens7dByModel);
+  const hasData = estimate.totalTokens > 0;
+
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(255,122,69,0.14), transparent 70%)",
+        }}
+      />
+      <div className="relative flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--accent)]">
+              Estimated earnings
+            </span>
+            <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev-2)] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+              Preview
+            </span>
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-3xl font-semibold tracking-tight text-[var(--fg)]">
+              {hasData ? `~${formatEstimateUsd(estimate.totalUsd)}` : "—"}
+            </span>
+            <span className="text-[12px] text-[var(--fg-muted)]">
+              last 7 days
+            </span>
+          </div>
+          <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
+            {hasData
+              ? `${formatTokenCount(estimate.totalTokens)} tokens served across ${estimate.perModel.length} model${estimate.perModel.length === 1 ? "" : "s"}.`
+              : running
+                ? "Nothing served yet this week. When your machine answers mesh requests, an estimate shows up here."
+                : "Start sharing to serve mesh requests — your weekly estimate will appear here."}
+          </div>
+        </div>
+      </div>
+
+      {hasData && (
+        <ul className="relative mt-4 space-y-1.5">
+          {estimate.perModel.map((row) => (
+            <li
+              key={row.model}
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate rounded-full border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-2 py-0.5 font-mono text-[11px] text-[var(--accent)]">
+                  {row.model}
+                </span>
+                <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
+                  {TIER_LABELS[row.tier]}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-3 text-[12px]">
+                <span className="font-mono text-[var(--fg-muted)]">
+                  {formatTokenCount(row.tokens)} tok
+                </span>
+                <span className="font-mono font-medium text-[var(--fg)]">
+                  ~{formatEstimateUsd(row.usd)}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="relative mt-4 rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2.5">
+        <div className="text-[11px] leading-relaxed text-[var(--fg-muted)]">
+          <span className="font-semibold text-amber-300">
+            Illustrative estimate — not a payout.
+          </span>{" "}
+          ClosedMesh has no payments or credit ledger yet. These are
+          placeholder rates showing how your contribution will map to value
+          once the economy ships — not money owed.
+        </div>
+        <div className="mt-1.5 text-[10px] text-[var(--fg-muted)]">
+          Preview rates ·{" "}
+          <span className="font-mono">
+            {TIER_LABELS.daily_driver} $
+            {PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER.daily_driver.toFixed(2)}
+          </span>
+          {" · "}
+          <span className="font-mono">
+            {TIER_LABELS.capacity} $
+            {PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER.capacity.toFixed(2)}
+          </span>{" "}
+          per million tokens served.
+        </div>
       </div>
     </section>
   );
