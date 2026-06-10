@@ -301,21 +301,6 @@ export default function AboutPage() {
               body="For work you don't want to trust to anyone else, the runtime other peers run is the runtime you can run yourself. Nothing about the design forces you to share compute or rent it from others."
             />
           </div>
-
-          <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6">
-            <div className="text-sm font-semibold tracking-tight text-amber-200">
-              The honest limit
-            </div>
-            <p className="mt-2 text-[14px] leading-relaxed text-amber-100/80">
-              The peer serving your session has to read the prompt to run
-              inference — that&apos;s inherent to inference, not a ClosedMesh
-              choice. End-to-end confidentiality from the serving peer (e.g.
-              trusted-execution-environment hardware) is a research bet we
-              haven&apos;t shipped, and we&apos;re not going to pretend
-              otherwise. Until then, the mitigations are reputation, the verify
-              system, and the option to run your own peer.
-            </p>
-          </div>
         </div>
       </section>
 

@@ -252,8 +252,8 @@ export function ChatExperience({
   const renderedEmpty = typeof empty === "function" ? empty(emptyApi) : empty;
 
   const innerWrap = centered
-    ? "mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8"
-    : "flex flex-col gap-5 px-4 py-8";
+    ? "mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8 text-left"
+    : "flex flex-col gap-5 px-4 py-8 text-left";
 
   return (
     <>

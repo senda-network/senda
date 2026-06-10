@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { HeroChat } from "./HomepageChat";
-import { MeshLiveStats } from "../components/MeshLiveStats";
 import { MeshLiveStatus } from "../components/MeshLiveStatus";
 import { PublicHeader } from "../components/PublicHeader";
 import { PublicFooter } from "../components/PublicFooter";
@@ -66,25 +65,6 @@ export default function PublicHomePage() {
             </div>
             <div className="mx-auto mt-8 max-w-2xl">
               <HeroChat />
-            </div>
-          </div>
-        </section>
-
-        {/* Live proof — the swarm, right now. Honest, running numbers in
-            place of a logo wall. */}
-        <section className="border-b border-[var(--border)]">
-          <div className="mx-auto max-w-5xl px-6 py-14">
-            <div className="mb-6 text-center">
-              <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                This isn&apos;t a render. It&apos;s the live mesh.
-              </h2>
-              <p className="mt-2 text-[14px] text-[var(--fg-muted)]">
-                Every number below is read from the public mesh entry node,
-                refreshed every 30 seconds.
-              </p>
-            </div>
-            <div className="mx-auto max-w-3xl">
-              <MeshLiveStats />
             </div>
           </div>
         </section>

@@ -13,7 +13,7 @@ export function ChatMessage({ message }: { message: UIMessage }) {
     >
       <div
         className={[
-          "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap",
+          "max-w-[85%] rounded-2xl px-4 py-2.5 text-left text-[15px] leading-relaxed whitespace-pre-wrap",
           isUser
             ? "bg-[var(--bg-elev-2)] text-[var(--fg)]"
             : "bg-transparent text-[var(--fg)]",
