@@ -884,6 +884,8 @@ export default function DashboardPage() {
             <EarningsPreviewCard self={stableSelfNode} running={running} />
           )}
 
+          {!control?.publicDeployment && stableSelfNode && <ShareInviteCard />}
+
           {runtimeUpgradeCardFor && (
             <RuntimeUpgradeToast
               from={runtimeUpgradeCardFor.from}
@@ -2587,6 +2589,110 @@ function EarningsPreviewCard({
           per million tokens served.
         </div>
       </div>
+    </section>
+  );
+}
+
+// What a friend actually needs to join is a stable artifact: the public
+// download page. The desktop app auto-joins the public mesh on first run via
+// the embedded fallback token + `--join-url`, so the install itself is the
+// join. We deliberately do NOT share the runtime's `/api/control/invite`
+// token here — that token is regenerated every service restart, so a link
+// shared today would be dead by the time a friend installs tomorrow. The
+// token path stays where it belongs: the live "add a remote machine" flow.
+const SHARE_URL = "https://closedmesh.com";
+const SHARE_TEXT =
+  "I'm running ClosedMesh — it pools idle computers into a private AI mesh that runs models locally, no cloud. Add your machine:";
+const SHARE_MESSAGE = `${SHARE_TEXT} ${SHARE_URL}`;
+
+/**
+ * Closes the install-and-share loop the EarningsPreviewCard opens: the card
+ * shows what your machine served and what it would be worth, this turns that
+ * into an action — bring another machine. More peers is the only thing that
+ * grows both mesh capacity and (once the economy ships) what a contributor
+ * earns, so the share CTA lives directly beneath the earnings preview.
+ *
+ * Prefers the OS share sheet (`navigator.share`) when the webview exposes it,
+ * falling back to clipboard. Desktop-only (gated by the caller); the control
+ * UI is served from localhost, a secure context, so `navigator.clipboard` is
+ * available.
+ */
+function ShareInviteCard() {
+  const [state, setState] = useState<"idle" | "copied" | "shared" | "error">(
+    "idle",
+  );
+
+  const onShare = useCallback(async () => {
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.share === "function"
+    ) {
+      try {
+        await navigator.share({
+          title: "ClosedMesh",
+          text: SHARE_TEXT,
+          url: SHARE_URL,
+        });
+        setState("shared");
+        return;
+      } catch (err) {
+        // A user dismissing the share sheet is not a failure — leave the
+        // button untouched. Any other error falls through to clipboard.
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(SHARE_MESSAGE);
+      setState("copied");
+    } catch {
+      setState("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (state === "idle" || state === "error") return;
+    const t = setTimeout(() => setState("idle"), 2500);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  const label =
+    state === "copied"
+      ? "Invite link copied"
+      : state === "shared"
+        ? "Thanks for sharing"
+        : "Invite a friend";
+
+  return (
+    <section className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--accent)]">
+            Grow the mesh
+          </div>
+          <div className="mt-1 text-[14px] font-medium text-[var(--fg)]">
+            Every machine added makes the mesh faster for everyone.
+          </div>
+          <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
+            Send a friend the app — installing is all it takes to join.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onShare}
+          aria-live="polite"
+          className="shrink-0 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-4 py-2 text-[13px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15"
+        >
+          {label}
+        </button>
+      </div>
+      {state === "error" && (
+        <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2 text-[11px] text-[var(--fg-muted)]">
+          Couldn&apos;t open the share sheet or clipboard. Copy this link:{" "}
+          <span className="select-all font-mono text-[var(--fg)]">
+            {SHARE_URL}
+          </span>
+        </div>
+      )}
     </section>
   );
 }
