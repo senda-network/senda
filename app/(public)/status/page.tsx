@@ -571,6 +571,25 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
     .filter((v): v is number => typeof v === "number" && v > 0);
   const medianNativeTps = median(nativeTpsValues);
 
+  // Pooled-split is the one topology where a through-mesh throughput gap is
+  // genuinely real (not a measurement artifact): the model is pipelined
+  // across peers over WAN, so decode pays a cross-peer round-trip per token.
+  // We surface that explicitly below. The split decode rate is reported by
+  // the pipeline *host* (workers only lend their rpc-server), so we read the
+  // host's measurement rather than the row-wide median — on a mixed row
+  // (same model served solo by a big peer AND split by a pool) the row-wide
+  // median would blend the fast solo rate with the slow split rate and tell
+  // the reader nothing true.
+  const isPooledSplit = hostCount > 0 || workerCount > 0;
+  const splitPeerCount = hostCount + workerCount;
+  const splitTpsValues = contributors
+    .filter(
+      (n) => n.splitRole === "pipeline_host" && n.splitGroup?.model === model,
+    )
+    .map((n) => n.measuredTpsP50ByModel?.[model])
+    .filter((v): v is number => typeof v === "number" && v > 0);
+  const splitTps = median(splitTpsValues);
+
   const hasMeasurements = medianTps !== null || lowestTtftMs !== null;
 
   return (
@@ -638,6 +657,27 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
           report measurements at all.
         </div>
       ) : null}
+      {isPooledSplit && (
+        <div className="mt-2 text-[11px] leading-relaxed text-[var(--fg-muted)]">
+          <span className="text-[var(--fg)]">Split tax:</span> this model is too
+          large for any single peer, so it&apos;s pipelined across{" "}
+          {splitPeerCount} peers over WAN — every token makes a cross-peer
+          round-trip
+          {splitTps !== null ? (
+            <>
+              , which is why it serves at just{" "}
+              <span className="font-semibold tabular-nums text-[var(--fg)]">
+                {splitTps >= 10 ? splitTps.toFixed(0) : splitTps.toFixed(1)} t/s
+              </span>
+            </>
+          ) : (
+            ", far below single-machine speed"
+          )}
+          . That gap is inherent to splitting, not mesh overhead.
+          {medianNativeTps === null &&
+            " There's no native baseline to compare against because a model this size doesn't fit on one machine — which is exactly why it's pooled."}
+        </div>
+      )}
     </div>
   );
 }
