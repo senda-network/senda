@@ -548,21 +548,28 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
   // Phase 3.0 benchmark honesty (runtime v0.66.49+). Each peer that
   // serves the model also runs a synthetic chat directly against its
   // own llama-server (no entry tunnel, no auth, no routing) and gossips
-  // the result. We aggregate native TPS the same way as through-mesh
-  // TPS (median of medians) so the ratio is apples-to-apples between
-  // the two columns: both are "this cohort's median measurement".
+  // the result, so we can show the through-mesh and native numbers side
+  // by side.
+  //
+  // We deliberately DON'T derive a single "mesh efficiency %" (through ÷
+  // native) any more. That number was misleading: for a solo serve the
+  // through-mesh and native paths are the *same* llama-server on the
+  // *same* hardware, so the decode rate is identical by construction and
+  // any gap is sampling noise, not a real penalty. The network's cost is
+  // first-token latency (the entry tunnel + routing add to TTFT), not a
+  // per-token throughput tax — so a throughput ratio measures the wrong
+  // thing. A TTFT-based "overhead %" would be just as dishonest, because
+  // native TTFT is a short synthetic probe while measured TTFT comes from
+  // real, longer prompts; that gap is mostly prefill length, not mesh
+  // overhead. So we show the honest raw measurements and let them speak:
+  // through-mesh t/s tracks native t/s, and "fastest first token" is the
+  // real, un-editorialised latency. Pooled-split serves are the one case
+  // where through-mesh t/s is genuinely lower (the model is split across
+  // peers over WAN); the topology label already says so.
   const nativeTpsValues = contributors
     .map((n) => n.nativeTpsP50ByModel?.[model])
     .filter((v): v is number => typeof v === "number" && v > 0);
   const medianNativeTps = median(nativeTpsValues);
-  // Ratio = through-mesh / native. < 1 means the mesh path is slower
-  // than running locally on the same hardware; the gap to 1.0 is the
-  // mesh overhead tax. Only computed when both numbers exist; if
-  // either is missing we don't fabricate one.
-  const meshRatio =
-    medianTps !== null && medianNativeTps !== null && medianNativeTps > 0
-      ? medianTps / medianNativeTps
-      : null;
 
   const hasMeasurements = medianTps !== null || lowestTtftMs !== null;
 
@@ -604,7 +611,7 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
             </span>
           )}
           {medianNativeTps !== null && (
-            <span title="Synthetic chat against the peer's own llama-server on 127.0.0.1 — no entry tunnel, no auth, no routing.">
+            <span title="Synthetic chat against the peer's own llama-server on 127.0.0.1 — no entry tunnel, no auth, no routing. Through-mesh t/s tracks this because the network adds first-token latency, not a per-token decode penalty. (Pooled-split serves are lower: the model is split across peers over WAN.)">
               <span className="font-semibold tabular-nums text-[var(--fg)]">
                 {medianNativeTps >= 10
                   ? medianNativeTps.toFixed(0)
@@ -613,25 +620,8 @@ function CatalogRow({ model, nodes }: { model: string; nodes: MeshNode[] }) {
               t/s native
             </span>
           )}
-          {meshRatio !== null && (
-            <span
-              title="Mesh efficiency = through-mesh ÷ native. 1.00 means the mesh path is as fast as the peer's local stack; smaller numbers mean overhead from the entry tunnel, auth gateway, or routing layer."
-              className={
-                meshRatio >= 0.8
-                  ? "text-emerald-300"
-                  : meshRatio >= 0.5
-                    ? "text-amber-300"
-                    : "text-rose-300"
-              }
-            >
-              <span className="font-semibold tabular-nums">
-                {(meshRatio * 100).toFixed(0)}%
-              </span>{" "}
-              mesh efficiency
-            </span>
-          )}
           {lowestTtftMs !== null && (
-            <span>
+            <span title="Median-best time to first token across serving peers — measured through the full mesh path (entry tunnel + auth + routing). This is where the network's cost shows up; decode rate is unaffected.">
               <span className="font-semibold tabular-nums text-[var(--fg)]">
                 {lowestTtftMs < 1000
                   ? `${Math.round(lowestTtftMs)}ms`
