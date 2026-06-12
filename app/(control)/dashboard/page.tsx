@@ -1435,6 +1435,8 @@ function ThisNodeCard({
         onCheck={onRuntimeUpgradeCheck}
       />
 
+      <PublicStatusRow self={self} running={running} />
+
       {loaded.length > 0 && (
         <div className="relative mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2.5">
           <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
@@ -2173,7 +2175,7 @@ function ModelReadyCard({
             <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
               {danger
                 ? `This model needs about ${underprovisioning.needGb.toFixed(0)} GB of pooled memory to serve. Your machine offers ${underprovisioning.haveGb.toFixed(0)} GB on its own — connect another peer to bring it online.`
-                : "The runtime is serving this model. You're sharing with the mesh."}
+                : "The runtime is serving this model — you're live on the public mesh. See your machine on closedmesh.com/status."}
             </div>
           </div>
         </div>
@@ -2186,12 +2188,22 @@ function ModelReadyCard({
               Add a peer
             </Link>
           ) : (
-            <Link
-              href="/chat"
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110"
-            >
-              Open chat
-            </Link>
+            <>
+              <a
+                href={PUBLIC_STATUS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-2 text-xs font-medium text-[var(--fg-muted)] transition hover:text-[var(--fg)]"
+              >
+                View on status
+              </a>
+              <Link
+                href="/chat"
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+              >
+                Open chat
+              </Link>
+            </>
           )}
           <button
             onClick={onDismiss}
@@ -2604,6 +2616,58 @@ const SHARE_URL = "https://closedmesh.com";
 const SHARE_TEXT =
   "I'm running ClosedMesh — it pools idle computers into a private AI mesh that runs models locally, no cloud. Add your machine:";
 const SHARE_MESSAGE = `${SHARE_TEXT} ${SHARE_URL}`;
+
+// The public live-status page (Vercel-hosted, independent of the mesh entry
+// node — so it loads even when this machine can't reach the entry). Opened
+// with target="_blank" + rel="noreferrer", the same external-link pattern the
+// runtime-update banner already uses, so the desktop webview hands it to the
+// system browser instead of navigating away from the control panel.
+const PUBLIC_STATUS_URL = "https://closedmesh.com/status";
+
+/**
+ * Persistent link to the public status page from the "This machine" card.
+ * The post-serve ModelReadyCard names the public page too, but it
+ * auto-dismisses in 12s — this is the durable affordance for a contributor
+ * to verify (and show off) that their machine is live on the public network.
+ *
+ * Honesty: only claims "you're live" when the mesh-visibility audit actually
+ * reports `visible`. While the node is still gossiping its way to the entry
+ * (or visibility is unknown) it offers the link without asserting presence;
+ * genuine problems (`invisible` / `entry_unreachable`) are surfaced by the
+ * separate MeshVisibilityBanner, so this row stays positive and link-only.
+ */
+function PublicStatusRow({
+  self,
+  running,
+}: {
+  self: NodeSummary | null;
+  running: boolean;
+}) {
+  if (!running) return null;
+  const visible = self?.meshVisibility?.state === "visible";
+  return (
+    <a
+      href={PUBLIC_STATUS_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="relative mt-4 flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2.5 transition hover:border-[var(--accent)]/40 hover:bg-[var(--bg-elev)]"
+    >
+      <div className="min-w-0">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
+          Public mesh
+        </div>
+        <div className="mt-0.5 text-[12px] text-[var(--fg)]">
+          {visible
+            ? "You're live — your machine is visible to the world on the public status page."
+            : "See the live mesh on the public status page."}
+        </div>
+      </div>
+      <span className="shrink-0 text-[12px] font-medium text-[var(--accent)]">
+        closedmesh.com/status →
+      </span>
+    </a>
+  );
+}
 
 /**
  * Closes the install-and-share loop the EarningsPreviewCard opens: the card
