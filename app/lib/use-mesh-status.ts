@@ -99,6 +99,23 @@ export type MeshVisibility = {
   hardResetTriggered: boolean;
 };
 
+/**
+ * Verification verdict for a peer's owner-signed model advertisement
+ * (Phase 3.1, runtime v0.66.78+). The entry node verifies each peer's
+ * signed per-model performance claims against the owner's Ed25519 key,
+ * node-id binding, and freshness. `verified === true` means the advertised
+ * metrics are cryptographically attributable to a real, non-revoked owner;
+ * anything else is unsigned hearsay or a failed/forged claim. Absent on
+ * pre-3.1 peers (treated as "unsigned" in the UI).
+ */
+export type ModelAd = {
+  status: string;
+  verified: boolean;
+  ownerId: string | null;
+  issuedAtUnixMs: number | null;
+  modelCount: number;
+};
+
 export type NodeSummary = {
   id: string;
   hostname: string | null;
@@ -189,6 +206,12 @@ export type NodeSummary = {
    * Missing/empty = "served nothing this week", not "served zero".
    */
   servingTokens7dByModel?: Record<string, number>;
+  /**
+   * Phase 3.1 owner-signed model advertisement verdict. Null/absent on
+   * peers running pre-v0.66.78 runtimes; the status UI renders that the
+   * same as an `unsigned` verdict.
+   */
+  modelAd?: ModelAd | null;
 };
 
 /**

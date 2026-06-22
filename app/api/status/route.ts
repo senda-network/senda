@@ -239,6 +239,12 @@ export type NodeSummary = {
    * entry node itself (no parent entry to verify against).
    */
   meshVisibility: MeshVisibility | null;
+  /**
+   * Verification verdict for this peer's owner-signed model advertisement
+   * (Phase 3.1). Null/absent on peers running pre-v0.66.78 runtimes, which
+   * the UI renders the same as `unsigned`.
+   */
+  modelAd?: ModelAd | null;
 };
 
 export type MeshVisibility = {
@@ -250,6 +256,29 @@ export type MeshVisibility = {
   entryUrl: string;
   softReconnectTriggered: boolean;
   hardResetTriggered: boolean;
+};
+
+/**
+ * Verification verdict for a peer's owner-signed model advertisement
+ * (Phase 3.1, runtime v0.66.78+). Mirrors `ModelAdPayload` in the runtime's
+ * `closedmesh/src/api/status.rs`. The entry node verifies each peer's signed
+ * per-model performance claims against the owner's Ed25519 key, node-id
+ * binding, and freshness, and exposes the resulting verdict here so the
+ * public status page can show whether a peer's advertised metrics are
+ * cryptographically attributable to a real owner (and thus revocable) or
+ * just unsigned hearsay from a relay.
+ *
+ * `status` is the runtime's snake_case enum: `verified`, `unsigned`,
+ * `invalid_signature`, `mismatched_node_id`, `stale`, `revoked_owner`,
+ * `untrusted_owner`, `unsupported_protocol`. Absent on peers running
+ * pre-3.1 runtimes (treated as null → "unsigned" in the UI).
+ */
+export type ModelAd = {
+  status: string;
+  verified: boolean;
+  ownerId: string | null;
+  issuedAtUnixMs: number | null;
+  modelCount: number;
 };
 
 type Status = {
@@ -329,6 +358,20 @@ type RuntimePeer = {
    */
   native_tps_p50_by_model?: Record<string, number>;
   native_ttft_ms_p50_by_model?: Record<string, number>;
+  /**
+   * Phase 3.1 owner-signed model advertisement verdict (runtime
+   * v0.66.78+). Absent on older peers; `normalizeModelAd` maps the
+   * missing case to null so the UI degrades to "unsigned".
+   */
+  model_ad?: RuntimeModelAd;
+};
+
+type RuntimeModelAd = {
+  status?: string;
+  verified?: boolean;
+  owner_id?: string | null;
+  issued_at_unix_ms?: number | null;
+  model_count?: number;
 };
 
 type RuntimeGpu = {
@@ -459,6 +502,19 @@ export function normalizeMeshVisibility(
     entryUrl: raw.entry_url ?? "",
     softReconnectTriggered: !!raw.soft_reconnect_triggered,
     hardResetTriggered: !!raw.hard_reset_triggered,
+  };
+}
+
+export function normalizeModelAd(
+  raw: RuntimeModelAd | null | undefined,
+): ModelAd | null {
+  if (!raw || !raw.status) return null;
+  return {
+    status: raw.status,
+    verified: !!raw.verified,
+    ownerId: raw.owner_id ?? null,
+    issuedAtUnixMs: raw.issued_at_unix_ms ?? null,
+    modelCount: raw.model_count ?? 0,
   };
 }
 
@@ -674,6 +730,9 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     // answer). Slice 4's `mergePeerReports` overwrites this when a
     // peer-report exists for the same node.
     meshVisibility: null,
+    // Phase 3.1 — owner-signed model advertisement verdict. Null on
+    // pre-v0.66.78 peers; the UI renders that the same as "unsigned".
+    modelAd: normalizeModelAd(peer.model_ad),
   };
 }
 

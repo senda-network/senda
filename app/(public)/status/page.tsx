@@ -14,7 +14,7 @@ import {
   TIER_DESCRIPTIONS,
   type ModelTier,
 } from "../../lib/model-tiers";
-import type { NodeSummary } from "../../lib/use-mesh-status";
+import type { NodeSummary, ModelAd } from "../../lib/use-mesh-status";
 import {
   MIN_PIPELINE_ELECTION_PEER_VERSION,
   peerSupportsPipelineElection,
@@ -209,6 +209,56 @@ function backendColor(backend: string): string {
     cpu: "text-[var(--fg-muted)] bg-[var(--bg-elev)] border-[var(--border)]",
   };
   return map[backend] ?? "text-[var(--fg-muted)] bg-[var(--bg-elev)] border-[var(--border)]";
+}
+
+/**
+ * Phase 3.1 trust badge. A peer gossips its per-model performance claims
+ * (t/s, TTFT, logit fingerprint) and the entry node verifies them against
+ * the owner's Ed25519 signature, node-id binding, and freshness window.
+ *
+ *   - `verified`  → green "signed metrics": the advertised numbers are
+ *     cryptographically attributable to a real, non-revoked owner and can
+ *     be revoked if the owner ever lies. This is the marketplace-honesty
+ *     property Phase 3.1 buys.
+ *   - any other non-`unsigned` verdict (bad signature, wrong node, stale,
+ *     revoked/untrusted owner, unknown format) → amber warning: the peer
+ *     IS advertising signed claims but they failed verification, so the
+ *     numbers should not be trusted. This is the case worth shouting about.
+ *   - `unsigned` (or absent, i.e. a pre-3.1 peer) → render nothing. Every
+ *     legacy peer is unsigned by default; badging them all would be noise,
+ *     not signal.
+ */
+const MODEL_AD_FAIL_LABELS: Record<string, string> = {
+  invalid_signature: "bad signature",
+  mismatched_node_id: "wrong node id",
+  stale: "stale claim",
+  revoked_owner: "revoked owner",
+  untrusted_owner: "untrusted owner",
+  unsupported_protocol: "unknown format",
+};
+
+function ModelAdBadge({ ad }: { ad: ModelAd }) {
+  if (ad.status === "unsigned") return null;
+  if (ad.verified) {
+    const owner = ad.ownerId ? `${ad.ownerId.slice(0, 12)}…` : "unknown owner";
+    return (
+      <span
+        className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+        title={`Owner-signed metrics verified — Ed25519 signature checks out, bound to this node id, and fresh. Owner ${owner}, ${ad.modelCount} model${ad.modelCount === 1 ? "" : "s"}. The advertised numbers are cryptographically attributable to a real owner and revocable if they ever lie.`}
+      >
+        ✓ signed metrics
+      </span>
+    );
+  }
+  const label = MODEL_AD_FAIL_LABELS[ad.status] ?? ad.status;
+  return (
+    <span
+      className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300"
+      title={`This peer is advertising signed model metrics, but they did not verify (${ad.status}). Treat its advertised throughput as untrusted.`}
+    >
+      ⚠ {label}
+    </span>
+  );
 }
 
 // Color/label derivation lives in app/lib/node-display-state.ts so this
@@ -854,6 +904,7 @@ function NodeCard({
               </span>
             );
           })()}
+          {node.modelAd && <ModelAdBadge ad={node.modelAd} />}
         </div>
       )}
 
