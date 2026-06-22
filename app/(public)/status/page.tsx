@@ -14,7 +14,7 @@ import {
   TIER_DESCRIPTIONS,
   type ModelTier,
 } from "../../lib/model-tiers";
-import type { NodeSummary, ModelAd } from "../../lib/use-mesh-status";
+import type { NodeSummary, ModelAd, VerifyVerdict } from "../../lib/use-mesh-status";
 import {
   MIN_PIPELINE_ELECTION_PEER_VERSION,
   peerSupportsPipelineElection,
@@ -257,6 +257,47 @@ function ModelAdBadge({ ad }: { ad: ModelAd }) {
       title={`This peer is advertising signed model metrics, but they did not verify (${ad.status}). Treat its advertised throughput as untrusted.`}
     >
       ⚠ {label}
+    </span>
+  );
+}
+
+/**
+ * Phase 3.2 sample-and-verify badge. Where {@link ModelAdBadge} proves *who*
+ * signed the claim, this proves the peer is *actually running the model right
+ * now*: the entry node re-runs a byte-identical probe and compares logits to
+ * an independently-generated reference.
+ *
+ * We collapse the per-model map to a single node-level badge:
+ *   - any `mismatch`  → amber warning (the loud case — a peer caught lying)
+ *   - else any `match` → emerald "independently verified"
+ *   - only `inconclusive`/empty → render nothing (no signal, no badge)
+ */
+function VerifyBadge({ verifyByModel }: { verifyByModel: Record<string, VerifyVerdict> }) {
+  const entries = Object.entries(verifyByModel);
+  if (entries.length === 0) return null;
+
+  const mismatched = entries.filter(([, v]) => v.verdict === "mismatch");
+  if (mismatched.length > 0) {
+    const models = mismatched.map(([m]) => m).join(", ");
+    return (
+      <span
+        className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-300"
+        title={`Independent verification FAILED for ${models}. The entry node re-ran a byte-identical probe against this peer's live model and the returned logits diverged from an independently-generated reference — the peer is not running the model it advertises. Treat its claims for ${models} as untrusted.`}
+      >
+        ⚠ failed verification
+      </span>
+    );
+  }
+
+  const matched = entries.filter(([, v]) => v.verdict === "match");
+  if (matched.length === 0) return null;
+  const models = matched.map(([m]) => m).join(", ");
+  return (
+    <span
+      className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+      title={`Independently verified — the entry node re-ran a byte-identical probe against this peer's live model${matched.length === 1 ? "" : "s"} (${models}) and the returned logits reproduced an independently-generated reference. This peer is genuinely running what it advertises, not a smaller/different model or canned output.`}
+    >
+      ✓ independently verified
     </span>
   );
 }
@@ -905,6 +946,9 @@ function NodeCard({
             );
           })()}
           {node.modelAd && <ModelAdBadge ad={node.modelAd} />}
+          {node.verifyByModel && (
+            <VerifyBadge verifyByModel={node.verifyByModel} />
+          )}
         </div>
       )}
 

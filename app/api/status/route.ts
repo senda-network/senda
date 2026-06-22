@@ -245,6 +245,11 @@ export type NodeSummary = {
    * the UI renders the same as `unsigned`.
    */
   modelAd?: ModelAd | null;
+  /**
+   * Phase 3.2 sample-and-verify verdicts keyed by model id. Present only for
+   * peers the entry node has probed; absent/empty on pre-v0.66.79 runtimes.
+   */
+  verifyByModel?: Record<string, VerifyVerdict>;
 };
 
 export type MeshVisibility = {
@@ -279,6 +284,24 @@ export type ModelAd = {
   ownerId: string | null;
   issuedAtUnixMs: number | null;
   modelCount: number;
+};
+
+/**
+ * Phase 3.2 sample-and-verify verdict for one (peer, model), mirroring
+ * `VerifyPayload` in the runtime's `closedmesh/src/api/status.rs`. The entry
+ * node re-runs a byte-identical probe against the peer's live model and
+ * compares the returned logits to an independently-generated reference — so
+ * `match` proves the peer is genuinely running the model it advertises, not
+ * just that it signed a claim about it. `inconclusive` is never held against
+ * a peer. Absent for peers the verifier hasn't probed.
+ */
+export type VerifyVerdict = {
+  verdict: "match" | "mismatch" | "inconclusive" | string;
+  agreement: number;
+  comparedTokens: number;
+  mode: string;
+  reason?: string | null;
+  checkedAtUnixSecs: number;
 };
 
 type Status = {
@@ -364,6 +387,12 @@ type RuntimePeer = {
    * missing case to null so the UI degrades to "unsigned".
    */
   model_ad?: RuntimeModelAd;
+  /**
+   * Phase 3.2 sample-and-verify verdicts (runtime v0.66.79+), keyed by model
+   * id. Absent on older peers and on peers the verifier hasn't probed yet;
+   * `normalizeVerifyByModel` maps that to undefined so the UI shows nothing.
+   */
+  verify_by_model?: Record<string, RuntimeVerify>;
 };
 
 type RuntimeModelAd = {
@@ -372,6 +401,15 @@ type RuntimeModelAd = {
   owner_id?: string | null;
   issued_at_unix_ms?: number | null;
   model_count?: number;
+};
+
+type RuntimeVerify = {
+  verdict?: string;
+  agreement?: number;
+  compared_tokens?: number;
+  mode?: string;
+  reason?: string | null;
+  checked_at_unix_secs?: number;
 };
 
 type RuntimeGpu = {
@@ -516,6 +554,25 @@ export function normalizeModelAd(
     issuedAtUnixMs: raw.issued_at_unix_ms ?? null,
     modelCount: raw.model_count ?? 0,
   };
+}
+
+export function normalizeVerifyByModel(
+  raw: Record<string, RuntimeVerify> | null | undefined,
+): Record<string, VerifyVerdict> | undefined {
+  if (!raw) return undefined;
+  const out: Record<string, VerifyVerdict> = {};
+  for (const [model, v] of Object.entries(raw)) {
+    if (!v || !v.verdict) continue;
+    out[model] = {
+      verdict: v.verdict,
+      agreement: v.agreement ?? 0,
+      comparedTokens: v.compared_tokens ?? 0,
+      mode: v.mode ?? "",
+      reason: v.reason ?? null,
+      checkedAtUnixSecs: v.checked_at_unix_secs ?? 0,
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -733,6 +790,9 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     // Phase 3.1 — owner-signed model advertisement verdict. Null on
     // pre-v0.66.78 peers; the UI renders that the same as "unsigned".
     modelAd: normalizeModelAd(peer.model_ad),
+    // Phase 3.2 — independent sample-and-verify verdicts. Undefined on
+    // pre-v0.66.79 peers and peers the entry hasn't probed.
+    verifyByModel: normalizeVerifyByModel(peer.verify_by_model),
   };
 }
 

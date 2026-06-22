@@ -116,6 +116,27 @@ export type ModelAd = {
   modelCount: number;
 };
 
+/**
+ * Sample-and-verify verdict for one model on a peer (Phase 3.2, runtime
+ * v0.66.79+). The entry node periodically re-runs a byte-identical probe
+ * against the peer's live model and compares the returned logits to an
+ * independently-generated reference. Unlike {@link ModelAd} (which proves
+ * *who* signed the claim), this proves the peer is *actually running the
+ * model it advertises right now*:
+ *   - `match`        — live logits reproduced the reference; genuinely serving
+ *   - `mismatch`     — logits diverged (wrong/smaller model or canned output)
+ *   - `inconclusive` — not enough signal to decide; never held against a peer
+ * Absent for peers nobody has probed yet (only the entry runs the verifier).
+ */
+export type VerifyVerdict = {
+  verdict: "match" | "mismatch" | "inconclusive" | string;
+  agreement: number;
+  comparedTokens: number;
+  mode: string;
+  reason?: string | null;
+  checkedAtUnixSecs: number;
+};
+
 export type NodeSummary = {
   id: string;
   hostname: string | null;
@@ -212,6 +233,12 @@ export type NodeSummary = {
    * same as an `unsigned` verdict.
    */
   modelAd?: ModelAd | null;
+  /**
+   * Phase 3.2 sample-and-verify verdicts keyed by model id. Present only for
+   * peers the entry node has probed; absent/empty on pre-v0.66.79 runtimes and
+   * for peers awaiting their first probe.
+   */
+  verifyByModel?: Record<string, VerifyVerdict>;
 };
 
 /**
