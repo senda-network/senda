@@ -13,6 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://closedmesh.com"),
   title: "ClosedMesh — open peer-to-peer LLM",
   description:
     "Chat with an LLM served by a peer-to-peer mesh of contributed compute. No third-party API behind it. Run a node yourself or just use the chat.",

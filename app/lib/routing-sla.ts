@@ -91,6 +91,13 @@ export type SlaEvaluation = {
    * yet" from "host elected but below SLA".
    */
   candidatePeerCount: number;
+  /**
+   * Best peer to attribute mesh-served completion tokens to for
+   * credits accounting. The peer that met SLA when `meetsSla`, else
+   * the highest-measured-tps candidate, else the first candidate id.
+   * Null when no attributable peer exists.
+   */
+  creditPeerId: string | null;
 };
 
 /**
@@ -116,6 +123,27 @@ function isUsableState(state: string | undefined): boolean {
     // `offline`, and `standby` explicitly.
     state === undefined // treat missing as serving for older runtimes that don't emit state on the local entry
   );
+}
+
+/** Peer id to attribute mesh credits to when the entry doesn't echo the host. */
+function pickCreditPeerId(
+  modelId: string,
+  candidates: SlaPeer[],
+  preferredId?: string,
+): string | null {
+  if (preferredId) return preferredId;
+  let bestId: string | null = null;
+  let bestTps = -1;
+  for (const p of candidates) {
+    const tps = p.measured_tps_p50_by_model?.[modelId];
+    if (!p.id) continue;
+    if (typeof tps === "number" && tps > bestTps) {
+      bestTps = tps;
+      bestId = p.id;
+    }
+  }
+  if (bestId) return bestId;
+  return candidates.find((p) => p.id)?.id ?? null;
 }
 
 /**
@@ -166,6 +194,7 @@ export function evaluateSla(
       bestPeerTtftMs: null,
       bestPeerTps: null,
       candidatePeerCount: 0,
+      creditPeerId: null,
     };
   }
 
@@ -193,6 +222,7 @@ export function evaluateSla(
         bestPeerTtftMs: bestTtft,
         bestPeerTps: bestTps,
         candidatePeerCount: candidates.length,
+        creditPeerId: pickCreditPeerId(modelId, candidates, p.id),
       };
     }
     if (!ttftOk) anyTtftFail = true;
@@ -207,6 +237,7 @@ export function evaluateSla(
       bestPeerTtftMs: null,
       bestPeerTps: null,
       candidatePeerCount: candidates.length,
+      creditPeerId: pickCreditPeerId(modelId, candidates),
     };
   }
 
@@ -224,6 +255,7 @@ export function evaluateSla(
     bestPeerTtftMs: bestTtft,
     bestPeerTps: bestTps,
     candidatePeerCount: candidates.length,
+    creditPeerId: pickCreditPeerId(modelId, candidates),
   };
 }
 

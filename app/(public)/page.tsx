@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { HeroChat } from "./HomepageChat";
 import { MeshLiveStatus } from "../components/MeshLiveStatus";
+import { MeshLiveStats } from "../components/MeshLiveStats";
 import { PublicHeader } from "../components/PublicHeader";
 import { PublicFooter } from "../components/PublicFooter";
 import {
@@ -60,10 +61,10 @@ export default function PublicHomePage() {
               classifying, and background agent work. No third-party AI
               provider in the middle.
             </p>
-            <div className="mt-6 flex justify-center">
-              <MeshLiveStatus />
-            </div>
             <div className="mx-auto mt-8 max-w-2xl">
+              <MeshLiveStats />
+            </div>
+            <div className="mx-auto mt-6 max-w-2xl">
               <HeroChat />
             </div>
           </div>
@@ -174,14 +175,13 @@ export default function PublicHomePage() {
                 step="Contribute"
                 title="Run a node"
                 body="Have a capable Mac or GPU box? Download the desktop app or curl the runtime. It autostarts and joins the mesh, adding capacity for everyone."
-                cta={{ label: "Download →", href: "/download" }}
+                cta={{ label: "Contribute →", href: "/contribute" }}
               />
               <LaneCard
                 step="Earn"
-                title="Get paid per session"
-                body="An emerging marketplace pays peers for the sessions they serve, with reputation and sample-and-verify keeping it honest. Rolling out as the network grows."
-                muted
-                cta={{ label: "How it works →", href: "/about" }}
+                title="Earn credits"
+                body="Contributors accumulate credits for completion tokens served to the mesh. Tracked now in the dashboard; redeemable when payouts ship. No crypto token."
+                cta={{ label: "Credits & rates →", href: "/contribute#earn" }}
               />
             </div>
           </div>

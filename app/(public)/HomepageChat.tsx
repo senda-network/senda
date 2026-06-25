@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ChatExperience } from "../components/ChatExperience";
+import { EarlyAccessBanner } from "../components/EarlyAccessBanner";
 import { Logo } from "../components/Logo";
 
 // Three suggestions chosen to be:
@@ -54,6 +55,7 @@ export function HeroChat() {
   if (expanded) {
     return (
       <div className="fixed inset-0 z-50 flex h-dvh flex-col bg-[var(--bg)] text-[var(--fg)]">
+        <EarlyAccessBanner />
         <header className="border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur">
           <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
             <button
@@ -124,10 +126,10 @@ export function HeroChat() {
 
       <div className="mt-4 text-[12px] text-[var(--fg-muted)]">
         Have a machine to spare?{" "}
-        <Link href="/download" className="text-[var(--accent)] hover:underline">
+        <Link href="/contribute" className="text-[var(--accent)] hover:underline">
           Run a node
         </Link>{" "}
-        and add your hardware to the mesh.
+        and earn credits for tokens you serve.
       </div>
     </div>
   );

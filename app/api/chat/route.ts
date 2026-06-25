@@ -12,6 +12,8 @@ import {
   getOpenRouterProvider,
 } from "../../lib/fallback-provider";
 import { recordServedByDecision } from "../../lib/mesh-share";
+import { recordMeshCredits } from "../../lib/credits-ledger";
+import type { SlaEvaluation } from "../../lib/routing-sla";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -298,6 +300,8 @@ export async function POST(req: Request) {
   // reason.
   void recordServedByDecision(servedBy);
 
+  let meshCredits = servedBy === "mesh";
+
   const headers: Record<string, string> = {
     "x-closedmesh-served-by": servedBy,
     "x-closedmesh-sla-status": sla.meetsSla ? "meet" : sla.reason,
@@ -319,6 +323,8 @@ export async function POST(req: Request) {
     }
   }
 
+  const creditOnFinish = meshCreditOnFinish(meshCredits, sla, modelId);
+
   // Both branches use the same `streamText` protocol, so the AI SDK
   // chunk format is identical to the caller. The chat UI does not
   // need to know whether it got mesh or fallback — only the
@@ -336,11 +342,13 @@ export async function POST(req: Request) {
       };
       headers["x-closedmesh-served-by"] = "mesh";
       headers["x-closedmesh-fallback-status"] = "fallback-disabled";
+      meshCredits = true;
       result = streamText({
         model: closedmesh.chatModel(modelId),
         system: SYSTEM_PROMPT,
         messages: convertToModelMessages(parsed.body.messages),
         maxRetries: 0,
+        ...meshCreditOnFinish(meshCredits, sla, modelId),
       });
     } else {
       result = streamText({
@@ -363,6 +371,7 @@ export async function POST(req: Request) {
       // 429 and confusing the actual diagnosis. One attempt; let the user
       // (or chat UI) decide whether to retry.
       maxRetries: 0,
+      ...creditOnFinish,
     });
   }
 
@@ -391,4 +400,26 @@ function getClientIp(req: Request): string {
   const real = req.headers.get("x-real-ip");
   if (real) return real.trim();
   return "unknown";
+}
+
+function meshCreditOnFinish(
+  meshCredits: boolean,
+  sla: SlaEvaluation,
+  modelId: string,
+) {
+  if (!meshCredits) return {};
+  return {
+    onFinish: async (event: {
+      totalUsage?: { outputTokens?: number };
+    }) => {
+      const tokens = event.totalUsage?.outputTokens ?? 0;
+      if (tokens <= 0 || !sla.creditPeerId) return;
+      void recordMeshCredits({
+        peerId: sla.creditPeerId,
+        modelId,
+        completionTokens: tokens,
+        tier: sla.tier,
+      });
+    },
+  };
 }

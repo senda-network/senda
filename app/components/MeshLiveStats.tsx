@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 type StatusNode = {
   hostname?: string | null;
   vramGb?: number;
+  state?: string;
+  servingModels?: string[];
   capability?: { vramGb?: number };
 };
 
@@ -18,6 +20,7 @@ type Status = {
 type Stats = {
   online: boolean;
   contributorCount: number;
+  servingCount: number;
   pooledVramGb: number;
   modelCount: number;
 };
@@ -25,6 +28,7 @@ type Stats = {
 const DEFAULT_STATS: Stats = {
   online: false,
   contributorCount: 0,
+  servingCount: 0,
   pooledVramGb: 0,
   modelCount: 0,
 };
@@ -59,6 +63,11 @@ export function MeshLiveStats() {
           const contributors = (data.nodes ?? []).filter(
             (n) => !(n.hostname ?? "").startsWith("ip-"),
           );
+          const servingCount = contributors.filter(
+            (n) =>
+              n.state === "serving" ||
+              (n.servingModels != null && n.servingModels.length > 0),
+          ).length;
           const pooledVramGb = contributors.reduce(
             (acc, n) => acc + (n.capability?.vramGb ?? n.vramGb ?? 0),
             0,
@@ -66,6 +75,7 @@ export function MeshLiveStats() {
           setStats({
             online: true,
             contributorCount: contributors.length,
+            servingCount,
             pooledVramGb,
             modelCount: (data.models ?? []).length,
           });
@@ -118,24 +128,23 @@ export function MeshLiveStats() {
       <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--accent)]">
         ClosedMesh, right now
       </div>
-      <div className="mt-2 grid grid-cols-3 gap-4">
-        <Stat
-          value={vramLabel}
-          label={
-            stats.contributorCount === 1 ? "pooled across 1 box" : "pooled memory"
-          }
-        />
+      <div className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Stat value={String(stats.servingCount)} label="serving now" />
         <Stat
           value={String(stats.contributorCount)}
           label={
             stats.contributorCount === 1
-              ? "contributor"
-              : "contributors"
+              ? "contributor online"
+              : "contributors online"
           }
         />
         <Stat
           value={String(stats.modelCount)}
           label={stats.modelCount === 1 ? "model live" : "models live"}
+        />
+        <Stat
+          value={vramLabel}
+          label="pooled memory"
         />
       </div>
     </div>

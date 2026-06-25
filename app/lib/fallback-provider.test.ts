@@ -15,6 +15,7 @@ function sla(overrides: Partial<SlaEvaluation>): SlaEvaluation {
     bestPeerTtftMs: null,
     bestPeerTps: null,
     candidatePeerCount: 0,
+    creditPeerId: null,
     ...overrides,
   };
 }

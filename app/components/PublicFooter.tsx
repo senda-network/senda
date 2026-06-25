@@ -37,6 +37,18 @@ export function PublicFooter() {
             Metrics
           </Link>
           <Link
+            href="/contribute"
+            className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            Contribute
+          </Link>
+          <Link
+            href="/security"
+            className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            Security
+          </Link>
+          <Link
             href="/updates"
             className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
           >

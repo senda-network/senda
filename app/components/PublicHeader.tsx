@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { EarlyAccessBanner } from "./EarlyAccessBanner";
 import { Logo } from "./Logo";
 
 /**
@@ -34,6 +35,7 @@ export function PublicHeader({
       : "border-b border-[var(--border)] bg-[var(--bg)]";
   return (
     <header className={sticky}>
+      <EarlyAccessBanner />
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
         <Link href="/" className="flex items-center gap-2.5">
           <Logo />
@@ -58,13 +60,25 @@ export function PublicHeader({
           </Link>
           <Link
             href="/metrics"
-            className="hidden text-[var(--fg-muted)] hover:text-[var(--fg)] sm:inline"
+            className="hidden text-[var(--fg-muted)] hover:text-[var(--fg)] lg:inline"
           >
             Metrics
           </Link>
           <Link
+            href="/updates"
+            className="hidden text-[var(--fg-muted)] hover:text-[var(--fg)] md:inline"
+          >
+            Updates
+          </Link>
+          <Link
+            href="/contribute"
+            className="hidden text-[var(--fg-muted)] hover:text-[var(--fg)] sm:inline"
+          >
+            Contribute
+          </Link>
+          <Link
             href="/about"
-            className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+            className="hidden text-[var(--fg-muted)] hover:text-[var(--fg)] lg:inline"
           >
             How it works
           </Link>
@@ -72,7 +86,7 @@ export function PublicHeader({
             href="/download"
             className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-black shadow-[0_6px_18px_-10px_rgba(255,122,69,0.7)] transition hover:brightness-110"
           >
-            Download
+            Run a node
           </Link>
         </nav>
       </div>
