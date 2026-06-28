@@ -43,10 +43,20 @@ export type ModelTier = "daily_driver" | "capacity" | "experimental";
  *                          least one peer's measured TTFT p50 for this
  *                          model is below this number.
  * `target_tps_p50`       — same gate, for decode rate.
- * `min_native_ratio`     — through-mesh / native efficiency floor;
- *                          peers below this for the model are demoted
- *                          (rolled out with Phase 4.B, not enforced
- *                          today).
+ * `min_native_ratio`     — through-mesh / native throughput floor.
+ *                          Enforced in `evaluateSla`: a peer whose
+ *                          measured through-mesh tok/s has degraded
+ *                          below this fraction of its OWN native
+ *                          baseline is demoted, so the entry routes
+ *                          around it and the served through-mesh/native
+ *                          ratio stays tight. Only applied when the peer
+ *                          actually reports a native baseline (a solo
+ *                          serve sits at ~1.0 by construction; pooled
+ *                          splits and legacy peers have no baseline and
+ *                          are never penalized). Until external supply
+ *                          activates (Phase 5.E) a demotion changes only
+ *                          the SLA verdict + bookkeeping, not what gets
+ *                          served. Set a tier to 0 to disable the floor.
  *
  * Values are deliberately conservative for the daily-driver tier
  * (chat UX bar) and lenient for capacity (correctness over speed).

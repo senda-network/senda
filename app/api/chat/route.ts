@@ -315,6 +315,14 @@ export async function POST(req: Request) {
   if (sla.bestPeerTps !== null) {
     headers["x-closedmesh-sla-best-tps"] = sla.bestPeerTps.toFixed(2);
   }
+  // Through-mesh / native throughput ratio of the peer the gate would
+  // route to. ~1.0 for a healthy solo serve; below the tier floor means
+  // the entry demoted a peer whose decode has degraded relative to its
+  // own native baseline. Surfaced so the narrowing of the ratio is
+  // observable on every response before it gates real routing in 5.E.
+  if (sla.bestPeerNativeRatio !== null) {
+    headers["x-closedmesh-sla-native-ratio"] = sla.bestPeerNativeRatio.toFixed(2);
+  }
   if (decision.useFallback) {
     headers["x-closedmesh-fallback-provider"] = "openrouter";
     headers["x-closedmesh-fallback-model"] = decision.fallbackModelSlug ?? "";

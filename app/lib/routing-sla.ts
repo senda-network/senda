@@ -67,7 +67,8 @@ export type SlaReason =
   | "no-measurements"
   | "ttft-too-high"
   | "tps-too-low"
-  | "both-too-low";
+  | "both-too-low"
+  | "below-native-ratio";
 
 export type SlaEvaluation = {
   /** Whether the mesh has at least one peer that meets the tier's SLA for this model. */
@@ -98,6 +99,24 @@ export type SlaEvaluation = {
    * Null when no attributable peer exists.
    */
   creditPeerId: string | null;
+  /**
+   * Through-mesh / native throughput ratio of the selected peer
+   * (mesh-measured tok/s ÷ that peer's own native-baseline tok/s).
+   *
+   * This is the "narrow the through-mesh vs native ratio" lever: a
+   * solo serve runs the *same* llama-server on the through-mesh and
+   * native paths, so a healthy peer sits at ~1.0 here. A peer that has
+   * drifted below the tier's `min_native_ratio` floor (saturation,
+   * thermal throttling, contention) is demoted by `evaluateSla` so the
+   * entry routes around it and the *served* ratio stays tight.
+   *
+   * Null when the selected/best peer has no native baseline (pooled
+   * split, or a legacy peer pre-v0.66.49) — in that case the floor is
+   * NOT enforced, matching the missing-data convention used everywhere
+   * else. On a miss, this is the best (highest) ratio observed across
+   * measured candidates, or null if none reported a baseline.
+   */
+  bestPeerNativeRatio: number | null;
 };
 
 /**
@@ -162,17 +181,31 @@ function pickCreditPeerId(
  *    `measured_ttft_ms_p50_by_model[modelId]` present.
  *  - TPS must be >= `target_tps_p50` for the tier.
  *  - TTFT must be <= `target_ttft_ms_p50` for the tier.
- *  - If ANY one candidate peer satisfies both, the gate passes —
- *    the entry node's existing router can hand the session to that
- *    peer.
+ *  - Through-mesh / native throughput ratio must be >=
+ *    `min_native_ratio` for the tier — BUT only when the peer reports a
+ *    native baseline (`native_tps_p50_by_model[modelId]`). A solo serve
+ *    runs the same llama-server on both paths so this is ~1.0 for a
+ *    healthy peer; the floor only bites when a peer's through-mesh
+ *    decode has genuinely degraded below its own proven native rate
+ *    (saturation, throttling, contention). Peers without a baseline
+ *    (pooled splits, legacy peers) are never penalized on this axis —
+ *    same missing-data convention the rest of the gate uses.
+ *  - If ANY one candidate peer satisfies all applicable thresholds,
+ *    the gate passes — the entry node's existing router can hand the
+ *    session to that peer.
  *
  * Reason precedence (most informative wins):
  *  1. `no-peer-with-model` — no peer claims to host the model.
  *  2. `no-measurements` — peers exist but none have measured both
  *     TPS and TTFT yet (typical for a freshly elected host before
  *     it has served its first request).
- *  3. `ttft-too-high` / `tps-too-low` / `both-too-low` — every
- *     measured peer fails at least one threshold.
+ *  3. `ttft-too-high` / `tps-too-low` / `both-too-low` — at least one
+ *     measured peer fails an absolute threshold (these dominate the
+ *     ratio reason; an absolute failure is the more fundamental one).
+ *  4. `below-native-ratio` — every measured peer cleared the absolute
+ *     thresholds but the only thing keeping the gate from passing is
+ *     that the otherwise-fast peer(s) fell below the tier's
+ *     through-mesh/native floor.
  */
 export function evaluateSla(
   modelId: string,
@@ -195,13 +228,20 @@ export function evaluateSla(
       bestPeerTps: null,
       candidatePeerCount: 0,
       creditPeerId: null,
+      bestPeerNativeRatio: null,
     };
   }
 
   let bestTtft: number | null = null;
   let bestTps: number | null = null;
+  let bestRatio: number | null = null;
   let anyTtftFail = false;
   let anyTpsFail = false;
+  // A peer that cleared BOTH absolute thresholds but was held back only
+  // by the through-mesh/native floor. Tracked separately so the miss
+  // reason can distinguish "too slow in absolute terms" from "fast, but
+  // degraded relative to its own native baseline".
+  let anyRatioFail = false;
   let anyMeasured = false;
 
   for (const p of candidates) {
@@ -212,9 +252,24 @@ export function evaluateSla(
     anyMeasured = true;
     if (bestTtft === null || ttft < bestTtft) bestTtft = ttft;
     if (bestTps === null || tps > bestTps) bestTps = tps;
+
+    // Through-mesh / native ratio. Only computable when the peer has
+    // gossiped a native baseline for this model (runtime v0.66.49+ and
+    // a model that actually fits on one machine). When absent we leave
+    // `ratio = null` and treat the floor as satisfied — a pooled-split
+    // serve or a legacy peer must not be demoted for data it cannot
+    // report.
+    const native = p.native_tps_p50_by_model?.[modelId];
+    const ratio =
+      typeof native === "number" && native > 0 ? tps / native : null;
+    if (ratio !== null && (bestRatio === null || ratio > bestRatio)) {
+      bestRatio = ratio;
+    }
+
     const ttftOk = ttft <= targets.target_ttft_ms_p50;
     const tpsOk = tps >= targets.target_tps_p50;
-    if (ttftOk && tpsOk) {
+    const ratioOk = ratio === null || ratio >= targets.min_native_ratio;
+    if (ttftOk && tpsOk && ratioOk) {
       return {
         meetsSla: true,
         tier,
@@ -223,10 +278,15 @@ export function evaluateSla(
         bestPeerTps: bestTps,
         candidatePeerCount: candidates.length,
         creditPeerId: pickCreditPeerId(modelId, candidates, p.id),
+        bestPeerNativeRatio: ratio,
       };
     }
     if (!ttftOk) anyTtftFail = true;
     if (!tpsOk) anyTpsFail = true;
+    // Only count a ratio failure when it's the *sole* reason this
+    // otherwise-passing peer was demoted; an absolute-threshold miss is
+    // the more informative reason and takes precedence below.
+    if (ttftOk && tpsOk && !ratioOk) anyRatioFail = true;
   }
 
   if (!anyMeasured) {
@@ -238,15 +298,23 @@ export function evaluateSla(
       bestPeerTps: null,
       candidatePeerCount: candidates.length,
       creditPeerId: pickCreditPeerId(modelId, candidates),
+      bestPeerNativeRatio: null,
     };
   }
 
+  // Absolute-threshold failures dominate; `below-native-ratio` is the
+  // residual case where every measured peer was absolutely fine and the
+  // floor was the only thing that demoted the otherwise-passing peer(s).
   const reason: SlaReason =
     anyTtftFail && anyTpsFail
       ? "both-too-low"
       : anyTtftFail
         ? "ttft-too-high"
-        : "tps-too-low";
+        : anyTpsFail
+          ? "tps-too-low"
+          : anyRatioFail
+            ? "below-native-ratio"
+            : "tps-too-low";
 
   return {
     meetsSla: false,
@@ -256,6 +324,7 @@ export function evaluateSla(
     bestPeerTps: bestTps,
     candidatePeerCount: candidates.length,
     creditPeerId: pickCreditPeerId(modelId, candidates),
+    bestPeerNativeRatio: bestRatio,
   };
 }
 

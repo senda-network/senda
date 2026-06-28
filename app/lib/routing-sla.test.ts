@@ -136,6 +136,114 @@ describe("evaluateSla — daily-driver tier (TTFT <= 3000 ms, TPS >= 8)", () => 
   });
 });
 
+describe("evaluateSla — through-mesh / native ratio floor (daily-driver >= 0.6)", () => {
+  const model = "Qwen3-8B-Q4_K_M";
+
+  it("does NOT enforce the floor when the peer reports no native baseline", () => {
+    // No native_tps_p50_by_model → ratio uncomputable. A peer must never
+    // be demoted for data it can't report (pooled split / legacy peer).
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 14 },
+        measured_ttft_ms_p50_by_model: { [model]: 1_800 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(true);
+    expect(result.reason).toBe("meets-sla");
+    expect(result.bestPeerNativeRatio).toBeNull();
+  });
+
+  it("passes and reports the ratio when through-mesh tracks native", () => {
+    // 14 through-mesh / 15 native = 0.93, well above the 0.6 floor — the
+    // ~1.0 solo-serve case where through-mesh ≈ native by construction.
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 14 },
+        measured_ttft_ms_p50_by_model: { [model]: 1_800 },
+        native_tps_p50_by_model: { [model]: 15 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(true);
+    expect(result.reason).toBe("meets-sla");
+    expect(result.bestPeerNativeRatio).toBeCloseTo(14 / 15, 5);
+  });
+
+  it("demotes an absolutely-fast peer that has degraded below its native floor", () => {
+    // 9 through-mesh clears the absolute 8 tok/s bar, but the peer's own
+    // native baseline is 30 tok/s → ratio 0.3 < 0.6. The decode has
+    // collapsed relative to proven capability (saturation/throttling),
+    // so the entry should route around it.
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 9 },
+        measured_ttft_ms_p50_by_model: { [model]: 2_000 },
+        native_tps_p50_by_model: { [model]: 30 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("below-native-ratio");
+    expect(result.bestPeerNativeRatio).toBeCloseTo(0.3, 5);
+  });
+
+  it("prefers an absolute-threshold reason over the ratio reason", () => {
+    // This peer fails the absolute TPS bar (2.5 < 8) AND the ratio
+    // (2.5/30). The more fundamental absolute miss must win.
+    const result = evaluateSla(model, [
+      peer({
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 2.5 },
+        measured_ttft_ms_p50_by_model: { [model]: 2_000 },
+        native_tps_p50_by_model: { [model]: 30 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("tps-too-low");
+  });
+
+  it("routes to a healthy peer even when another has degraded below the floor", () => {
+    const result = evaluateSla(model, [
+      peer({
+        id: "degraded",
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 9 },
+        measured_ttft_ms_p50_by_model: { [model]: 2_000 },
+        native_tps_p50_by_model: { [model]: 30 },
+      }),
+      peer({
+        id: "healthy",
+        hosted_models: [model],
+        measured_tps_p50_by_model: { [model]: 28 },
+        measured_ttft_ms_p50_by_model: { [model]: 1_200 },
+        native_tps_p50_by_model: { [model]: 30 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(true);
+    expect(result.reason).toBe("meets-sla");
+    expect(result.creditPeerId).toBe("healthy");
+    expect(result.bestPeerNativeRatio).toBeCloseTo(28 / 30, 5);
+  });
+
+  it("does not enforce the floor on the experimental tier (floor = 0)", () => {
+    // Experimental tier sets min_native_ratio = 0, so even a heavily
+    // degraded ratio passes as long as the (very lenient) absolute
+    // thresholds are met.
+    const experimental = "Qwen3-0.6B-Q4_K_M";
+    const result = evaluateSla(experimental, [
+      peer({
+        hosted_models: [experimental],
+        measured_tps_p50_by_model: { [experimental]: 1 },
+        measured_ttft_ms_p50_by_model: { [experimental]: 5_000 },
+        native_tps_p50_by_model: { [experimental]: 100 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(true);
+    expect(result.reason).toBe("meets-sla");
+  });
+});
+
 describe("evaluateSla — capacity tier (TTFT <= 15000 ms, TPS >= 0.8)", () => {
   const model = "DeepSeek-R1-Distill-70B-Q4_K_M";
 
