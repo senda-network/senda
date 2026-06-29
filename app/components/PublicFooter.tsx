@@ -25,6 +25,12 @@ export function PublicFooter() {
             How it works
           </Link>
           <Link
+            href="/docs"
+            className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            Docs
+          </Link>
+          <Link
             href="/status"
             className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
           >
@@ -59,6 +65,18 @@ export function PublicFooter() {
             className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
           >
             Download
+          </Link>
+          <Link
+            href="/privacy"
+            className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            Privacy
+          </Link>
+          <Link
+            href="/terms"
+            className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
+          >
+            Terms
           </Link>
           <a
             href="https://github.com/closedmesh/closedmesh-llm"
