@@ -28,6 +28,12 @@ next-env.d.ts
 # weekly reports, task ledger, editor/agent tooling configs. Not part of the
 # public project; kept out of the public repo. Local tree only.
 internal/
+# Living Agency command-center artifacts (project charter + ledger) and other
+# internal strategy docs — local-only, must never reach the public repo.
+.agency/
+AGENCY.md
+.cursor/rules/agency-state.mdc
+docs/confidential-inference.md
 # Ignore all Cursor internals except shared agent guidance (rules + skills)
 .cursor/*
 !.cursor/rules
