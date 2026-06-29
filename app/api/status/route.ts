@@ -250,6 +250,12 @@ export type NodeSummary = {
    * peers the entry node has probed; absent/empty on pre-v0.66.79 runtimes.
    */
   verifyByModel?: Record<string, VerifyVerdict>;
+  /**
+   * Phase 3.2 persistent reputation scores keyed by model id. Present only for
+   * peers the entry node has probed at least once; absent on pre-v0.66.80
+   * runtimes. The accumulator survives restarts, unlike `verifyByModel`.
+   */
+  reputationByModel?: Record<string, Reputation>;
 };
 
 export type MeshVisibility = {
@@ -302,6 +308,25 @@ export type VerifyVerdict = {
   mode: string;
   reason?: string | null;
   checkedAtUnixSecs: number;
+};
+
+/**
+ * Phase 3.2 reputation score for one (peer, model), mirroring
+ * `ReputationPayload` in the runtime's `closedmesh/src/api/status.rs`. Unlike
+ * {@link VerifyVerdict} (latest probe only, expires after an hour), this is the
+ * persistent EWMA accumulator the entry folds every sample-and-verify verdict
+ * into — so it survives entry restarts and reflects a peer's track record, not
+ * just its last probe. `grade` is the coarse bucket the UI keys on; `score` is
+ * the [0,1] EWMA and `samples` the number of conclusive probes behind it.
+ */
+export type Reputation = {
+  grade: "trusted" | "watch" | "unproven" | string;
+  score: number;
+  samples: number;
+  matches: number;
+  mismatches: number;
+  lastVerdict: string;
+  updatedAtUnixSecs: number;
 };
 
 type Status = {
@@ -393,6 +418,12 @@ type RuntimePeer = {
    * `normalizeVerifyByModel` maps that to undefined so the UI shows nothing.
    */
   verify_by_model?: Record<string, RuntimeVerify>;
+  /**
+   * Phase 3.2 persistent reputation scores (runtime v0.66.80+), keyed by model
+   * id. Absent on older peers and on peers the verifier hasn't probed yet;
+   * `normalizeReputationByModel` maps that to undefined.
+   */
+  reputation_by_model?: Record<string, RuntimeReputation>;
 };
 
 type RuntimeModelAd = {
@@ -410,6 +441,16 @@ type RuntimeVerify = {
   mode?: string;
   reason?: string | null;
   checked_at_unix_secs?: number;
+};
+
+type RuntimeReputation = {
+  grade?: string;
+  score?: number;
+  samples?: number;
+  matches?: number;
+  mismatches?: number;
+  last_verdict?: string;
+  updated_at_unix_secs?: number;
 };
 
 type RuntimeGpu = {
@@ -570,6 +611,26 @@ export function normalizeVerifyByModel(
       mode: v.mode ?? "",
       reason: v.reason ?? null,
       checkedAtUnixSecs: v.checked_at_unix_secs ?? 0,
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+export function normalizeReputationByModel(
+  raw: Record<string, RuntimeReputation> | null | undefined,
+): Record<string, Reputation> | undefined {
+  if (!raw) return undefined;
+  const out: Record<string, Reputation> = {};
+  for (const [model, r] of Object.entries(raw)) {
+    if (!r || !r.grade) continue;
+    out[model] = {
+      grade: r.grade,
+      score: r.score ?? 0,
+      samples: r.samples ?? 0,
+      matches: r.matches ?? 0,
+      mismatches: r.mismatches ?? 0,
+      lastVerdict: r.last_verdict ?? "",
+      updatedAtUnixSecs: r.updated_at_unix_secs ?? 0,
     };
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -793,6 +854,9 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     // Phase 3.2 — independent sample-and-verify verdicts. Undefined on
     // pre-v0.66.79 peers and peers the entry hasn't probed.
     verifyByModel: normalizeVerifyByModel(peer.verify_by_model),
+    // Phase 3.2 — persistent reputation accumulator. Undefined on
+    // pre-v0.66.80 peers and peers the entry hasn't probed.
+    reputationByModel: normalizeReputationByModel(peer.reputation_by_model),
   };
 }
 

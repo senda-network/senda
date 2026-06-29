@@ -97,6 +97,33 @@ quietly serving a smaller one or canned text. Verification uses only
 synthetic probes, never real user prompts. The mechanism lives in the
 runtime ([model-identity verification](https://github.com/closedmesh/closedmesh-llm/blob/main/docs/VERIFICATION.md)).
 
+## Privacy & trust
+
+ClosedMesh keeps prompts off third-party AI APIs, but it's a peer-to-peer
+mesh — not a hosted service behind a privacy contract — so it's worth being
+precise about what that does and doesn't buy you:
+
+- **No third-party AI provider in the default path.** Mesh-routed requests
+  run on contributor hardware; no OpenAI / Anthropic / Google in the loop.
+- **Pseudonymous.** No signup, no login. A peer doesn't know who you are
+  unless your prompt reveals it, and sessions aren't tied to an identity.
+- **The serving peer reads your prompt.** Inference requires it, and the
+  operator of the peer your session lands on has physical access to that
+  machine. There is no enclave/TEE isolation in the default mesh today, so
+  the honest answer is: for anything you don't want another operator to be
+  able to read, run your own peer — the runtime others run is the runtime
+  you can run yourself.
+- **Verification proves model identity, not non-snooping.** The mesh proves
+  a peer runs the model it claims (synthetic probes only, never your
+  prompts); it does not stop that peer's operator from reading traffic on
+  their own box.
+
+The full threat model is at
+[closedmesh.com/security](https://closedmesh.com/security). An optional,
+opt-in **confidential (TEE-attested) tier** — for sensitive in-house
+workloads that need prompt confidentiality from the peer operator — is on
+the roadmap (design in progress, not yet built).
+
 ## Hardware support
 
 The installer detects your platform and pulls the matching runtime

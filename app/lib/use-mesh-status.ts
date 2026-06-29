@@ -137,6 +137,27 @@ export type VerifyVerdict = {
   checkedAtUnixSecs: number;
 };
 
+/**
+ * Persistent reputation score for one model on a peer (Phase 3.2, runtime
+ * v0.66.80+). The entry folds every sample-and-verify verdict into an EWMA so a
+ * peer accrues durable trust across many independent probes — and survives
+ * entry restarts, unlike {@link VerifyVerdict} (latest probe, 1h TTL). `grade`
+ * is the coarse bucket the UI chips off:
+ *   - `trusted`  — many conclusive probes, high score; independently verified
+ *   - `watch`    — has produced a mismatch and not yet recovered
+ *   - `unproven` — not enough probes yet to say either way
+ * `score` is the [0,1] EWMA; `samples` the conclusive-probe count behind it.
+ */
+export type Reputation = {
+  grade: "trusted" | "watch" | "unproven" | string;
+  score: number;
+  samples: number;
+  matches: number;
+  mismatches: number;
+  lastVerdict: string;
+  updatedAtUnixSecs: number;
+};
+
 export type NodeSummary = {
   id: string;
   hostname: string | null;
@@ -239,6 +260,12 @@ export type NodeSummary = {
    * for peers awaiting their first probe.
    */
   verifyByModel?: Record<string, VerifyVerdict>;
+  /**
+   * Phase 3.2 persistent reputation scores keyed by model id. Present only for
+   * peers the entry node has probed; absent/empty on pre-v0.66.80 runtimes and
+   * for peers awaiting their first probe. Survives entry restarts.
+   */
+  reputationByModel?: Record<string, Reputation>;
 };
 
 /**

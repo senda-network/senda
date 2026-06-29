@@ -14,7 +14,12 @@ import {
   TIER_DESCRIPTIONS,
   type ModelTier,
 } from "../../lib/model-tiers";
-import type { NodeSummary, ModelAd, VerifyVerdict } from "../../lib/use-mesh-status";
+import type {
+  NodeSummary,
+  ModelAd,
+  VerifyVerdict,
+  Reputation,
+} from "../../lib/use-mesh-status";
 import {
   MIN_PIPELINE_ELECTION_PEER_VERSION,
   peerSupportsPipelineElection,
@@ -298,6 +303,74 @@ function VerifyBadge({ verifyByModel }: { verifyByModel: Record<string, VerifyVe
       title={`Independently verified — the entry node re-ran a byte-identical probe against this peer's live model${matched.length === 1 ? "" : "s"} (${models}) and the returned logits reproduced an independently-generated reference. This peer is genuinely running what it advertises, not a smaller/different model or canned output.`}
     >
       ✓ independently verified
+    </span>
+  );
+}
+
+/**
+ * Phase 3.2 reputation chip. Where {@link VerifyBadge} reflects the *latest*
+ * probe (1h TTL), this surfaces the entry's *durable* reputation accumulator:
+ * an EWMA over every sample-and-verify verdict for the peer, persisted across
+ * entry restarts. It answers "what's this peer's track record?", not just
+ * "did the last probe pass?".
+ *
+ *   - any `watch` model (a mismatch on record, not yet recovered) → amber
+ *   - else any `trusted` model → emerald chip with the aggregate score and
+ *     total probe count (the detail the verify badge can't show)
+ *   - else (only `unproven`, but probes exist) → muted "building" chip so the
+ *     accumulator's progress is visible before it crosses the trust threshold
+ *   - no probes at all → render nothing
+ */
+function ReputationBadge({
+  reputationByModel,
+}: {
+  reputationByModel: Record<string, Reputation>;
+}) {
+  const entries = Object.entries(reputationByModel);
+  if (entries.length === 0) return null;
+
+  const totalSamples = entries.reduce((a, [, r]) => a + r.samples, 0);
+  if (totalSamples === 0) return null;
+  const weighted = entries.reduce((a, [, r]) => a + r.score * r.samples, 0);
+  const avg = weighted / totalSamples;
+  const probeLabel = `${totalSamples} probe${totalSamples === 1 ? "" : "s"}`;
+  const perModel = entries
+    .map(
+      ([m, r]) =>
+        `${m}: ${r.grade} (score ${r.score.toFixed(2)}, ${r.matches}✓/${r.mismatches}✗ over ${r.samples})`,
+    )
+    .join("; ");
+
+  const watch = entries.filter(([, r]) => r.grade === "watch");
+  if (watch.length > 0) {
+    return (
+      <span
+        className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300"
+        title={`Reputation: WATCH. This peer has at least one mismatch on its accumulated record and hasn't recovered above the trust threshold. The score is an EWMA over every probe (survives entry restarts), so a single bad probe doesn't flip it — but a pattern does. Per model — ${perModel}.`}
+      >
+        ⚠ reputation: watch
+      </span>
+    );
+  }
+
+  const trusted = entries.filter(([, r]) => r.grade === "trusted");
+  if (trusted.length > 0) {
+    return (
+      <span
+        className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+        title={`Reputation: TRUSTED. Accumulated trust score ${avg.toFixed(2)} over ${probeLabel} — the entry has independently reproduced this peer's model(s) consistently across many probes, not just once. This is the durable track record (persists across restarts), unlike the instantaneous "independently verified" badge. Per model — ${perModel}.`}
+      >
+        ★ reputation {avg.toFixed(2)} · {probeLabel}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-2 py-0.5 text-[11px] font-medium text-[var(--fg-muted)]"
+      title={`Reputation: building. The entry has probed this peer ${probeLabel} but not enough conclusive samples to mint trust yet (accumulated score ${avg.toFixed(2)}). Per model — ${perModel}.`}
+    >
+      reputation: building · {probeLabel}
     </span>
   );
 }
@@ -948,6 +1021,9 @@ function NodeCard({
           {node.modelAd && <ModelAdBadge ad={node.modelAd} />}
           {node.verifyByModel && (
             <VerifyBadge verifyByModel={node.verifyByModel} />
+          )}
+          {node.reputationByModel && (
+            <ReputationBadge reputationByModel={node.reputationByModel} />
           )}
         </div>
       )}
