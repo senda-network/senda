@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Logo } from "../../components/Logo";
 import { PublicHeader } from "../../components/PublicHeader";
+import { PublicFooter } from "../../components/PublicFooter";
 
 export const metadata: Metadata = {
   title: "ClosedMesh updates",
@@ -302,44 +302,7 @@ export default function LogPage() {
         </ol>
       </main>
 
-      <footer className="border-t border-[var(--border)]">
-        <div className="mx-auto flex max-w-3xl flex-col items-start justify-between gap-6 px-6 py-12 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2.5">
-            <Logo />
-            <div className="text-[12px] text-[var(--fg-muted)]">
-              ClosedMesh — open peer-to-peer LLM mesh.
-            </div>
-          </div>
-          <div className="flex items-center gap-5 text-[12px]">
-            <Link
-              href="/"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              Open chat
-            </Link>
-            <Link
-              href="/status"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              Live status
-            </Link>
-            <Link
-              href="/about"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              How it works
-            </Link>
-            <a
-              href="https://github.com/closedmesh/closedmesh-llm"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              Runtime on GitHub
-            </a>
-          </div>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 }

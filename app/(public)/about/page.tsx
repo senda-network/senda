@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Logo } from "../../components/Logo";
 import { MeshLiveStats } from "../../components/MeshLiveStats";
+import { MeshLiveStatus } from "../../components/MeshLiveStatus";
+import { PublicHeader } from "../../components/PublicHeader";
+import { PublicFooter } from "../../components/PublicFooter";
 import {
   ArchitectureDiagram,
   Feature,
@@ -28,36 +30,7 @@ export const metadata: Metadata = {
 export default function AboutPage() {
   return (
     <div className="min-h-dvh bg-[var(--bg)] text-[var(--fg)]">
-      {/* Top bar */}
-      <header className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur supports-[backdrop-filter]:bg-[var(--bg)]/60">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
-          <Link href="/" className="flex items-center gap-2.5">
-            <Logo />
-            <div className="leading-tight">
-              <div className="text-sm font-semibold tracking-tight">
-                ClosedMesh
-              </div>
-              <div className="text-[11px] text-[var(--fg-muted)]">
-                Open peer-to-peer LLM mesh.
-              </div>
-            </div>
-          </Link>
-          <div className="flex items-center gap-5 text-[12px]">
-            <Link
-              href="/download"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              Download
-            </Link>
-            <Link
-              href="/"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              Open chat →
-            </Link>
-          </div>
-        </div>
-      </header>
+      <PublicHeader status={<MeshLiveStatus variant="header" />} />
 
       {/* Hero */}
       <section className="border-b border-[var(--border)]">
@@ -365,39 +338,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-[var(--border)]">
-        <div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-6 px-6 py-12 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2.5">
-            <Logo />
-            <div className="text-[12px] text-[var(--fg-muted)]">
-              ClosedMesh — open peer-to-peer LLM mesh.
-            </div>
-          </div>
-          <div className="flex items-center gap-5 text-[12px]">
-            <Link
-              href="/"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              Open chat
-            </Link>
-            <Link
-              href="/download"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              Download
-            </Link>
-            <a
-              href="https://github.com/closedmesh/closedmesh-llm"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[var(--fg-muted)] hover:text-[var(--fg)]"
-            >
-              Runtime on GitHub
-            </a>
-          </div>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 }
