@@ -45,9 +45,12 @@ export default function PublicHomePage() {
       <PublicHeader status={<MeshLiveStatus variant="header" />} />
 
       <main>
-        {/* Hero — marketing first, chat embedded as a collapsed composer */}
-        <section id="top" className="border-b border-[var(--border)]">
-          <div className="mx-auto max-w-3xl px-6 py-16 text-center sm:py-24">
+        {/* Hero — headline + chat only; stats live on the art band below */}
+        <section
+          id="top"
+          className="flex min-h-[calc(100svh-8.5rem)] flex-col justify-center border-b border-[var(--border)]"
+        >
+          <div className="mx-auto max-w-3xl px-6 py-14 text-center sm:py-20">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--accent)]">
               Open peer-to-peer LLM mesh
             </div>
@@ -64,21 +67,25 @@ export default function PublicHomePage() {
               provider in the middle.
             </p>
             <div className="mx-auto mt-8 max-w-2xl">
-              <MeshLiveStats />
-            </div>
-            <div className="mx-auto mt-6 max-w-2xl">
               <HeroChat />
             </div>
           </div>
         </section>
 
-        {/* Signature artwork — a path threading a living network */}
-        <ArtBand
-          src="/senda-hero.png"
-          alt="A luminous path winding through a branching, leaf-vein network that dissolves into a constellation of connected nodes"
-          priority
-          className="h-64 sm:h-80 lg:h-[26rem]"
-        />
+        {/* Signature artwork + live stats floating over the image */}
+        <div className="relative border-b border-[var(--border)]">
+          <ArtBand
+            src="/senda-hero.png"
+            alt="A luminous path winding through a branching, leaf-vein network that dissolves into a constellation of connected nodes"
+            priority
+            className="h-72 sm:h-96 lg:h-[28rem]"
+          />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
+            <div className="pointer-events-auto w-full max-w-xl sm:max-w-2xl shadow-[0_24px_60px_-24px_rgba(17,32,26,0.45)]">
+              <MeshLiveStats />
+            </div>
+          </div>
+        </div>
 
         {/* How it works */}
         <section className="border-b border-[var(--border)]">

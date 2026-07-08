@@ -1814,6 +1814,10 @@ export default function StatusPage() {
             <Link href="/metrics" className="text-[var(--accent)] hover:underline">
               Weekly metrics →
             </Link>
+            {" · "}
+            <Link href="/updates" className="text-[var(--accent)] hover:underline">
+              Dev log →
+            </Link>
             {lastUpdated && (
               <span className="ml-1">
                 Updated {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.

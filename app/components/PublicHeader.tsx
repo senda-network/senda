@@ -7,16 +7,14 @@ import { MobileNav, type NavLink } from "./MobileNav";
 const GITHUB_URL = "https://github.com/senda-network/senda-llm";
 
 /**
- * Primary public nav. Ordered as a developer platform reads it: what it is,
- * how to build on it, is it up, what's new, how to join. `Metrics` lives in
- * the footer — it's a niche transparency surface, not top-nav material.
+ * Primary public nav — three first-order links. Updates and Contribute live
+ * off-nav (docs/status and the CTA button respectively); Metrics stays in the
+ * footer as a niche transparency surface.
  */
 const NAV_LINKS: NavLink[] = [
   { href: "/about", label: "How it works" },
   { href: "/docs", label: "Docs" },
   { href: "/status", label: "Status" },
-  { href: "/updates", label: "Updates" },
-  { href: "/contribute", label: "Contribute" },
 ];
 
 /**
@@ -99,7 +97,7 @@ export function PublicHeader({
           </nav>
 
           <Link
-            href="/download"
+            href="/contribute"
             className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-black shadow-[0_6px_18px_-10px_rgba(26,157,95,0.7)] transition hover:brightness-110"
           >
             Run a node
