@@ -17,6 +17,20 @@ export const metadata: Metadata = {
   title: "Senda — open peer-to-peer LLM",
   description:
     "Chat with an LLM served by a peer-to-peer mesh of contributed compute. No third-party API behind it. Run a node yourself or just use the chat.",
+  openGraph: {
+    type: "website",
+    siteName: "Senda",
+    url: "https://senda.network",
+    title: "Senda — your private LLM, on hardware people own",
+    description:
+      "A peer-to-peer mesh that runs open-weight models end-to-end on hardware contributors already own. No third-party AI provider in the middle. Chat in your browser or run a node.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Senda — your private LLM, on hardware people own",
+    description:
+      "A peer-to-peer mesh that runs open-weight models end-to-end on hardware contributors already own. No third-party AI provider in the middle.",
+  },
 };
 
 export default function RootLayout({

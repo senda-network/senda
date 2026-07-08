@@ -12,6 +12,7 @@ import {
   FitCard,
   NumberedStep,
 } from "../components/marketing";
+import { AppShowcase } from "../components/AppShowcase";
 
 export const metadata: Metadata = {
   title: "Senda — your private LLM, on hardware people own",
@@ -125,6 +126,26 @@ export default function PublicHomePage() {
           src="/senda-mesh.png"
           alt="Two glowing clusters of connected nodes linked by curved luminous lines passing through a central node"
         />
+
+        {/* The app — real product screenshots */}
+        <section id="app" className="border-b border-[var(--border)]">
+          <div className="mx-auto max-w-5xl px-6 py-20">
+            <div className="mb-10 max-w-2xl">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
+                The app
+              </div>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+                Chat in the browser. Run a node from the app.
+              </h2>
+              <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
+                Senda is a small native shell around the same mesh you can try
+                at senda.network — chat, manage models, watch the mesh grow, and
+                join as a contributor when you&apos;re ready.
+              </p>
+            </div>
+            <AppShowcase />
+          </div>
+        </section>
 
         {/* Why a mesh — condensed from /about's full property grid */}
         <section className="border-b border-[var(--border)]">

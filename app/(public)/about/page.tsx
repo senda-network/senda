@@ -9,6 +9,7 @@ import {
   Feature,
   NumberedStep,
 } from "../../components/marketing";
+import { AppShowcase } from "../../components/AppShowcase";
 
 export const metadata: Metadata = {
   title: "How Senda works",
@@ -234,6 +235,26 @@ export default function AboutPage() {
               body="Volunteered nodes serve each session end-to-end on whichever peer fits the model. The router auto-routes around offline ones, and can pair two peers via speculative decoding for the mid-tier."
             />
           </div>
+        </div>
+      </section>
+
+      {/* Product screenshots */}
+      <section className="border-b border-[var(--border)]">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <div className="mb-10 max-w-2xl">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--fg-muted)]">
+              The app
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+              What you actually install and use.
+            </h2>
+            <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
+              The desktop app is a thin native shell around the same runtime
+              peers run in production — chat, model management, mesh status, and
+              a one-click path to start contributing.
+            </p>
+          </div>
+          <AppShowcase />
         </div>
       </section>
 
