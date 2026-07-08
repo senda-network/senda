@@ -88,7 +88,9 @@ For one-off llama-server-level fixes (per-launch CLI flag overrides), the saner 
 
 ### Website (senda.network)
 
-> **Vercel does NOT auto-deploy on git push.** Always run manually.
+> **Vercel auto-deploy requires GitHub App access.** If push-to-deploy is
+> off, reconnect at Vercel → Project **senda** → Settings → Git →
+> `senda-network/senda`. Manual deploy always works:
 
 ```bash
 cd /Users/al/apps/senda
@@ -277,7 +279,7 @@ The entry node previously ran with `--auto --publish --mesh-name senda`. That ad
 
 ## Common gotchas
 
-- **Vercel does not auto-deploy.** Always run `vercel --prod` after pushing.
+- **Vercel auto-deploy needs GitHub App access.** If disconnected, reconnect at Project **senda** → Settings → Git. Manual deploy: `vercel --prod` after pushing.
 - **Version bump requires two files**: `Cargo.toml` AND `tauri.conf.json` — they must match or the build fails.
 - **Release versions are real mainline versions.** Desktop app tags are `vX.Y.Z`, not `desktop-v*`; runtime releases use `prerelease=false`, not `*-pre` or candidate versions.
 - **Entry node container is owned by `senda-entry.service`**, not by hand. `docker run`/`docker stop`/`docker rm` will be undone within ~10 s. Always edit the systemd unit and `systemctl restart`.
