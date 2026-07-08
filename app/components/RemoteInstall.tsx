@@ -142,7 +142,7 @@ export function RemoteInstall({ onInstalled }: { onInstalled?: () => void }) {
           className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full opacity-60 transition group-hover:opacity-100"
           style={{
             background:
-              "radial-gradient(circle, rgba(255,122,69,0.18), transparent 70%)",
+              "radial-gradient(circle, rgba(26,157,95,0.18), transparent 70%)",
           }}
         />
         <div className="relative flex items-center justify-between gap-4">
@@ -188,7 +188,7 @@ export function RemoteInstall({ onInstalled }: { onInstalled?: () => void }) {
         className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(255,122,69,0.14), transparent 70%)",
+            "radial-gradient(circle, rgba(26,157,95,0.14), transparent 70%)",
         }}
       />
       <div className="relative mb-4 flex items-start justify-between">
@@ -300,7 +300,7 @@ export function RemoteInstall({ onInstalled }: { onInstalled?: () => void }) {
             <button
               onClick={install}
               disabled={!canSubmit}
-              className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+              className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               Install + join mesh
             </button>
@@ -400,7 +400,7 @@ function RemoteProgress({
         {phase === "done" && (
           <button
             onClick={onClose}
-            className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+            className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110"
           >
             Done
           </button>

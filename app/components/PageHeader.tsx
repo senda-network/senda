@@ -29,7 +29,7 @@ export function PageHeader({
         className="pointer-events-none absolute inset-x-0 top-0 h-24"
         style={{
           background:
-            "radial-gradient(60% 100% at 50% 0%, rgba(255,122,69,0.10), transparent 70%)",
+            "radial-gradient(60% 100% at 50% 0%, rgba(26,157,95,0.10), transparent 70%)",
         }}
       />
       <div className="relative flex h-14 items-center justify-between gap-4 px-6">

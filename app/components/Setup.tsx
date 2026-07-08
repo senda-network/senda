@@ -120,7 +120,7 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(60% 50% at 50% -10%, rgba(255,122,69,0.18), transparent 70%), radial-gradient(40% 30% at 100% 100%, rgba(255,122,69,0.08), transparent 70%)",
+            "radial-gradient(60% 50% at 50% -10%, rgba(26,157,95,0.18), transparent 70%), radial-gradient(40% 30% at 100% 100%, rgba(26,157,95,0.08), transparent 70%)",
         }}
       />
 
@@ -172,7 +172,7 @@ function Hero({
 }) {
   return (
     <div className="flex w-full flex-col items-center">
-      <div className="mb-7 rounded-3xl border border-[var(--border)] bg-[var(--bg-elev)] p-5 shadow-[0_0_0_1px_rgba(255,122,69,0.08),0_20px_60px_-30px_rgba(255,122,69,0.6)]">
+      <div className="mb-7 rounded-3xl border border-[var(--border)] bg-[var(--bg-elev)] p-5 shadow-[0_0_0_1px_rgba(26,157,95,0.08),0_20px_60px_-30px_rgba(26,157,95,0.6)]">
         <Logo size={56} />
       </div>
 
@@ -200,7 +200,7 @@ function Hero({
       <div className="mt-10 flex w-full max-w-md flex-col items-center gap-4">
         <button
           onClick={onInstall}
-          className="w-full rounded-xl bg-[var(--accent)] px-6 py-4 text-base font-semibold text-black shadow-[0_10px_30px_-12px_rgba(255,122,69,0.8)] transition hover:brightness-110"
+          className="w-full rounded-xl bg-[var(--accent)] px-6 py-4 text-base font-semibold text-black shadow-[0_10px_30px_-12px_rgba(26,157,95,0.8)] transition hover:brightness-110"
         >
           Install and join the mesh
         </button>

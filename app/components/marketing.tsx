@@ -8,6 +8,52 @@
  * All of these are pure server components — no client interactivity — so
  * they can be rendered from either a server or client parent.
  */
+import Image from "next/image";
+
+/**
+ * Full-bleed artwork band that punctuates the homepage as you scroll. The
+ * pieces are abstract "path through a living network" studies (leaf-vein
+ * routes, node constellations) in the brand green, generated to extend the
+ * rebrand past a recolor into a visual language. The top/bottom gradient
+ * feathers each image into the page background so it reads as part of the
+ * page, not a pasted-in rectangle.
+ */
+export function ArtBand({
+  src,
+  alt,
+  priority = false,
+  className,
+}: {
+  src: string;
+  alt: string;
+  priority?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`relative w-full overflow-hidden bg-[var(--bg)] ${
+        className ?? "h-56 sm:h-72 lg:h-80"
+      }`}
+    >
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        priority={priority}
+        sizes="100vw"
+        className="object-cover object-center"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(to bottom, var(--bg) 0%, transparent 16%, transparent 84%, var(--bg) 100%)",
+        }}
+      />
+    </div>
+  );
+}
 
 export function Feature({ title, body }: { title: string; body: string }) {
   return (

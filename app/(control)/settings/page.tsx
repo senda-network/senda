@@ -298,7 +298,7 @@ export default function SettingsPage() {
             <button
               onClick={persist}
               disabled={save === "saving" || !settings}
-              className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+              className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               {save === "saving" ? "Saving…" : "Save changes"}
             </button>
@@ -375,7 +375,7 @@ function Toggle({
       className={
         "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 " +
         (checked
-          ? "bg-[var(--accent)] shadow-[0_4px_18px_-6px_rgba(255,122,69,0.8)]"
+          ? "bg-[var(--accent)] shadow-[0_4px_18px_-6px_rgba(26,157,95,0.8)]"
           : "bg-[var(--border)]")
       }
     >

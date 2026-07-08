@@ -15,7 +15,7 @@ export default function NotFound() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(60% 50% at 50% -10%, rgba(255,122,69,0.16), transparent 70%)",
+            "radial-gradient(60% 50% at 50% -10%, rgba(26,157,95,0.16), transparent 70%)",
         }}
       />
       <div className="relative max-w-lg text-center">
@@ -36,7 +36,7 @@ export default function NotFound() {
         <div className="mt-7 flex justify-center gap-3">
           <Link
             href="/"
-            className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+            className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110"
           >
             Open chat
           </Link>

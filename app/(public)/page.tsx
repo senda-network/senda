@@ -7,6 +7,7 @@ import { PublicHeader } from "../components/PublicHeader";
 import { PublicFooter } from "../components/PublicFooter";
 import {
   ArchitectureDiagram,
+  ArtBand,
   Feature,
   FitCard,
   NumberedStep,
@@ -70,6 +71,14 @@ export default function PublicHomePage() {
           </div>
         </section>
 
+        {/* Signature artwork — a path threading a living network */}
+        <ArtBand
+          src="/senda-hero.png"
+          alt="A luminous path winding through a branching, leaf-vein network that dissolves into a constellation of connected nodes"
+          priority
+          className="h-64 sm:h-80 lg:h-[26rem]"
+        />
+
         {/* How it works */}
         <section className="border-b border-[var(--border)]">
           <div className="mx-auto max-w-5xl px-6 py-20">
@@ -111,6 +120,12 @@ export default function PublicHomePage() {
           </div>
         </section>
 
+        {/* Artwork — requests routed between peer clusters through the entry */}
+        <ArtBand
+          src="/senda-mesh.png"
+          alt="Two glowing clusters of connected nodes linked by curved luminous lines passing through a central node"
+        />
+
         {/* Why a mesh — condensed from /about's full property grid */}
         <section className="border-b border-[var(--border)]">
           <div className="mx-auto max-w-5xl px-6 py-20">
@@ -151,6 +166,12 @@ export default function PublicHomePage() {
             </div>
           </div>
         </section>
+
+        {/* Artwork — distributed capacity as living tissue */}
+        <ArtBand
+          src="/senda-capacity.png"
+          alt="A soft organic field of interconnected leaf-vein cells with scattered glowing points where filaments meet"
+        />
 
         {/* Two-sided progression — chat / contribute / earn */}
         <section className="border-b border-[var(--border)]">
@@ -279,7 +300,7 @@ export default function PublicHomePage() {
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="#top"
-                className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_6px_18px_-10px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+                className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_6px_18px_-10px_rgba(26,157,95,0.7)] transition hover:brightness-110"
               >
                 Try the mesh
               </Link>

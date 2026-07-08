@@ -76,7 +76,7 @@ function ControlEmptyState({
         className="pointer-events-none absolute inset-x-0 -top-8 h-40"
         style={{
           background:
-            "radial-gradient(60% 100% at 50% 0%, rgba(255,122,69,0.12), transparent 70%)",
+            "radial-gradient(60% 100% at 50% 0%, rgba(26,157,95,0.12), transparent 70%)",
         }}
       />
       <div className="relative">

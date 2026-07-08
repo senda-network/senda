@@ -780,7 +780,7 @@ function CatalogRow({
                   "rounded-lg px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed " +
                   (isStartup
                     ? "border border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-                    : "bg-[var(--accent)] text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] hover:brightness-110 disabled:opacity-40 disabled:shadow-none")
+                    : "bg-[var(--accent)] text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] hover:brightness-110 disabled:opacity-40 disabled:shadow-none")
                 }
               >
                 {isStartup
@@ -807,7 +807,7 @@ function CatalogRow({
             <button
               onClick={onDownload}
               disabled={downloading}
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               {downloading
                 ? `Downloading… ${download!.percent.toFixed(0)}%`

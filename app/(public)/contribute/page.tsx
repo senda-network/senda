@@ -59,7 +59,7 @@ export default function ContributePage() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 href="/download"
-                className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-[13px] font-semibold text-black shadow-[0_6px_18px_-10px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+                className="rounded-md bg-[var(--accent)] px-5 py-2.5 text-[13px] font-semibold text-black shadow-[0_6px_18px_-10px_rgba(26,157,95,0.7)] transition hover:brightness-110"
               >
                 Download desktop app
               </Link>

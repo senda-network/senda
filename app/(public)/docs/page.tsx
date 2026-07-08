@@ -325,7 +325,7 @@ for chunk in stream:
           <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/download"
-              className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_6px_18px_-10px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+              className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_6px_18px_-10px_rgba(26,157,95,0.7)] transition hover:brightness-110"
             >
               Run a node
             </Link>

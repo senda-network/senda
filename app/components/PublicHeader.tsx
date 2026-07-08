@@ -100,7 +100,7 @@ export function PublicHeader({
 
           <Link
             href="/download"
-            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-black shadow-[0_6px_18px_-10px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+            className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-black shadow-[0_6px_18px_-10px_rgba(26,157,95,0.7)] transition hover:brightness-110"
           >
             Run a node
           </Link>

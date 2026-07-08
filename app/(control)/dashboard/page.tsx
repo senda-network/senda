@@ -1023,7 +1023,7 @@ function UpdateBanner({
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(60% 100% at 0% 0%, rgba(255,122,69,0.16), transparent 70%)",
+            "radial-gradient(60% 100% at 0% 0%, rgba(26,157,95,0.16), transparent 70%)",
         }}
       />
       <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -1054,7 +1054,7 @@ function UpdateBanner({
             <button
               onClick={onDownload}
               disabled={busy}
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {busy
                 ? "Downloading…"
@@ -1065,7 +1065,7 @@ function UpdateBanner({
               href={check.htmlUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110"
             >
               Open release page
             </a>
@@ -1349,7 +1349,7 @@ function ThisNodeCard({
         className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(255,122,69,0.18), transparent 70%)",
+            "radial-gradient(circle, rgba(26,157,95,0.18), transparent 70%)",
         }}
       />
       <div className="relative flex flex-wrap items-start justify-between gap-5">
@@ -1392,7 +1392,7 @@ function ThisNodeCard({
             <button
               disabled={busy !== null || running}
               onClick={onStart}
-              className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {busy === "start" ? "Starting…" : "Start sharing"}
             </button>
@@ -1810,7 +1810,7 @@ function QuickStartCard({
         className="pointer-events-none absolute -left-20 -bottom-20 h-64 w-64 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(255,122,69,0.18), transparent 70%)",
+            "radial-gradient(circle, rgba(26,157,95,0.18), transparent 70%)",
         }}
       />
       <div className="relative flex flex-wrap items-start justify-between gap-5">
@@ -1862,7 +1862,7 @@ function QuickStartCard({
           <button
             onClick={onStart}
             disabled={busy || showProgress}
-            className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {phase.kind === "downloading"
               ? `Downloading… ${phase.percent.toFixed(0)}%`
@@ -2036,7 +2036,7 @@ function ModelLoadingCard({
         style={{
           background: stuck
             ? "radial-gradient(60% 100% at 0% 0%, rgba(251,191,36,0.10), transparent 70%)"
-            : "radial-gradient(60% 100% at 0% 0%, rgba(255,122,69,0.10), transparent 70%)",
+            : "radial-gradient(60% 100% at 0% 0%, rgba(26,157,95,0.10), transparent 70%)",
         }}
       />
       <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -2047,7 +2047,7 @@ function ModelLoadingCard({
               "mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full " +
               (stuck
                 ? "bg-amber-300"
-                : "bg-[var(--accent)] shadow-[0_0_14px_rgba(255,122,69,0.7)]")
+                : "bg-[var(--accent)] shadow-[0_0_14px_rgba(26,157,95,0.7)]")
             }
           >
             {!stuck && (
@@ -2199,7 +2199,7 @@ function ModelReadyCard({
               </a>
               <Link
                 href="/chat"
-                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)] transition hover:brightness-110"
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110"
               >
                 Open chat
               </Link>
@@ -2519,7 +2519,7 @@ function EarningsPreviewCard({
         className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(255,122,69,0.14), transparent 70%)",
+            "radial-gradient(circle, rgba(26,157,95,0.14), transparent 70%)",
         }}
       />
       <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -2769,7 +2769,7 @@ function PublicNoMesh() {
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(60% 50% at 50% -10%, rgba(255,122,69,0.18), transparent 70%)",
+            "radial-gradient(60% 50% at 50% -10%, rgba(26,157,95,0.18), transparent 70%)",
         }}
       />
       <div className="relative max-w-lg text-center">
@@ -2783,7 +2783,7 @@ function PublicNoMesh() {
         <div className="mt-6 flex justify-center gap-3">
           <Link
             href="/download"
-            className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(255,122,69,0.7)]"
+            className="rounded-lg bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)]"
           >
             Download
           </Link>
