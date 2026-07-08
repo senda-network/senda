@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { HeroChat } from "./HomepageChat";
 import { MeshLiveStatus } from "../components/MeshLiveStatus";
-import { MeshLiveStats } from "../components/MeshLiveStats";
 import { PublicHeader } from "../components/PublicHeader";
 import { PublicFooter } from "../components/PublicFooter";
 import {
@@ -45,47 +45,52 @@ export default function PublicHomePage() {
       <PublicHeader status={<MeshLiveStatus variant="header" />} />
 
       <main>
-        {/* Hero — headline + chat only; stats live on the art band below */}
+        {/* Hero — headline + chat; artwork feathers in below */}
         <section
           id="top"
-          className="flex min-h-[calc(100svh-8.5rem)] flex-col justify-center border-b border-[var(--border)]"
+          className="relative flex min-h-[calc(100svh-8.5rem)] flex-col border-b border-[var(--border)]"
         >
-          <div className="mx-auto max-w-3xl px-6 py-14 text-center sm:py-20">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[42%] min-h-[11rem] sm:h-[46%] sm:min-h-[13rem]"
+          >
+            <Image
+              src="/senda-hero.png"
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover object-center"
+            />
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(to bottom, var(--bg) 0%, transparent 28%, transparent 88%, var(--bg) 100%)",
+              }}
+            />
+          </div>
+
+          <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-6 py-12 text-center sm:py-16">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--accent)]">
-              Open peer-to-peer LLM mesh
+              Peer-to-peer LLM mesh
             </div>
-            <h1 className="mt-3 text-balance text-4xl font-semibold leading-[1.1] tracking-tight sm:text-6xl">
+            <h1 className="mt-3 text-balance text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl">
               Your private LLM.
               <span className="block text-[var(--fg-muted)]">
                 On hardware people own.
               </span>
             </h1>
-            <p className="mx-auto mt-5 max-w-xl text-pretty text-[15px] leading-relaxed text-[var(--fg-muted)] sm:text-base">
-              A peer-to-peer mesh of contributed machines running open-weight
-              models end-to-end — private, low-cost inference for summarizing,
-              classifying, and background agent work. No third-party AI
-              provider in the middle.
+            <p className="mx-auto mt-4 max-w-md text-pretty text-[15px] text-[var(--fg-muted)]">
+              Open-weight models, end to end. No third-party API.
             </p>
-            <div className="mx-auto mt-8 max-w-2xl">
+            <div className="mx-auto mt-7 w-full max-w-2xl">
               <HeroChat />
             </div>
           </div>
-        </section>
 
-        {/* Signature artwork + live stats floating over the image */}
-        <div className="relative border-b border-[var(--border)]">
-          <ArtBand
-            src="/senda-hero.png"
-            alt="A luminous path winding through a branching, leaf-vein network that dissolves into a constellation of connected nodes"
-            priority
-            className="h-72 sm:h-96 lg:h-[28rem]"
-          />
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
-            <div className="pointer-events-auto w-full max-w-xl sm:max-w-2xl shadow-[0_24px_60px_-24px_rgba(17,32,26,0.45)]">
-              <MeshLiveStats />
-            </div>
-          </div>
-        </div>
+          <div className="relative z-10 h-28 shrink-0 sm:h-36" aria-hidden />
+        </section>
 
         {/* How it works */}
         <section className="border-b border-[var(--border)]">
