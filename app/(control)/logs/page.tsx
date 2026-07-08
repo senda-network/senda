@@ -54,7 +54,7 @@ export default function LogsPage() {
     <div className="flex min-h-dvh flex-col">
       <PageHeader
         title="Activity"
-        subtitle="What ClosedMesh is doing on this machine — handy if something looks off."
+        subtitle="What Senda is doing on this machine — handy if something looks off."
       />
 
       <main className="flex flex-1 flex-col overflow-hidden">
@@ -150,7 +150,7 @@ function countLines(text: string): number {
 // to hide the cursor, ESC[<n>m for colors) and Braille-glyph spinners
 // (U+2800–U+28FF, e.g. ⠧⠴⠦⠇) that overwrite the previous frame in place.
 // In a real terminal this looks like a single animated line. Once it's
-// captured to closedmesh.out.log via VBS redirection, every redraw becomes
+// captured to senda.out.log via VBS redirection, every redraw becomes
 // a separate physical line and the user sees:
 //
 //   [2K⠧ Preparing download Mixtral-8x7B-Instruct-v0.1.q5_k_m.gguf

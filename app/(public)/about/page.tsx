@@ -11,9 +11,9 @@ import {
 } from "../../components/marketing";
 
 export const metadata: Metadata = {
-  title: "How ClosedMesh works",
+  title: "How Senda works",
   description:
-    "The technical deep dive: why the unit of work is a session and not a token, how peers cooperate, how requests route, what the privacy and trust model actually is, and what ClosedMesh deliberately isn't.",
+    "The technical deep dive: why the unit of work is a session and not a token, how peers cooperate, how requests route, what the privacy and trust model actually is, and what Senda deliberately isn't.",
 };
 
 /**
@@ -50,7 +50,7 @@ export default function AboutPage() {
                 </span>
               </h1>
               <p className="mt-5 max-w-2xl text-pretty text-base leading-relaxed text-[var(--fg-muted)] sm:text-lg">
-                ClosedMesh runs open-weight models end-to-end on the hardware
+                Senda runs open-weight models end-to-end on the hardware
                 contributors already own. The interesting part isn&apos;t that
                 it&apos;s peer-to-peer — plenty of those have failed — it&apos;s
                 that the whole design is built around the one constraint that
@@ -94,11 +94,11 @@ export default function AboutPage() {
             />
             <Feature
               title="Per-session cross-peer traffic is fine"
-              body="A one-second setup and a few-millisecond handoff per thousand tokens is invisible to a user. So ClosedMesh routes a whole session to one peer — it doesn't stitch fragments of a forward pass across slow links mid-decode."
+              body="A one-second setup and a few-millisecond handoff per thousand tokens is invisible to a user. So Senda routes a whole session to one peer — it doesn't stitch fragments of a forward pass across slow links mid-decode."
             />
             <Feature
               title="Speculative decoding is the exception"
-              body="It's the one multi-peer pattern where a single network hop amortises across a whole batch of tokens. That's why it's the only cross-peer cooperation ClosedMesh leans on, and why it's the path to models bigger than one peer can solo."
+              body="It's the one multi-peer pattern where a single network hop amortises across a whole batch of tokens. That's why it's the only cross-peer cooperation Senda leans on, and why it's the path to models bigger than one peer can solo."
             />
           </div>
         </div>
@@ -115,7 +115,7 @@ export default function AboutPage() {
               Two layers, one product.
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              ClosedMesh is split between a thin product surface — the chat UI
+              Senda is split between a thin product surface — the chat UI
               you&apos;re using right now — and a peer-to-peer inference
               runtime that handles model loading, routing, and distribution
               across machines. They&apos;re shipped and versioned separately.
@@ -125,17 +125,17 @@ export default function AboutPage() {
           <div className="grid gap-5 lg:grid-cols-2">
             <LayerCard
               eyebrow="Chat surface"
-              title="ClosedMesh"
+              title="Senda"
               subtitle="Where you actually use the thing."
               points={[
-                "A web chat at closedmesh.com — open it and start typing.",
+                "A web chat at senda.network — open it and start typing.",
                 "A native desktop app that ships the same chat plus the controls for running a node yourself.",
                 "Streaming responses, thread persistence, model picker, OpenAI-compatible API for tools and agents.",
               ]}
             />
             <LayerCard
               eyebrow="Inference runtime · open source"
-              title="ClosedMesh LLM"
+              title="Senda LLM"
               subtitle="The peer-to-peer engine that serves the chat."
               points={[
                 "Runs on machines volunteered to the mesh — Apple Silicon Macs, NVIDIA / AMD / Intel GPU boxes, on-prem workstations.",
@@ -146,12 +146,12 @@ export default function AboutPage() {
               ]}
               footer={
                 <a
-                  href="https://github.com/closedmesh/closedmesh-llm"
+                  href="https://github.com/senda-network/senda-llm"
                   className="text-[12px] text-[var(--accent)] hover:underline"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  github.com/closedmesh/closedmesh-llm →
+                  github.com/senda-network/senda-llm →
                 </a>
               }
             />
@@ -179,7 +179,7 @@ export default function AboutPage() {
           <div className="grid gap-5 sm:grid-cols-2">
             <Feature
               title="Replication — the default"
-              body="One peer serves a whole session end-to-end at full quality. A model that fits on one machine runs there, with zero per-token network overhead. This is the common case and the one ClosedMesh optimises for."
+              body="One peer serves a whole session end-to-end at full quality. A model that fits on one machine runs there, with zero per-token network overhead. This is the common case and the one Senda optimises for."
             />
             <Feature
               title="Speculative pairs — the mid-tier"
@@ -210,7 +210,7 @@ export default function AboutPage() {
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
               Anyone can chat without running anything. Inference is served by
               peers who&apos;ve chosen to contribute compute by running the
-              ClosedMesh LLM runtime on their own hardware. Anybody can be one,
+              Senda LLM runtime on their own hardware. Anybody can be one,
               both, or neither.
             </p>
           </div>
@@ -221,7 +221,7 @@ export default function AboutPage() {
             <NumberedStep
               n={1}
               title="Chat"
-              body="Web at closedmesh.com or in the desktop app. Type a message, get a streamed response. No account, no setup, nothing to install."
+              body="Web at senda.network or in the desktop app. Type a message, get a streamed response. No account, no setup, nothing to install."
             />
             <NumberedStep
               n={2}
@@ -309,10 +309,10 @@ export default function AboutPage() {
               Limits
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-              What ClosedMesh isn&apos;t.
+              What Senda isn&apos;t.
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              Stating the obvious objections before you do. ClosedMesh is for
+              Stating the obvious objections before you do. Senda is for
               latency-tolerant, private, high-volume work — not for everything.
             </p>
           </div>
@@ -320,11 +320,11 @@ export default function AboutPage() {
           <div className="grid gap-5 sm:grid-cols-2">
             <Feature
               title="Not a frontier-model network"
-              body="There are no GPT-class closed weights here. ClosedMesh serves open-weight models, which have caught up on most non-frontier work but aren't the top of the leaderboard."
+              body="There are no GPT-class closed weights here. Senda serves open-weight models, which have caught up on most non-frontier work but aren't the top of the leaderboard."
             />
             <Feature
               title="Not the fastest median chat"
-              body="A hosted API wins on first-token latency for a single quick reply. ClosedMesh is the wrong tool for shaving a second off every message and the right one for work where an instant answer isn't the point."
+              body="A hosted API wins on first-token latency for a single quick reply. Senda is the wrong tool for shaving a second off every message and the right one for work where an instant answer isn't the point."
             />
             <Feature
               title="Not a training network"
@@ -332,7 +332,7 @@ export default function AboutPage() {
             />
             <Feature
               title="Not fungible compute"
-              body="The unit is a session of a specific model served at measured quality — not an interchangeable GPU-second. A token from a 0.6B draft and a token from a 70B verifier are different products, and ClosedMesh prices them that way."
+              body="The unit is a session of a specific model served at measured quality — not an interchangeable GPU-second. A token from a 0.6B draft and a token from a 70B verifier are different products, and Senda prices them that way."
             />
           </div>
         </div>

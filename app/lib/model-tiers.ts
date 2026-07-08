@@ -5,7 +5,7 @@
  *
  *   - `daily_driver`  — models a single solo contributor can serve at a
  *                       chat-viable latency. The default chat model on
- *                       `closedmesh.com` is always a `daily_driver` that
+ *                       `senda.network` is always a `daily_driver` that
  *                       at least one peer is actively serving.
  *   - `capacity`      — large models (32B–70B class) that only fit on
  *                       beefy single peers or pooled split cohorts.
@@ -173,7 +173,7 @@ export const TIER_DESCRIPTIONS: Record<ModelTier, string> = {
  * Illustrative peer-payout rate card, in USD per million completion
  * tokens served, keyed by tier.
  *
- * **These are placeholders, not prices.** ClosedMesh has no payment rail,
+ * **These are placeholders, not prices.** Senda has no payment rail,
  * no credit ledger, and no treasury today (see `internal/STRATEGY.md`
  * Phase 5). They exist only to turn the desktop earnings *preview* — "what
  * your machine served this week" — into a tangible number so a contributor
@@ -262,7 +262,7 @@ export const DEFAULT_DAILY_DRIVER_MODEL = "Qwen3-8B-Q4_K_M";
  * reframe exists to avoid.
  *
  * Resolution order:
- *   1. An explicit `preferred` (operator's `CLOSEDMESH_MODEL`) when it's
+ *   1. An explicit `preferred` (operator's `SENDA_MODEL`) when it's
  *      routable — an explicit pin wins, including a capacity model.
  *   2. The canonical daily-driver if it's routable, else the first
  *      routable daily-driver.

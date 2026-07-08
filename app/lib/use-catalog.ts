@@ -18,11 +18,11 @@ type StoredCatalog = {
 // added. The TTL below means a v1 client could otherwise sit on its stale
 // catalog for up to an hour after each /api/catalog change; bumping the
 // key forces a one-shot invalidation so new models show up immediately.
-const LS_KEY = "closedmesh:catalog-cache:v2";
+const LS_KEY = "senda:catalog-cache:v2";
 // The canonical catalog lives on the public site. The desktop app's
 // bundled controller fetches it directly from the browser — no local
 // proxy — so adding a new model is just `vercel --prod`.
-const CATALOG_URL = "https://closedmesh.com/api/catalog";
+const CATALOG_URL = "https://senda.network/api/catalog";
 // Re-fetch at most once an hour. localStorage gives subsequent dashboard
 // loads a non-bundled first paint; the network fetch in the background
 // keeps it fresh on long-running sessions.
@@ -112,7 +112,7 @@ export function useCatalog(): {
         });
         setState({ catalog: sortCatalog(data.catalog), source: "remote" });
       } catch {
-        // offline / closedmesh.com down — keep whatever we already have
+        // offline / senda.network down — keep whatever we already have
       }
     })();
 

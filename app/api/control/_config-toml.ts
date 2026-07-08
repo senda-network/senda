@@ -3,9 +3,9 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 /**
- * Tiny line-based reader/writer for `~/.closedmesh/config.toml`.
+ * Tiny line-based reader/writer for `~/.senda/config.toml`.
  *
- * The runtime accepts a fairly rich TOML schema (see closedmesh-llm's
+ * The runtime accepts a fairly rich TOML schema (see senda-llm's
  * plugin/config.rs) but the desktop only needs to manage `[[models]]`
  * blocks — the rest stays whatever the user / installer wrote.
  *
@@ -16,7 +16,7 @@ import path from "node:path";
  * (`[gpu]`, `[[plugin]]`, …) byte-for-byte.
  */
 
-export const CONFIG_PATH = path.join(homedir(), ".closedmesh", "config.toml");
+export const CONFIG_PATH = path.join(homedir(), ".senda", "config.toml");
 
 /** Top-level array-of-tables headers we treat as "[[models]] starts". */
 const MODELS_HEADER = /^\s*\[\[\s*models\s*\]\]\s*$/i;
@@ -33,7 +33,7 @@ export type StartupModel = {
    * model to launch in pipeline-parallel mode — workers are pulled from the
    * mesh even if a single host could fit the model alone. Maps 1:1 to the
    * runtime's `force_split` field on `ModelConfigEntry` (see
-   * `closedmesh-llm/closedmesh/src/plugin/config.rs`).
+   * `senda-llm/senda/src/plugin/config.rs`).
    *
    * Omitted (undefined) means "leave the runtime default" — equivalent to
    * `force_split = false`. We keep the optional/undefined distinction so
@@ -160,7 +160,7 @@ export function writeStartupModels(
 }
 
 /**
- * Read `~/.closedmesh/config.toml` from disk, returning `""` if it
+ * Read `~/.senda/config.toml` from disk, returning `""` if it
  * doesn't exist yet — that's a valid first-run state we want to handle
  * by writing a fresh file rather than failing.
  */

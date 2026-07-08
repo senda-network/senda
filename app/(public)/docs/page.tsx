@@ -5,9 +5,9 @@ import { PublicHeader } from "../../components/PublicHeader";
 import { PublicFooter } from "../../components/PublicFooter";
 
 export const metadata: Metadata = {
-  title: "Developer docs — ClosedMesh",
+  title: "Developer docs — Senda",
   description:
-    "Build on ClosedMesh with an OpenAI-compatible API. Run a node and call your local runtime today, or list what the hosted mesh is serving right now. Honest about what's open in early access and what's gated.",
+    "Build on Senda with an OpenAI-compatible API. Run a node and call your local runtime today, or list what the hosted mesh is serving right now. Honest about what's open in early access and what's gated.",
 };
 
 /**
@@ -39,7 +39,7 @@ export default function DocsPage() {
               </span>
             </h1>
             <p className="mt-5 max-w-2xl text-pretty text-base leading-relaxed text-[var(--fg-muted)] sm:text-lg">
-              Every ClosedMesh peer exposes a standard{" "}
+              Every Senda peer exposes a standard{" "}
               <code className="font-mono text-[var(--fg)]">
                 /v1/chat/completions
               </code>{" "}
@@ -63,7 +63,7 @@ export default function DocsPage() {
               What&apos;s open today.
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              ClosedMesh is in early access, so the surfaces aren&apos;t all
+              Senda is in early access, so the surfaces aren&apos;t all
               equally open yet. The fully-open path that works right now is
               running a node and calling your own local runtime — same code,
               same model quality, and the prompt never leaves your machine.
@@ -106,7 +106,7 @@ export default function DocsPage() {
                     </div>
                   </td>
                   <td className="px-5 py-4 font-mono text-[12px]">
-                    https://mesh.closedmesh.com/v1
+                    https://entry.senda.network/v1
                   </td>
                   <td className="px-5 py-4 text-[var(--fg-muted)]">
                     Bearer key
@@ -125,7 +125,7 @@ export default function DocsPage() {
                     </div>
                   </td>
                   <td className="px-5 py-4 font-mono text-[12px]">
-                    closedmesh.com
+                    senda.network
                   </td>
                   <td className="px-5 py-4 text-[var(--fg-muted)]">None</td>
                   <td className="px-5 py-4">
@@ -258,10 +258,10 @@ for chunk in stream:
 
           <div className="flex flex-col gap-6">
             <Block label="What the hosted mesh can serve (OpenAI shape)" lang="bash">
-              {`curl https://mesh.closedmesh.com/v1/models`}
+              {`curl https://entry.senda.network/v1/models`}
             </Block>
             <Block label="Live mesh status — nodes online + routable models" lang="bash">
-              {`curl https://closedmesh.com/api/status`}
+              {`curl https://senda.network/api/status`}
             </Block>
           </div>
         </div>
@@ -330,7 +330,7 @@ for chunk in stream:
               Run a node
             </Link>
             <a
-              href="https://github.com/closedmesh/closedmesh-llm"
+              href="https://github.com/senda-network/senda-llm"
               target="_blank"
               rel="noreferrer"
               className="rounded-lg border border-[var(--border)] bg-[var(--bg-elev)] px-5 py-2.5 text-sm font-medium text-[var(--fg)] transition hover:bg-[var(--bg-elev-2)]"

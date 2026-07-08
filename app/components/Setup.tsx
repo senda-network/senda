@@ -128,7 +128,7 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
         <div className="flex items-center gap-2.5">
           <Logo size={22} />
           <div className="text-sm font-semibold tracking-tight text-[var(--fg)]">
-            ClosedMesh
+            Senda
           </div>
         </div>
 
@@ -182,16 +182,17 @@ function Hero({
         Unlock more capacity for everyone.
       </h1>
       <p className="mt-5 max-w-xl text-pretty text-[15px] leading-relaxed text-[var(--fg-muted)] sm:text-base">
-        Installing ClosedMesh adds your machine&apos;s memory and compute to a
-        collective peer-to-peer computer. The mesh runs open-weight models —
-        including ones too big for any single laptop or workstation — by
-        pooling VRAM across contributors. Your box helps unlock bigger
-        models, and you get to chat with them in return.
+        Installing Senda adds your machine to an open peer-to-peer
+        mesh serving open-weight models. Every chat session runs end-to-end
+        on one capable peer at full quality — the mesh&apos;s job is to route
+        each session to the best machine for it. Your box serves the models
+        it can hold, grows the mesh&apos;s capacity, and you get to chat with
+        everything the mesh serves in return.
       </p>
 
       <div className="mt-7 flex flex-wrap justify-center gap-2 text-[11px]">
-        <Pill>Pool memory across boxes</Pill>
-        <Pill>Run models bigger than any one machine</Pill>
+        <Pill>Full-quality models, one peer per session</Pill>
+        <Pill>Serve the models your hardware fits</Pill>
         <Pill>No third-party AI provider</Pill>
         <Pill>Mac · Linux · Windows</Pill>
       </div>

@@ -41,7 +41,7 @@ fn host_os_label() -> &'static str {
 
 /// Stable string labels for the host CPU architecture. Same role as
 /// `host_os_label`. Apple Silicon is reported as `aarch64` to match
-/// our release artifact names (`ClosedMesh_<ver>_aarch64.dmg`).
+/// our release artifact names (`Senda_<ver>_aarch64.dmg`).
 fn host_arch_label() -> &'static str {
     if cfg!(target_arch = "aarch64") {
         "aarch64"
@@ -55,11 +55,11 @@ fn host_arch_label() -> &'static str {
 /// Filenames the bundled Node.js binary may go by, in resolution order.
 ///
 /// Tauri's `bundle.externalBin` ships the host-platform variant with
-/// the bare prefix name (just `closedmesh-node` / `closedmesh-node.exe`)
+/// the bare prefix name (just `senda-node` / `senda-node.exe`)
 /// when copying it into the .app / .msi / .deb. During `cargo run`
 /// against an unbundled debug binary, the file still lives at its
 /// source path with the target-triple suffix appended (e.g.
-/// `closedmesh-node-aarch64-apple-darwin`), because no bundling step has
+/// `senda-node-aarch64-apple-darwin`), because no bundling step has
 /// run yet. Probe the bundled convention first so the .app starts fast,
 /// then the dev path. The legacy `node` / `node.exe` names are kept as a
 /// last resort so a partial local checkout that hasn't re-fetched the
@@ -72,52 +72,52 @@ fn host_arch_label() -> &'static str {
 /// kill-by-image-name (the only thing NSIS can do reliably) would have
 /// also killed every *other* `node.exe` on the user's machine (Node dev
 /// server, VS Code extension host, Electron renderers). Renaming our
-/// copy to `closedmesh-node.exe` makes the kill-by-name targeted: only
+/// copy to `senda-node.exe` makes the kill-by-name targeted: only
 /// our sidecar matches that image, so the installer can be aggressive
 /// without disturbing the user's environment.
 fn sidecar_node_filename_candidates() -> [&'static str; 4] {
     if cfg!(windows) {
         [
-            "closedmesh-node.exe",
-            concat!("closedmesh-node-", env!("CLOSEDMESH_TARGET_TRIPLE"), ".exe"),
+            "senda-node.exe",
+            concat!("senda-node-", env!("SENDA_TARGET_TRIPLE"), ".exe"),
             "node.exe",
-            concat!("node-", env!("CLOSEDMESH_TARGET_TRIPLE"), ".exe"),
+            concat!("node-", env!("SENDA_TARGET_TRIPLE"), ".exe"),
         ]
     } else {
         [
-            "closedmesh-node",
-            concat!("closedmesh-node-", env!("CLOSEDMESH_TARGET_TRIPLE")),
+            "senda-node",
+            concat!("senda-node-", env!("SENDA_TARGET_TRIPLE")),
             "node",
-            concat!("node-", env!("CLOSEDMESH_TARGET_TRIPLE")),
+            concat!("node-", env!("SENDA_TARGET_TRIPLE")),
         ]
     }
 }
 
 /// Bearer token baked in at compile time.
 ///
-/// In CI release builds the pipeline sets `CLOSEDMESH_RUNTIME_TOKEN` as a
+/// In CI release builds the pipeline sets `SENDA_RUNTIME_TOKEN` as a
 /// build secret so the value is embedded in the binary rather than relying
 /// on the user's shell environment. This is what lets the bundled sidecar
-/// authenticate against the public mesh entry node (`mesh.closedmesh.com`)
+/// authenticate against the public mesh entry node (`entry.senda.network`)
 /// out of the box — the token is never in source, only in CI secrets.
 ///
 /// In local dev builds (no env var at compile time) this is `None` and the
 /// sidecar talks to the local runtime at 127.0.0.1:9337 without auth.
-const BAKED_RUNTIME_TOKEN: Option<&str> = option_env!("CLOSEDMESH_RUNTIME_TOKEN");
+const BAKED_RUNTIME_TOKEN: Option<&str> = option_env!("SENDA_RUNTIME_TOKEN");
 
 /// Env vars that select which runtime the bundled Next.js controller
 /// proxies to. We forward them from the desktop process to the Node
 /// sidecar so a release build can ship pointed at the public mesh
-/// (`https://mesh.closedmesh.com/v1`) by setting them at launch, while
+/// (`https://entry.senda.network/v1`) by setting them at launch, while
 /// dev builds with no env set keep the existing local default
 /// (`http://127.0.0.1:9337/v1`). The token is the bearer secret shared
 /// with whatever auth gateway sits in front of the public mesh; keeping
 /// it on the desktop side rather than baked into the controller bundle
 /// means we can rotate it without re-shipping the .app.
 const RUNTIME_TARGET_ENV_KEYS: &[&str] = &[
-    "CLOSEDMESH_RUNTIME_URL",
-    "CLOSEDMESH_RUNTIME_TOKEN",
-    "CLOSEDMESH_ADMIN_URL",
+    "SENDA_RUNTIME_URL",
+    "SENDA_RUNTIME_TOKEN",
+    "SENDA_ADMIN_URL",
 ];
 
 /// The port we'd like the bundled controller to bind.
@@ -166,8 +166,8 @@ fn find_node_binary() -> io::Result<PathBuf> {
     }
 
     // Dev fallback: running `cargo run` from desktop/ leaves the binary
-    // at desktop/target/{debug,release}/closedmesh, with the sidecar
-    // staged at desktop/sidecar/binaries/closedmesh-node-<triple>.
+    // at desktop/target/{debug,release}/senda, with the sidecar
+    // staged at desktop/sidecar/binaries/senda-node-<triple>.
     if let Some(workspace) = dir.parent().and_then(|d| d.parent()) {
         let sidecar_dir = workspace.join("sidecar").join("binaries");
         for name in candidates {
@@ -200,7 +200,7 @@ fn find_controller_dir() -> io::Result<PathBuf> {
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "current_exe has no parent"))?;
 
-    // macOS .app bundle:  Contents/MacOS/closedmesh
+    // macOS .app bundle:  Contents/MacOS/senda
     //   → resources at:   Contents/Resources/sidecar/controller/
     if cfg!(target_os = "macos") {
         if let Some(bundle_resources) = exe_dir
@@ -285,7 +285,7 @@ impl Sidecar {
             // Next.js standalone reads HOSTNAME / PORT and binds there.
             // 127.0.0.1 (not 0.0.0.0) is deliberate — the controller is
             // only meant to be reached from this machine; cross-origin
-            // calls from closedmesh.com still go through `localhost` per
+            // calls from senda.network still go through `localhost` per
             // the W3C "potentially trustworthy origin" rule.
             .env("PORT", port.to_string())
             .env("HOSTNAME", "127.0.0.1")
@@ -294,16 +294,16 @@ impl Sidecar {
             // Tell the bundled controller what version of the .app
             // it's running inside, plus enough about the host OS/arch
             // for the in-app updater to pick the right release asset
-            // off our GitHub releases (e.g. `ClosedMesh_<ver>_aarch64.dmg`
+            // off our GitHub releases (e.g. `Senda_<ver>_aarch64.dmg`
             // vs `_x64-setup.exe`). The controller reads these in
             // /api/control/update-check.
-            .env("CLOSEDMESH_APP_VERSION", env!("CARGO_PKG_VERSION"))
-            .env("CLOSEDMESH_HOST_OS", host_os_label())
-            .env("CLOSEDMESH_HOST_ARCH", host_arch_label());
+            .env("SENDA_APP_VERSION", env!("CARGO_PKG_VERSION"))
+            .env("SENDA_HOST_OS", host_os_label())
+            .env("SENDA_HOST_ARCH", host_arch_label());
 
         // Forward runtime-target env vars when set in the parent process.
         // This is what lets the .app talk to a remote mesh entry point
-        // (e.g. `https://mesh.closedmesh.com/v1`) instead of the default
+        // (e.g. `https://entry.senda.network/v1`) instead of the default
         // local `127.0.0.1:9337` runtime — useful both for production
         // builds that ship pointed at the public mesh and for staging /
         // dev where we want the bundled controller pointed at a remote
@@ -324,7 +324,7 @@ impl Sidecar {
         // In dev builds this is None so local-runtime auth is never forced.
         if let Some(token) = BAKED_RUNTIME_TOKEN {
             if !token.is_empty() {
-                command.env("CLOSEDMESH_RUNTIME_TOKEN", token);
+                command.env("SENDA_RUNTIME_TOKEN", token);
             }
         }
 
@@ -366,7 +366,7 @@ impl Sidecar {
         // and attaches the child to it — so users were getting a permanent
         // black `node.exe` window sitting next to the app for the entire
         // session, plus a flash for every short-lived child the runtime then
-        // spawned (`closedmesh.exe`, `tar.exe`, `rpc-server.exe`,
+        // spawned (`senda.exe`, `tar.exe`, `rpc-server.exe`,
         // `llama-server.exe`, …). On lower-end boxes the cascade was reported
         // as "the app started opening terminals like crazy until it crashed
         // the computer".

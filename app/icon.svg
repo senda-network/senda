@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Source-of-truth icon for ClosedMesh.app / ClosedMesh.msi / ClosedMesh.AppImage.
+  Source-of-truth icon for Senda.app / Senda.msi / Senda.AppImage.
 
   scripts/svg-to-png.mjs rasterizes this SVG to icons/source.png at 1024x1024,
   then `tauri icon` fans the PNG out into all the per-platform variants the

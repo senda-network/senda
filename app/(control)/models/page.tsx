@@ -458,7 +458,7 @@ export default function ModelsPage() {
 
           <Section
             title="Catalog"
-            hint="Hand-picked models that work well on ClosedMesh. Big ones run pooled across contributors — no single beefy box required."
+            hint="Hand-picked models that work well on Senda. Big ones run pooled across contributors — no single beefy box required."
           >
             <ul className="space-y-2">
               {remoteCatalog.map((m) => (

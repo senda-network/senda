@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../_lib";
+import { findSendaBin, isPublic, runSenda } from "../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
  * Joins an existing mesh by re-launching the service with `--join <token>`.
  * Mirrors what the CLI hint in the README tells users to run manually:
  *
- *   closedmesh serve --join <invite-token>
+ *   senda serve --join <invite-token>
  */
 export async function POST(req: Request) {
   if (isPublic) {
@@ -44,17 +44,17 @@ export async function POST(req: Request) {
     );
   }
 
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     return NextResponse.json(
-      { ok: false, message: "closedmesh binary not found." },
+      { ok: false, message: "senda binary not found." },
       { status: 404 },
     );
   }
 
   // Stop the current service first so we can re-attach with the new token.
-  await runClosedmesh(bin, ["service", "stop"], 6_000);
-  const result = await runClosedmesh(
+  await runSenda(bin, ["service", "stop"], 6_000);
+  const result = await runSenda(
     bin,
     ["service", "start", "--join", token],
     20_000,

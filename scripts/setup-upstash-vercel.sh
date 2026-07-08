@@ -26,7 +26,7 @@ vercel env pull .env.local --yes
 
 if ! grep -qE 'UPSTASH_REDIS_REST_URL|KV_REST_API_URL' .env.local 2>/dev/null; then
   echo "[setup-upstash] No Redis URL in .env.local yet." >&2
-  echo "  Open https://vercel.com/dashboard → closedmesh → Storage → Upstash → Redis" >&2
+  echo "  Open https://vercel.com/dashboard → senda → Storage → Upstash → Redis" >&2
   echo "  Create a database, link to project, then re-run: vercel env pull .env.local --yes" >&2
   exit 1
 fi

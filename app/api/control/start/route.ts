@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { extractStartError, findClosedmeshBin, isPublic, runClosedmesh } from "../_lib";
+import { extractStartError, findSendaBin, isPublic, runSenda } from "../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,30 +16,30 @@ export async function POST() {
       { status: 403 },
     );
   }
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     return NextResponse.json(
-      { ok: false, message: "closedmesh binary not found." },
+      { ok: false, message: "senda binary not found." },
       { status: 404 },
     );
   }
 
-  let result = await runClosedmesh(bin, ["service", "start"]);
+  let result = await runSenda(bin, ["service", "start"]);
 
   // On a fresh machine the launchd plist may not yet exist, causing
   // `service start` → `launchctl bootstrap` to fail with exit code 5 (EIO).
   // Run `service install` (which writes the plist) and retry once.
   if (!result.ok && isBootstrapError(result.stderr || result.stdout || "")) {
-    const install = await runClosedmesh(bin, ["service", "install"], 15_000);
+    const install = await runSenda(bin, ["service", "install"], 15_000);
     if (install.ok) {
-      result = await runClosedmesh(bin, ["service", "start"]);
+      result = await runSenda(bin, ["service", "start"]);
     }
   }
 
   const rawError = result.stderr || result.stdout || "";
   return NextResponse.json({
     ok: result.ok,
-    message: result.ok ? "ClosedMesh started." : extractStartError(rawError),
+    message: result.ok ? "Senda started." : extractStartError(rawError),
     output: [result.stdout, result.stderr].filter(Boolean).join("\n"),
   });
 }

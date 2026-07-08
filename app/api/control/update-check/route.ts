@@ -12,16 +12,16 @@ export const dynamic = "force-dynamic";
  * In-app updater check.
  *
  * Reads the running app's version + host OS/arch from env vars set by
- * the Tauri shell when it spawned this controller (`CLOSEDMESH_APP_VERSION`,
- * `CLOSEDMESH_HOST_OS`, `CLOSEDMESH_HOST_ARCH`). Fetches the latest
+ * the Tauri shell when it spawned this controller (`SENDA_APP_VERSION`,
+ * `SENDA_HOST_OS`, `SENDA_HOST_ARCH`). Fetches the latest
  * release info from the public website's `/api/desktop-release` (which
  * is itself a 5-min ISR cache over the GitHub Releases API), compares
  * versions, and surfaces the right asset for this host.
  *
  * The dashboard polls this on mount + once an hour. Hitting the local
- * controller (rather than `closedmesh.com/api/desktop-release` directly
+ * controller (rather than `senda.network/api/desktop-release` directly
  * from the browser) keeps everything same-origin and lets us layer on
- * environment-aware logic (e.g. respecting `CLOSEDMESH_UPDATE_CHANNEL`
+ * environment-aware logic (e.g. respecting `SENDA_UPDATE_CHANNEL`
  * once we ship beta/canary streams).
  */
 
@@ -53,13 +53,13 @@ type UpdateCheckResp =
     };
 
 const RELEASE_API_URL =
-  process.env.CLOSEDMESH_RELEASE_API_URL ??
-  "https://closedmesh.com/api/desktop-release";
+  process.env.SENDA_RELEASE_API_URL ??
+  "https://senda.network/api/desktop-release";
 
 export async function GET() {
-  const currentVersion = (process.env.CLOSEDMESH_APP_VERSION ?? "").trim();
-  const hostOs = (process.env.CLOSEDMESH_HOST_OS ?? "").trim();
-  const hostArch = (process.env.CLOSEDMESH_HOST_ARCH ?? "").trim();
+  const currentVersion = (process.env.SENDA_APP_VERSION ?? "").trim();
+  const hostOs = (process.env.SENDA_HOST_OS ?? "").trim();
+  const hostArch = (process.env.SENDA_HOST_ARCH ?? "").trim();
 
   if (isPublic) {
     return NextResponse.json<UpdateCheckResp>(

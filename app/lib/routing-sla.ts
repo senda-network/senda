@@ -333,7 +333,7 @@ export function evaluateSla(
 // ---------------------------------------------------------------------------
 //
 // The gate needs the current peer list on every chat request, but we
-// don't want to add a 200–500 ms round-trip to `mesh.closedmesh.com`
+// don't want to add a 200–500 ms round-trip to `entry.senda.network`
 // in front of every stream. A small in-memory cache with a short TTL
 // is enough — peer marketplace metrics gossip slowly (samples roll up
 // over an hour) so a 5-second TTL is essentially free correctness-wise
@@ -354,9 +354,9 @@ let inflight: Promise<SlaPeer[]> | null = null;
 
 function meshStatusUrl(): string {
   const raw =
-    process.env.CLOSEDMESH_KPI_STATUS_URL?.trim() ||
-    process.env.CLOSEDMESH_MESH_DISCOVERY_URL?.trim() ||
-    "https://mesh.closedmesh.com";
+    process.env.SENDA_KPI_STATUS_URL?.trim() ||
+    process.env.SENDA_MESH_DISCOVERY_URL?.trim() ||
+    "https://entry.senda.network";
   // Accept either base or full /api/status; coerce to the full path.
   if (/\/api\/status$/.test(raw)) return raw;
   return raw.replace(/\/+$/, "") + "/api/status";

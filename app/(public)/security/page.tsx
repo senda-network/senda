@@ -4,9 +4,9 @@ import { PublicHeader } from "../../components/PublicHeader";
 import { PublicFooter } from "../../components/PublicFooter";
 
 export const metadata: Metadata = {
-  title: "Security & threat model — ClosedMesh",
+  title: "Security & threat model — Senda",
   description:
-    "An honest account of what ClosedMesh protects, what it does not, how peer verification works, and how this compares to centralized APIs and attestation-based marketplaces.",
+    "An honest account of what Senda protects, what it does not, how peer verification works, and how this compares to centralized APIs and attestation-based marketplaces.",
 };
 
 /**
@@ -30,7 +30,7 @@ export default function SecurityPage() {
             Threat model &amp; trust boundaries
           </h1>
           <p className="mt-4 text-pretty text-[15px] leading-relaxed text-[var(--fg-muted)]">
-            ClosedMesh is a peer-to-peer inference mesh, not a hosted API
+            Senda is a peer-to-peer inference mesh, not a hosted API
             behind a privacy guarantee. This page states what that means in
             practice — including what we do not protect against today.
           </p>
@@ -43,14 +43,14 @@ export default function SecurityPage() {
               <strong className="font-medium text-[var(--fg)]">
                 serving peer must read your prompt
               </strong>{" "}
-              to run inference. That peer runs the open-source ClosedMesh LLM
+              to run inference. That peer runs the open-source Senda LLM
               runtime on hardware the operator controls. Unlike a centralized
               API where one vendor contractually limits access, each mesh peer
               is a separate operator with physical access to the machine
               serving your session.
             </p>
             <p>
-              ClosedMesh does <em>not</em> today provide hardened enclaves,
+              Senda does <em>not</em> today provide hardened enclaves,
               TEE attestation, or encrypted-inference guarantees that would
               prevent a malicious operator from inspecting traffic on their
               own box. If you need prompts to never be readable by third
@@ -81,12 +81,12 @@ export default function SecurityPage() {
                 </strong>{" "}
                 The inference stack is auditable at{" "}
                 <a
-                  href="https://github.com/closedmesh/closedmesh-llm"
+                  href="https://github.com/senda-network/senda-llm"
                   target="_blank"
                   rel="noreferrer"
                   className="text-[var(--accent)] hover:underline"
                 >
-                  closedmesh/closedmesh-llm
+                  senda-network/senda-llm
                 </a>
                 . Operators and users can inspect what runs on a peer before
                 trusting it.
@@ -146,7 +146,7 @@ export default function SecurityPage() {
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--bg-elev)] text-[11px] uppercase tracking-wider text-[var(--fg-muted)]">
                     <th className="px-4 py-3 font-medium">Dimension</th>
-                    <th className="px-4 py-3 font-medium">ClosedMesh</th>
+                    <th className="px-4 py-3 font-medium">Senda</th>
                     <th className="px-4 py-3 font-medium">
                       Centralized API
                     </th>
@@ -190,7 +190,7 @@ export default function SecurityPage() {
               </table>
             </div>
             <p className="mt-4 text-[14px]">
-              ClosedMesh optimizes for{" "}
+              Senda optimizes for{" "}
               <strong className="font-medium text-[var(--fg)]">
                 open mesh supply on hardware people already own
               </strong>{" "}
@@ -219,14 +219,14 @@ export default function SecurityPage() {
             <p>
               Security vulnerabilities in the runtime or website:{" "}
               <a
-                href="https://github.com/closedmesh/closedmesh-llm/security"
+                href="https://github.com/senda-network/senda-llm/security"
                 target="_blank"
                 rel="noreferrer"
                 className="text-[var(--accent)] hover:underline"
               >
                 GitHub Security Advisories
               </a>{" "}
-              on <code className="text-[13px]">closedmesh-llm</code>. Mesh
+              on <code className="text-[13px]">senda-llm</code>. Mesh
               misbehavior (peers serving wrong models, suspicious routing): note
               the peer hostname and model on{" "}
               <Link href="/status" className="text-[var(--accent)] hover:underline">

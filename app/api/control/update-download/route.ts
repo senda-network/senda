@@ -13,10 +13,10 @@ export const dynamic = "force-dynamic";
 /**
  * Download an installer for the in-app updater and hand it to the OS.
  *
- *   POST { url: "https://github.com/.../ClosedMesh_0.1.9_aarch64.dmg",
- *          filename: "ClosedMesh_0.1.9_aarch64.dmg" }
+ *   POST { url: "https://github.com/.../Senda_0.1.9_aarch64.dmg",
+ *          filename: "Senda_0.1.9_aarch64.dmg" }
  *
- * Streams the file to `~/Downloads/closedmesh-updates/<filename>` (we
+ * Streams the file to `~/Downloads/senda-updates/<filename>` (we
  * keep our own subdir so the user has one obvious place to look if
  * something goes wrong), then `open`s it. On macOS that mounts the
  * .dmg and pops the drag-to-Applications window; on Windows it kicks
@@ -131,7 +131,7 @@ export async function POST(req: Request) {
   const downloadsDir = path.join(
     os.homedir(),
     "Downloads",
-    "closedmesh-updates",
+    "senda-updates",
   );
   try {
     await fs.mkdir(downloadsDir, { recursive: true });

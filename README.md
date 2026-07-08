@@ -1,9 +1,9 @@
-# ClosedMesh
+# Senda
 
 **Open peer-to-peer LLM. Anyone can chat. Anyone with a capable machine
 can run a node and add compute to the mesh.**
 
-ClosedMesh is one open mesh of laptops, workstations, and GPU boxes
+Senda is one open mesh of laptops, workstations, and GPU boxes
 serving open-weight models. The chat UI runs in any browser; inference
 runs end-to-end on a peer in the network whose hardware fits the model.
 There's no central GPU cluster, no cloud provider account, no
@@ -24,20 +24,20 @@ match. CUDA / ROCm / Vulkan boxes happily join too — the mesh routes
 each request to whichever peer can serve it best.
 
 This repo contains the chat surface — a Next.js app deployed at
-[closedmesh.com](https://closedmesh.com) and bundled inside the
-[ClosedMesh desktop app](https://closedmesh.com/download). The
+[senda.network](https://senda.network) and bundled inside the
+[Senda desktop app](https://senda.network/download). The
 peer-to-peer inference runtime lives at
-[`closedmesh/closedmesh-llm`](https://github.com/closedmesh/closedmesh-llm)
-and ships as the `closedmesh` binary.
+[`senda-network/senda-llm`](https://github.com/senda-network/senda-llm)
+and ships as the `senda` binary.
 
 ## Use it
 
 Three ways, pick one:
 
-- **Just chat.** Open [closedmesh.com](https://closedmesh.com) and type.
+- **Just chat.** Open [senda.network](https://senda.network) and type.
   No install, no account, no setup.
 - **Desktop app.** Download from
-  [closedmesh.com/download](https://closedmesh.com/download). Same chat
+  [senda.network/download](https://senda.network/download). Same chat
   as the website plus a tray icon that shows mesh status. If you opt in,
   the app installs the runtime on your machine — chat works offline and
   your hardware contributes to the mesh.
@@ -45,13 +45,13 @@ Three ways, pick one:
 
   ```bash
   # macOS / Linux / WSL2
-  curl -fsSL https://closedmesh.com/install | sh
+  curl -fsSL https://senda.network/install | sh
 
   # Windows (PowerShell, no admin needed)
-  iwr -useb https://closedmesh.com/install.ps1 | iex
+  iwr -useb https://senda.network/install.ps1 | iex
   ```
 
-  Add `-s -- --service` (or `closedmesh-install -Service` on Windows) to
+  Add `-s -- --service` (or `senda-install -Service` on Windows) to
   register an autostart unit. The node joins the public mesh on launch
   and the desktop app opens the local controller.
 
@@ -59,9 +59,9 @@ Three ways, pick one:
 
 ```mermaid
 flowchart LR
-    Chat["Chat<br/>closedmesh.com or .app"]
+    Chat["Chat<br/>senda.network or .app"]
     Entry["Mesh entry<br/>OpenAI-compatible /v1<br/>capability-aware router"]
-    Peers["ClosedMesh LLM peers<br/>Mac · CUDA · Vulkan · ROCm · CPU"]
+    Peers["Senda LLM peers<br/>Mac · CUDA · Vulkan · ROCm · CPU"]
 
     Chat -->|/api/chat| Entry --> Peers
 ```
@@ -79,14 +79,15 @@ internet. The mesh's job is to find the best peer for each session,
 not to stitch weights across slow links. Offline peers are routed
 around automatically.
 
-The runtime can also pair two peers per session via **speculative
-decoding** — a small fast draft peer proposes tokens that a larger
-verifier peer accepts in batched passes — which is the only multi-peer
-mode that pays off on residential WAN, because the network hop
-amortises across many tokens. Pipeline parallel and MoE expert
-sharding are still in the runtime as a power-user fallback for models
-that don't fit on any single peer (see
-[`closedmesh-llm`](https://github.com/closedmesh/closedmesh-llm)),
+The runtime also supports **speculative decoding** as a same-box
+opt-in — a small draft model proposes tokens that the larger verifier
+model accepts in batched passes. The cross-peer variant (draft on one
+peer, verifier on another) was benchmarked and shelved: even with no
+network hop the best-case speedup measured ~1.3–1.4×, and a WAN
+round-trip per draft→verify cycle erases it. Pipeline parallel and
+MoE expert sharding are still in the runtime as a power-user fallback
+for models that don't fit on any single peer (see
+[`senda-llm`](https://github.com/senda-network/senda-llm)),
 but they are no longer the default route.
 
 Because anyone can join, the mesh **verifies that a peer actually runs
@@ -95,11 +96,11 @@ model-identity fingerprint, and the network re-runs an unpredictable
 synthetic probe and compares — so a peer can't claim a large model while
 quietly serving a smaller one or canned text. Verification uses only
 synthetic probes, never real user prompts. The mechanism lives in the
-runtime ([model-identity verification](https://github.com/closedmesh/closedmesh-llm/blob/main/docs/VERIFICATION.md)).
+runtime ([model-identity verification](https://github.com/senda-network/senda-llm/blob/main/docs/VERIFICATION.md)).
 
 ## Privacy & trust
 
-ClosedMesh keeps prompts off third-party AI APIs, but it's a peer-to-peer
+Senda keeps prompts off third-party AI APIs, but it's a peer-to-peer
 mesh — not a hosted service behind a privacy contract — so it's worth being
 precise about what that does and doesn't buy you:
 
@@ -119,7 +120,7 @@ precise about what that does and doesn't buy you:
   their own box.
 
 The full threat model is at
-[closedmesh.com/security](https://closedmesh.com/security). An optional,
+[senda.network/security](https://senda.network/security). An optional,
 opt-in **confidential (TEE-attested) tier** — for sensitive in-house
 workloads that need prompt confidentiality from the peer operator — is on
 the roadmap (design in progress, not yet built).
@@ -142,7 +143,7 @@ build:
 | WSL2             | x86_64 · NVIDIA           | CUDA    |
 
 You can override the auto-detection with
-`CLOSEDMESH_BACKEND=cuda|rocm|vulkan|cpu` when running the installer.
+`SENDA_BACKEND=cuda|rocm|vulkan|cpu` when running the installer.
 
 ## Run the chat app from this repo
 
@@ -159,13 +160,13 @@ already running, then boots the Next.js dev server.
 
 | env var                            | default                      | what it does                       |
 | ---------------------------------- | ---------------------------- | ---------------------------------- |
-| `CLOSEDMESH_RUNTIME_URL`           | `http://127.0.0.1:9337/v1`   | OpenAI-compat base URL             |
-| `CLOSEDMESH_ADMIN_URL`             | `http://127.0.0.1:3131`      | Admin endpoint used for topology   |
-| `CLOSEDMESH_RUNTIME_TOKEN`         | _(unset)_                    | Bearer token forwarded to the runtime when proxying through a public auth gateway |
-| `CLOSEDMESH_MODEL`                 | _(first model from /models)_ | Pin a specific model id            |
-| `CLOSEDMESH_BIN`                   | _(auto-detected)_            | Path to the `closedmesh` binary    |
+| `SENDA_RUNTIME_URL`           | `http://127.0.0.1:9337/v1`   | OpenAI-compat base URL             |
+| `SENDA_ADMIN_URL`             | `http://127.0.0.1:3131`      | Admin endpoint used for topology   |
+| `SENDA_RUNTIME_TOKEN`         | _(unset)_                    | Bearer token forwarded to the runtime when proxying through a public auth gateway |
+| `SENDA_MODEL`                 | _(first model from /models)_ | Pin a specific model id            |
+| `SENDA_BIN`                   | _(auto-detected)_            | Path to the `senda` binary    |
 | `NEXT_PUBLIC_DEPLOYMENT`           | _(unset)_                    | Set to `public` on Vercel — disables the local-only `/control` pages |
-| `CLOSEDMESH_PUBLIC_ORIGINS`        | `https://closedmesh.com`     | Comma-separated origins allowed to call the controller's `/api/chat` and `/api/status` cross-origin |
+| `SENDA_PUBLIC_ORIGINS`        | `https://senda.network`     | Comma-separated origins allowed to call the controller's `/api/chat` and `/api/status` cross-origin |
 
 The previous `MESH_LLM_URL`, `MESH_CONSOLE_URL`, `MESH_LLM_MODEL`, and
 `FORGEMESH_BIN` names are still honored as deprecated fallbacks.
@@ -174,14 +175,14 @@ The previous `MESH_LLM_URL`, `MESH_CONSOLE_URL`, `MESH_LLM_MODEL`, and
 
 ```
 app/                 — Next.js App Router pages and API routes
-  (public)/          — closedmesh.com pages (home, about, download)
+  (public)/          — senda.network pages (home, about, download)
   (control)/         — local-only dashboard (only loads when running on
                        your own machine via the desktop app or CLI)
   api/chat/          — OpenAI-compatible streaming proxy to the runtime
   api/status/        — node count + loaded models for the status pill
   components/        — UI building blocks
 desktop/             — Tauri 2 desktop shell + bundled controller sidecar
-public/install.sh    — what closedmesh.com/install serves
+public/install.sh    — what senda.network/install serves
 scripts/dev.sh       — one command to bring the whole stack up
 .env.example         — copy to .env.local
 ```

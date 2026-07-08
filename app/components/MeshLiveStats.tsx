@@ -34,7 +34,7 @@ const DEFAULT_STATS: Stats = {
 };
 
 /**
- * Live "ClosedMesh, right now" stats strip used on about / landing pages.
+ * Live "Senda, right now" stats strip used on about / landing pages.
  * Replaces the static "no third-party API" pills with running numbers
  * pulled from the public mesh entry node — pooled memory, contributor
  * count, and how many models are live. Reframes the marketing surface
@@ -126,7 +126,7 @@ export function MeshLiveStats() {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-5">
       <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--accent)]">
-        ClosedMesh, right now
+        Senda, right now
       </div>
       <div className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat value={String(stats.servingCount)} label="serving now" />

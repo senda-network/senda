@@ -21,7 +21,7 @@ export function ChatMessage({ message }: { message: UIMessage }) {
       >
         {!isUser && (
           <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
-            ClosedMesh
+            Senda
           </div>
         )}
         {text || (

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Snapshot ClosedMesh KPIs from /api/status for weekly reports.
+# Snapshot Senda KPIs from /api/status for weekly reports.
 #
 #   ./scripts/snapshot-kpi.sh
 #   ./scripts/snapshot-kpi.sh http://127.0.0.1:3131 Qwen3-32B-Q4_K_M
 #   ./scripts/snapshot-kpi.sh --save
-#   ./scripts/snapshot-kpi.sh https://closedmesh.com/api/status Qwen3-8B-Q4_K_M --save
+#   ./scripts/snapshot-kpi.sh https://senda.network/api/status Qwen3-8B-Q4_K_M --save
 #
 # With --save, writes internal/kpi/YYYY-Www.json (gitignored).
 
@@ -16,8 +16,8 @@ for a in "$@"; do
   if [[ "$a" == "--save" ]]; then SAVE=true; else ARGS+=("$a"); fi
 done
 
-BASE="${ARGS[0]:-${CLOSEDMESH_KPI_STATUS_URL:-https://mesh.closedmesh.com/api/status}}"
-FLAGSHIP="${ARGS[1]:-${CLOSEDMESH_KPI_FLAGSHIP_MODEL:-Qwen3-8B-Q4_K_M}}"
+BASE="${ARGS[0]:-${SENDA_KPI_STATUS_URL:-https://entry.senda.network/api/status}}"
+FLAGSHIP="${ARGS[1]:-${SENDA_KPI_FLAGSHIP_MODEL:-Qwen3-8B-Q4_K_M}}"
 
 # Allow passing full status URL (mesh entry or website proxy path).
 if [[ "$BASE" == */api/status ]]; then

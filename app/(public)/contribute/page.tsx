@@ -11,9 +11,9 @@ import {
 } from "../../lib/model-tiers";
 
 export const metadata: Metadata = {
-  title: "Run a node — ClosedMesh",
+  title: "Run a node — Senda",
   description:
-    "Contribute compute to the ClosedMesh peer-to-peer LLM mesh. Earn credits for tokens served, see live network stats, and install the desktop app or CLI runtime.",
+    "Contribute compute to the Senda peer-to-peer LLM mesh. Earn credits for tokens served, see live network stats, and install the desktop app or CLI runtime.",
 };
 
 /**
@@ -47,7 +47,7 @@ export default function ContributePage() {
               Run a node. Serve the mesh. Earn credits.
             </h1>
             <p className="mt-4 max-w-2xl text-pretty text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              ClosedMesh routes chat and API traffic to peers whose hardware
+              Senda routes chat and API traffic to peers whose hardware
               fits each model. Contributors who serve real sessions accumulate{" "}
               <strong className="font-medium text-[var(--fg)]">credits</strong>{" "}
               — tracked now, redeemable when the payout rail ships. No crypto
@@ -64,7 +64,7 @@ export default function ContributePage() {
                 Download desktop app
               </Link>
               <a
-                href="https://closedmesh.com/install"
+                href="https://senda.network/install"
                 className="rounded-md border border-[var(--border)] bg-[var(--bg-elev)] px-5 py-2.5 text-[13px] font-medium text-[var(--fg)] transition hover:bg-[var(--bg-elev-2)]"
               >
                 Install CLI runtime
@@ -208,10 +208,10 @@ export default function ContributePage() {
             <p className="mt-4 text-[14px] text-[var(--fg-muted)]">
               The installer at{" "}
               <a
-                href="https://closedmesh.com/install"
+                href="https://senda.network/install"
                 className="text-[var(--accent)] hover:underline"
               >
-                closedmesh.com/install
+                senda.network/install
               </a>{" "}
               detects your platform and pulls the matching runtime build.
             </p>
@@ -244,7 +244,7 @@ export default function ContributePage() {
               Questions or want to join the first operator cohort? Open a
               discussion on{" "}
               <a
-                href="https://github.com/closedmesh/closedmesh-llm/discussions"
+                href="https://github.com/senda-network/senda-llm/discussions"
                 target="_blank"
                 rel="noreferrer"
                 className="text-[var(--accent)] hover:underline"

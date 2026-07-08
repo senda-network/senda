@@ -1,4 +1,4 @@
-# ClosedMesh KPI catalog
+# Senda KPI catalog
 
 Reference for choosing weekly headline metrics.
 

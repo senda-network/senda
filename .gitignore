@@ -18,7 +18,7 @@ out/
 build/
 dist/
 # Tauri shell ships a tiny placeholder bundle in desktop/dist so `tauri build`
-# is happy in CI; the real webview loads closedmesh.com via WebviewUrl::External.
+# is happy in CI; the real webview loads senda.network via WebviewUrl::External.
 !desktop/dist/
 .turbo/
 *.tsbuildinfo
@@ -48,7 +48,7 @@ docs/confidential-inference.md
 *.zip
 
 # Model cache and runtime data
-.closedmesh/
+.senda/
 .forgemesh/
 models/*.gguf
 .env.production

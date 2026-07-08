@@ -4,7 +4,7 @@ import { computeMeshShareFromCounters } from "./mesh-share";
 const now = new Date("2026-05-24T12:00:00Z");
 
 function key(servedBy: "mesh" | "fallback", hour: string): string {
-  return `closedmesh:mesh-share:${servedBy}:${hour}`;
+  return `senda:mesh-share:${servedBy}:${hour}`;
 }
 
 describe("computeMeshShareFromCounters", () => {

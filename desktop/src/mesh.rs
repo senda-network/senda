@@ -1,5 +1,5 @@
-//! Talks to the local `closedmesh` runtime — both the admin HTTP API for
-//! status, and the `closedmesh` CLI for service control. Mirrors what the
+//! Talks to the local `senda` runtime — both the admin HTTP API for
+//! status, and the `senda` CLI for service control. Mirrors what the
 //! deprecated Swift `MeshService.swift` did, but cross-platform.
 
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Why this exists: the desktop binary is built with
 /// `windows_subsystem = "windows"`, i.e. no console of its own. When a
-/// console-subsystem child (`closedmesh.exe`, `node.exe`, `tar.exe`,
+/// console-subsystem child (`senda.exe`, `node.exe`, `tar.exe`,
 /// `schtasks.exe`, `taskkill.exe`, `rpc-server.exe`, `llama-server.exe`)
 /// is spawned by such a parent on Windows, the OS allocates a *new*
 /// console window and attaches the child to it. The window flashes for
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 /// Node sidecar, in particular, was a permanently-visible black box on
 /// every user's screen). On a fresh install the desktop spawns a dozen
 /// of these in the first 30 seconds — `tar` to extract the runtime,
-/// `closedmesh --version` to verify it, `closedmesh service start`,
+/// `senda --version` to verify it, `senda service start`,
 /// then the runtime itself spawning `rpc-server` and `llama-server`,
 /// each with its own console — and on a Scheduled-Task autostart loop
 /// (1 min restart interval, 3 retries) a crash-restart cycle multiplies
@@ -127,21 +127,21 @@ struct Capability {
 }
 
 /// Default admin base URL — the runtime's `--console` port on loopback.
-/// Overridden at runtime by the `CLOSEDMESH_ADMIN_URL` env var (the same
+/// Overridden at runtime by the `SENDA_ADMIN_URL` env var (the same
 /// var the bundled sidecar forwards to the Node controller, so the tray
 /// and the dashboard always talk to the same admin endpoint).
 const DEFAULT_ADMIN_BASE_URL: &str = "http://127.0.0.1:3131";
-const REMOTE_CHAT_URL: &str = "https://closedmesh.com";
+const REMOTE_CHAT_URL: &str = "https://senda.network";
 
 /// Resolve the admin `/api/status` URL the tray should poll.
 ///
-/// Reads `CLOSEDMESH_ADMIN_URL` at every call so a release build can
+/// Reads `SENDA_ADMIN_URL` at every call so a release build can
 /// flip the admin endpoint at launch (e.g. point at the public mesh
 /// entry node) without forcing the tray onto a stale value cached at
 /// process start. The poll cadence is 1.5–5 s, so the env lookup is
 /// negligible.
 pub(crate) fn admin_status_url() -> String {
-    resolve_admin_status_url(std::env::var("CLOSEDMESH_ADMIN_URL").ok())
+    resolve_admin_status_url(std::env::var("SENDA_ADMIN_URL").ok())
 }
 
 /// Pure helper behind [`admin_status_url`]. Kept separate so unit tests
@@ -149,7 +149,7 @@ pub(crate) fn admin_status_url() -> String {
 ///
 /// `.trim()` defensively against env values with a trailing newline —
 /// the same Vercel-style pitfall that's burned us before
-/// (`CLOSEDMESH_RUNTIME_URL="…/v1\n"` produced a literal newline mid-URL
+/// (`SENDA_RUNTIME_URL="…/v1\n"` produced a literal newline mid-URL
 /// and 100 % of admin probes failed). Empty / unset fall through to the
 /// loopback default, which matches the local desktop default.
 fn resolve_admin_status_url(raw_env: Option<String>) -> String {
@@ -164,12 +164,12 @@ fn resolve_admin_status_url(raw_env: Option<String>) -> String {
 /// Returns the URL the WebView should load.
 ///
 /// Order (after Phase 8b — the sidecar is now the default):
-///   1. `CLOSEDMESH_APP_URL` env var (dev / staging override)
+///   1. `SENDA_APP_URL` env var (dev / staging override)
 ///   2. `http://127.0.0.1:<sidecar_port>` if the bundled Next.js
 ///      controller spawned successfully (the common case)
-///   3. `https://closedmesh.com` as a marketing/install fallback
+///   3. `https://senda.network` as a marketing/install fallback
 pub fn preferred_url() -> String {
-    if let Ok(u) = std::env::var("CLOSEDMESH_APP_URL") {
+    if let Ok(u) = std::env::var("SENDA_APP_URL") {
         if !u.is_empty() {
             return u;
         }
@@ -186,11 +186,11 @@ pub fn preferred_url() -> String {
 pub fn default_log_dir() -> Option<PathBuf> {
     let home = dirs::home_dir()?;
     if cfg!(target_os = "macos") {
-        Some(home.join("Library/Logs/closedmesh"))
+        Some(home.join("Library/Logs/senda"))
     } else if cfg!(target_os = "linux") {
-        Some(home.join(".local/state/closedmesh"))
+        Some(home.join(".local/state/senda"))
     } else {
-        dirs::data_dir().map(|d| d.join("closedmesh").join("logs"))
+        dirs::data_dir().map(|d| d.join("senda").join("logs"))
     }
 }
 
@@ -295,7 +295,7 @@ pub fn fetch_status() -> MeshStatus {
 
 // ---------- Service control ---------------------------------------------
 
-/// File-name prefixes that the runtime spawns alongside `closedmesh` and
+/// File-name prefixes that the runtime spawns alongside `senda` and
 /// that must therefore live in the same directory. `resolve_binary_path`
 /// in the runtime accepts both the generic name (`rpc-server`) and the
 /// per-flavor variants (`rpc-server-metal`, `rpc-server-cuda`, …), so
@@ -350,11 +350,11 @@ fn name_matches_prefix(name: &str, prefix: &str) -> bool {
 /// as exit `0xC0000135` with no stderr — exactly the silent failure
 /// mode 0.1.71 saw when only the .exe helpers got installed.
 ///
-/// We deliberately don't move `closedmesh.exe` here: the upgrade
+/// We deliberately don't move `senda.exe` here: the upgrade
 /// caller has its own "stop service, atomic rename" sequencing for
 /// the main binary, and double-handling would race.
 fn helper_stage_file_should_move(name: &str) -> bool {
-    if name.eq_ignore_ascii_case("closedmesh.exe") || name == "closedmesh" {
+    if name.eq_ignore_ascii_case("senda.exe") || name == "senda" {
         return false;
     }
     if MOVE_PREFIXES
@@ -390,7 +390,7 @@ fn helpers_present(dir: &Path) -> bool {
 }
 
 /// Move every file in `stage_dir` whose name matches a helper prefix
-/// into `dest_dir`, replacing whatever was there. The `closedmesh`
+/// into `dest_dir`, replacing whatever was there. The `senda`
 /// binary itself is handled separately by the caller (it has its own
 /// "stop service first" sequencing); this function only touches the
 /// llama.cpp helpers.
@@ -404,7 +404,7 @@ fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
         Ok(it) => it,
         Err(e) => {
             eprintln!(
-                "[closedmesh] helpers: read stage dir {} failed: {e}",
+                "[senda] helpers: read stage dir {} failed: {e}",
                 stage_dir.display()
             );
             return 0;
@@ -421,7 +421,7 @@ fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
         let dst = dest_dir.join(&name);
         if let Err(e) = std::fs::rename(&src, &dst) {
             eprintln!(
-                "[closedmesh] helpers: rename {} -> {} failed: {e}",
+                "[senda] helpers: rename {} -> {} failed: {e}",
                 src.display(),
                 dst.display()
             );
@@ -445,13 +445,13 @@ fn install_helpers_from_stage(stage_dir: &Path, dest_dir: &Path) -> usize {
                 .output();
         }
         moved += 1;
-        eprintln!("[closedmesh] helpers: installed {}", dst.display());
+        eprintln!("[senda] helpers: installed {}", dst.display());
     }
     moved
 }
 
-/// Download the latest closedmesh-llm release bundle for this platform,
-/// extract helper binaries/DLLs into `parent` (next to `closedmesh.exe`).
+/// Download the latest senda-llm release bundle for this platform,
+/// extract helper binaries/DLLs into `parent` (next to `senda.exe`).
 /// Returns how many files were installed.
 fn fetch_and_install_helpers_from_runtime_zip(parent: &Path) -> usize {
     let Some(asset) = runtime_asset_name() else {
@@ -466,15 +466,15 @@ fn fetch_and_install_helpers_from_runtime_zip(parent: &Path) -> usize {
     let resp = match agent.get(&url).call() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[closedmesh] helpers: download {url} failed: {e}");
+            eprintln!("[senda] helpers: download {url} failed: {e}");
             return 0;
         }
     };
 
-    let stage_dir = parent.join(".closedmesh.helpers-stage");
+    let stage_dir = parent.join(".senda.helpers-stage");
     let _ = std::fs::remove_dir_all(&stage_dir);
     if let Err(e) = std::fs::create_dir_all(&stage_dir) {
-        eprintln!("[closedmesh] helpers: mkdir staging failed: {e}");
+        eprintln!("[senda] helpers: mkdir staging failed: {e}");
         return 0;
     }
     let archive = stage_dir.join(&asset);
@@ -482,7 +482,7 @@ fn fetch_and_install_helpers_from_runtime_zip(parent: &Path) -> usize {
         Ok(f) => f,
         Err(e) => {
             eprintln!(
-                "[closedmesh] helpers: create archive {} failed: {e}",
+                "[senda] helpers: create archive {} failed: {e}",
                 archive.display()
             );
             let _ = std::fs::remove_dir_all(&stage_dir);
@@ -490,7 +490,7 @@ fn fetch_and_install_helpers_from_runtime_zip(parent: &Path) -> usize {
         }
     };
     if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
-        eprintln!("[closedmesh] helpers: stream failed: {e}");
+        eprintln!("[senda] helpers: stream failed: {e}");
         let _ = std::fs::remove_dir_all(&stage_dir);
         return 0;
     }
@@ -500,7 +500,7 @@ fn fetch_and_install_helpers_from_runtime_zip(parent: &Path) -> usize {
     } else if asset.ends_with(".zip") {
         extract_zip(&archive, &stage_dir)
     } else {
-        eprintln!("[closedmesh] helpers: unknown archive type for {asset}");
+        eprintln!("[senda] helpers: unknown archive type for {asset}");
         false
     };
     if !extracted_ok {
@@ -512,7 +512,7 @@ fn fetch_and_install_helpers_from_runtime_zip(parent: &Path) -> usize {
     let moved = install_helpers_from_stage(&stage_dir, parent);
     let _ = std::fs::remove_dir_all(&stage_dir);
     eprintln!(
-        "[closedmesh] helpers: repair from runtime ZIP complete, {moved} file(s) installed in {}",
+        "[senda] helpers: repair from runtime ZIP complete, {moved} file(s) installed in {}",
         parent.display()
     );
     moved
@@ -520,11 +520,11 @@ fn fetch_and_install_helpers_from_runtime_zip(parent: &Path) -> usize {
 
 /// Download the latest runtime tarball, extract just the helpers, and
 /// install them next to `bin`. Used to repair installs that have a
-/// `closedmesh` binary in place (from `install.sh` or a hand-fetched
+/// `senda` binary in place (from `install.sh` or a hand-fetched
 /// release) but are missing the llama.cpp helpers — without this they
 /// crash on the first inference request with `rpc-server not found`.
 ///
-/// The closedmesh binary itself is left untouched: its version is the
+/// The senda binary itself is left untouched: its version is the
 /// auto-upgrade thread's responsibility, and we don't want to bounce
 /// the service every launch just to refresh helpers.
 ///
@@ -542,13 +542,13 @@ fn repair_missing_helpers(bin: &Path) -> bool {
         return false;
     }
 
-    // Fetch the ClosedMesh runtime ZIP first so `rpc-server.exe` /
+    // Fetch the Senda runtime ZIP first so `rpc-server.exe` /
     // `llama-server.exe` and the `ggml-*.dll` fan-out stay version-matched
     // with the bundle we shipped. Historical note: we used to try ggml-org
     // before the runtime ZIP — wrong ordering when the ZIP carries the
     // canonical helper set for that release.
     eprintln!(
-        "[closedmesh] helpers: missing in {}; fetching latest runtime bundle",
+        "[senda] helpers: missing in {}; fetching latest runtime bundle",
         parent.display()
     );
     let moved = fetch_and_install_helpers_from_runtime_zip(parent);
@@ -559,21 +559,21 @@ fn repair_missing_helpers(bin: &Path) -> bool {
     //
     //   1. The user is running a desktop release that pinned the
     //      runtime asset name to something that 404s (pre-0.1.72
-    //      returned "closedmesh-windows-x86_64.zip" but only
+    //      returned "senda-windows-x86_64.zip" but only
     //      "-cuda.zip" / "-vulkan.zip" exist) — install fails silently
     //      and we have no rpc-server.exe.
     //
     //   2. The latest published runtime ZIP is from before
-    //      closedmesh-llm v0.66.4 (when scripts/release-closedmesh.ps1
-    //      started bundling helpers). The ZIP has only closedmesh.exe
+    //      senda-llm v0.66.4 (when scripts/release-senda.ps1
+    //      started bundling helpers). The ZIP has only senda.exe
     //      + LICENSE; install_helpers_from_stage moves zero files.
     //
     // Both cases leave the user staring at "rpc-server.exe not found in
-    // C:\Users\…\AppData\Local\closedmesh\bin" on every model load.
+    // C:\Users\…\AppData\Local\senda\bin" on every model load.
     // Last resort: ggml-org's stock helpers (same pin as install.ps1).
     if !helpers_present(parent) && cfg!(windows) {
         eprintln!(
-            "[closedmesh] helpers: still missing after runtime ZIP extraction; \
+            "[senda] helpers: still missing after runtime ZIP extraction; \
              falling back to ggml-org/llama.cpp b9041"
         );
         if repair_helpers_from_llama_cpp(parent) {
@@ -592,13 +592,13 @@ fn repair_missing_helpers(bin: &Path) -> bool {
 #[cfg(windows)]
 fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
     // Keep this in lockstep with public/install.ps1 ($LlamaCppTag) and
-    // closedmesh-llm/scripts/release-closedmesh.ps1 ($LlamaCppTag). The
+    // senda-llm/scripts/release-senda.ps1 ($LlamaCppTag). The
     // CI bundle and these two fallbacks all need to agree on the same
     // llama.cpp commit so RPC and CLI protocol stay compatible with
-    // whatever closedmesh.exe was built against.
+    // whatever senda.exe was built against.
     const LLAMA_CPP_TAG: &str = "b9041";
 
-    let flavor = match std::env::var("CLOSEDMESH_BACKEND")
+    let flavor = match std::env::var("SENDA_BACKEND")
         .ok()
         .map(|v| v.trim().to_ascii_lowercase())
         .as_deref()
@@ -612,7 +612,7 @@ fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
         "https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_CPP_TAG}/{asset}"
     );
 
-    eprintln!("[closedmesh] helpers: ggml-org fallback fetching {url}");
+    eprintln!("[senda] helpers: ggml-org fallback fetching {url}");
 
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(10))
@@ -622,15 +622,15 @@ fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
     let resp = match agent.get(&url).call() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[closedmesh] helpers: ggml-org download failed: {e}");
+            eprintln!("[senda] helpers: ggml-org download failed: {e}");
             return false;
         }
     };
 
-    let stage_dir = parent.join(".closedmesh.helpers-stage-llama");
+    let stage_dir = parent.join(".senda.helpers-stage-llama");
     let _ = std::fs::remove_dir_all(&stage_dir);
     if let Err(e) = std::fs::create_dir_all(&stage_dir) {
-        eprintln!("[closedmesh] helpers: ggml-org mkdir staging failed: {e}");
+        eprintln!("[senda] helpers: ggml-org mkdir staging failed: {e}");
         return false;
     }
     let archive = stage_dir.join(&asset);
@@ -638,7 +638,7 @@ fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
         Ok(f) => f,
         Err(e) => {
             eprintln!(
-                "[closedmesh] helpers: ggml-org create archive {} failed: {e}",
+                "[senda] helpers: ggml-org create archive {} failed: {e}",
                 archive.display()
             );
             let _ = std::fs::remove_dir_all(&stage_dir);
@@ -646,7 +646,7 @@ fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
         }
     };
     if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
-        eprintln!("[closedmesh] helpers: ggml-org stream failed: {e}");
+        eprintln!("[senda] helpers: ggml-org stream failed: {e}");
         let _ = std::fs::remove_dir_all(&stage_dir);
         return false;
     }
@@ -661,7 +661,7 @@ fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
     let moved = install_helpers_from_stage(&stage_dir, parent);
     let _ = std::fs::remove_dir_all(&stage_dir);
     eprintln!(
-        "[closedmesh] helpers: ggml-org fallback installed {moved} file(s) in {}",
+        "[senda] helpers: ggml-org fallback installed {moved} file(s) in {}",
         parent.display()
     );
 
@@ -669,15 +669,15 @@ fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
     // cudart_64_*.dll which ships in a separate cudart-* zip on the
     // same release. Best-effort second fetch — if it fails, the user
     // sees 0xC0000135 on first load and we tell them to switch to
-    // CLOSEDMESH_BACKEND=vulkan.
+    // SENDA_BACKEND=vulkan.
     if flavor == "cuda-12.4" {
         let cudart_asset = "cudart-llama-bin-win-cuda-12.4-x64.zip";
         let cudart_url = format!(
             "https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_CPP_TAG}/{cudart_asset}"
         );
-        eprintln!("[closedmesh] helpers: ggml-org fallback fetching cudart from {cudart_url}");
+        eprintln!("[senda] helpers: ggml-org fallback fetching cudart from {cudart_url}");
         if let Ok(resp) = agent.get(&cudart_url).call() {
-            let stage_dir = parent.join(".closedmesh.helpers-stage-cudart");
+            let stage_dir = parent.join(".senda.helpers-stage-cudart");
             let _ = std::fs::remove_dir_all(&stage_dir);
             if std::fs::create_dir_all(&stage_dir).is_ok() {
                 let archive = stage_dir.join(cudart_asset);
@@ -688,7 +688,7 @@ fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
                             let _ = std::fs::remove_file(&archive);
                             let cudart_moved = install_helpers_from_stage(&stage_dir, parent);
                             eprintln!(
-                                "[closedmesh] helpers: ggml-org cudart installed {cudart_moved} file(s)"
+                                "[senda] helpers: ggml-org cudart installed {cudart_moved} file(s)"
                             );
                         }
                     }
@@ -697,8 +697,8 @@ fn repair_helpers_from_llama_cpp(parent: &Path) -> bool {
             }
         } else {
             eprintln!(
-                "[closedmesh] helpers: cudart download failed; \
-                 set CLOSEDMESH_BACKEND=vulkan if you hit 0xC0000135 on model load"
+                "[senda] helpers: cudart download failed; \
+                 set SENDA_BACKEND=vulkan if you hit 0xC0000135 on model load"
             );
         }
     }
@@ -711,11 +711,11 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
     false
 }
 
-/// Belt-and-braces shutdown of every closedmesh runtime process tree
+/// Belt-and-braces shutdown of every senda runtime process tree
 /// owned by the current user. Called at the very start of
 /// `start_service_if_installed` so that:
 ///
-///   - `~/.local/bin\closedmesh.exe` (legacy install) is unlocked
+///   - `~/.local/bin\senda.exe` (legacy install) is unlocked
 ///     before `migrate_legacy_runtime_install_windows` tries to
 ///     move it.
 ///   - Any orphan `rpc-server.exe` / `llama-server.exe` from a
@@ -723,7 +723,7 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
 ///     port that the next runtime would race against.
 ///   - The next `start_service` call always starts a fresh process
 ///     tree from the (potentially newly-discovered) canonical bin
-///     path, instead of leaving an old wscript -> cmd -> closedmesh.exe
+///     path, instead of leaving an old wscript -> cmd -> senda.exe
 ///     chain alive that's still launching from the legacy path.
 ///
 /// Order matters: `schtasks /End` first (graceful — gives the runtime
@@ -737,8 +737,8 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
 /// CRITICAL self-protection (the 0.1.76 → 0.1.77 fix):
 ///
 /// Windows image-name matching is case-insensitive, and our GUI
-/// process is `ClosedMesh.exe` while the runtime is `closedmesh.exe`.
-/// `taskkill /F /T /IM closedmesh.exe` from inside the GUI therefore
+/// process is `Senda.exe` while the runtime is `senda.exe`.
+/// `taskkill /F /T /IM senda.exe` from inside the GUI therefore
 /// matches the GUI itself — instant suicide on every launch, which
 /// is exactly what 0.1.76 shipped. We use `/FI "PID ne <our_pid>"`
 /// to exclude our own process from the kill list. The runtime,
@@ -750,7 +750,7 @@ fn repair_helpers_from_llama_cpp(_parent: &Path) -> bool {
 /// nothing and makes the code uniform.
 #[cfg(target_os = "windows")]
 fn stop_runtime_aggressively_windows(log_context: &str) {
-    eprintln!("[closedmesh] {log_context}: stopping any running runtime");
+    eprintln!("[senda] {log_context}: stopping any running runtime");
 
     let _ = Command::new("schtasks")
         .args(["/End", "/TN", SERVICE_NAME_WINDOWS])
@@ -758,21 +758,21 @@ fn stop_runtime_aggressively_windows(log_context: &str) {
         .output();
 
     // schtasks /End queues termination but the wscript -> cmd ->
-    // closedmesh.exe chain may stay alive briefly. Wait, then mop up
+    // senda.exe chain may stay alive briefly. Wait, then mop up
     // anything still running by image name.
     std::thread::sleep(Duration::from_millis(800));
 
     let self_pid = std::process::id();
     let pid_filter = format!("PID ne {self_pid}");
 
-    for image in ["llama-server.exe", "rpc-server.exe", "closedmesh.exe"] {
+    for image in ["llama-server.exe", "rpc-server.exe", "senda.exe"] {
         let out = Command::new("taskkill")
             .args(["/F", "/T", "/IM", image, "/FI", &pid_filter])
             .hide_console()
             .output();
         match out {
             Ok(o) if o.status.success() => {
-                eprintln!("[closedmesh] {log_context}: taskkill {image} (pid != {self_pid}) -> killed");
+                eprintln!("[senda] {log_context}: taskkill {image} (pid != {self_pid}) -> killed");
             }
             Ok(_) => {
                 // Exit code is non-zero when there's nothing to kill —
@@ -780,7 +780,7 @@ fn stop_runtime_aggressively_windows(log_context: &str) {
                 // worth surfacing.
             }
             Err(e) => {
-                eprintln!("[closedmesh] {log_context}: taskkill {image} spawn failed: {e}");
+                eprintln!("[senda] {log_context}: taskkill {image} spawn failed: {e}");
             }
         }
     }
@@ -792,17 +792,17 @@ fn stop_runtime_aggressively_windows(log_context: &str) {
 }
 
 /// One-shot migration from the legacy auto-installer location
-/// (`~/.local/bin\closedmesh.exe`, used by 0.1.40-0.1.74) to the
-/// canonical Windows runtime path (`%LOCALAPPDATA%\closedmesh\bin\closedmesh.exe`,
+/// (`~/.local/bin\senda.exe`, used by 0.1.40-0.1.74) to the
+/// canonical Windows runtime path (`%LOCALAPPDATA%\senda\bin\senda.exe`,
 /// used by install.ps1 and v0.1.75+ in-app installs).
 ///
 /// We move every file in the legacy dir to the canonical dir (not just
-/// closedmesh.exe) so any helpers/DLLs that DID land there come with
+/// senda.exe) so any helpers/DLLs that DID land there come with
 /// us. The old dir is then removed if it's empty — leaving a stale
 /// `~/.local/bin\` would just confuse the next debugging session.
 ///
 /// Idempotent and safe to call repeatedly:
-///   - If the canonical install already has a closedmesh.exe, we skip
+///   - If the canonical install already has a senda.exe, we skip
 ///     entirely (the user has already migrated, or installed via .ps1).
 ///   - If the legacy install doesn't exist, we no-op.
 ///   - If a file we want to copy is locked (the runtime is currently
@@ -820,21 +820,21 @@ fn migrate_legacy_runtime_install_windows() {
         return;
     };
     let legacy_dir = home.join(".local").join("bin");
-    let legacy_exe = legacy_dir.join("closedmesh.exe");
+    let legacy_exe = legacy_dir.join("senda.exe");
     if !legacy_exe.is_file() {
         return;
     }
     let Some(canonical_dir) = windows_canonical_runtime_dir() else {
         return;
     };
-    let canonical_exe = canonical_dir.join("closedmesh.exe");
+    let canonical_exe = canonical_dir.join("senda.exe");
 
     // If the canonical path is already populated, just remove the
     // stale legacy copy and call it done. Don't overwrite a known-good
     // install with a possibly-older legacy one.
     if canonical_exe.is_file() {
         eprintln!(
-            "[closedmesh] migrate: canonical install already at {} — removing stale legacy at {}",
+            "[senda] migrate: canonical install already at {} — removing stale legacy at {}",
             canonical_exe.display(),
             legacy_dir.display()
         );
@@ -848,13 +848,13 @@ fn migrate_legacy_runtime_install_windows() {
 
     if let Err(e) = std::fs::create_dir_all(&canonical_dir) {
         eprintln!(
-            "[closedmesh] migrate: cannot create canonical dir {}: {e}",
+            "[senda] migrate: cannot create canonical dir {}: {e}",
             canonical_dir.display()
         );
         return;
     }
     eprintln!(
-        "[closedmesh] migrate: moving legacy install {} -> {}",
+        "[senda] migrate: moving legacy install {} -> {}",
         legacy_dir.display(),
         canonical_dir.display()
     );
@@ -863,7 +863,7 @@ fn migrate_legacy_runtime_install_windows() {
         Ok(it) => it,
         Err(e) => {
             eprintln!(
-                "[closedmesh] migrate: cannot list legacy dir {}: {e}",
+                "[senda] migrate: cannot list legacy dir {}: {e}",
                 legacy_dir.display()
             );
             return;
@@ -884,8 +884,8 @@ fn migrate_legacy_runtime_install_windows() {
         // scoop/chocolatey; we don't want to vacuum unrelated tools
         // into our install dir.
         let lower = name.to_string_lossy().to_lowercase();
-        let is_ours = lower == "closedmesh.exe"
-            || lower == "closedmesh-launch.vbs"
+        let is_ours = lower == "senda.exe"
+            || lower == "senda-launch.vbs"
             || lower.starts_with("rpc-server")
             || lower.starts_with("llama-server")
             || lower.starts_with("llama-moe-")
@@ -913,14 +913,14 @@ fn migrate_legacy_runtime_install_windows() {
                     moved += 1;
                     if let Err(e) = std::fs::remove_file(&src) {
                         eprintln!(
-                            "[closedmesh] migrate: copied {} but could not remove source: {e}",
+                            "[senda] migrate: copied {} but could not remove source: {e}",
                             src.display()
                         );
                     }
                 }
                 Err(e) => {
                     eprintln!(
-                        "[closedmesh] migrate: cannot copy {} -> {}: {e}",
+                        "[senda] migrate: cannot copy {} -> {}: {e}",
                         src.display(),
                         dest.display()
                     );
@@ -930,7 +930,7 @@ fn migrate_legacy_runtime_install_windows() {
         }
     }
     eprintln!(
-        "[closedmesh] migrate: moved {moved} file(s), skipped {skipped} (locked or unreadable)"
+        "[senda] migrate: moved {moved} file(s), skipped {skipped} (locked or unreadable)"
     );
     // Best-effort remove of the now-(hopefully-)empty legacy dir.
     let _ = std::fs::remove_dir(&legacy_dir);
@@ -948,8 +948,8 @@ fn wipe_legacy_runtime_dir_windows(dir: &Path) {
         }
         let Some(name) = p.file_name() else { continue };
         let lower = name.to_string_lossy().to_lowercase();
-        let is_ours = lower == "closedmesh.exe"
-            || lower == "closedmesh-launch.vbs"
+        let is_ours = lower == "senda.exe"
+            || lower == "senda-launch.vbs"
             || lower.starts_with("rpc-server")
             || lower.starts_with("llama-server")
             || lower.starts_with("llama-moe-")
@@ -964,7 +964,7 @@ fn wipe_legacy_runtime_dir_windows(dir: &Path) {
         }
         if let Err(e) = std::fs::remove_file(&p) {
             eprintln!(
-                "[closedmesh] migrate: could not remove stale {}: {e}",
+                "[senda] migrate: could not remove stale {}: {e}",
                 p.display()
             );
         }
@@ -972,7 +972,7 @@ fn wipe_legacy_runtime_dir_windows(dir: &Path) {
     let _ = std::fs::remove_dir(dir);
 }
 
-/// Best-effort `closedmesh service start` on launch. Silently no-ops if
+/// Best-effort `senda service start` on launch. Silently no-ops if
 /// the CLI isn't installed yet — the user just gets the offline empty
 /// state (handled by the chat UI) until they install it.
 ///
@@ -980,16 +980,16 @@ fn wipe_legacy_runtime_dir_windows(dir: &Path) {
 /// agent's plist. There are two failure modes we observed in the wild:
 ///
 ///   1. The user installed the CLI a long time ago (pre-`--auto`/`--join-url`
-///      plumbing), so the plist runs `closedmesh serve --headless` with no
+///      plumbing), so the plist runs `senda serve --headless` with no
 ///      mesh-discovery flags and the node lives in its own private mesh.
 ///   2. The user has a current `install.sh`-written plist that uses the new
-///      `--join-url https://mesh.closedmesh.com/api/status` flag, but their
+///      `--join-url https://entry.senda.network/api/status` flag, but their
 ///      installed CLI binary predates the flag (e.g. they upgraded the .app
 ///      without re-running the installer, or they're running a release that
 ///      shipped before the flag landed). Their service crashes on launch
 ///      with `error: unexpected argument '--join-url'`.
 ///
-/// Both paths leave `closedmesh.com` showing "0 models" while the user's Mac
+/// Both paths leave `senda.network` showing "0 models" while the user's Mac
 /// is in fact running a model — just on the wrong mesh. The fix is to write
 /// a plist with arguments the *installed binary* actually understands, and
 /// to re-bootstrap the launchd agent. We do this on every launch so users
@@ -998,7 +998,7 @@ pub fn start_service_if_installed() {
     // Windows: ALWAYS stop any running runtime first, before we touch
     // anything else. Three reasons that bit users on 0.1.75:
     //
-    //   1. Migration can't move `~/.local/bin\closedmesh.exe` while the
+    //   1. Migration can't move `~/.local/bin\senda.exe` while the
     //      file is locked by a running process. v0.1.75 saw rename fail
     //      → fall back to copy → file ended up at both paths → old
     //      runtime kept logging "rpc-server.exe not found" forever
@@ -1006,14 +1006,14 @@ pub fn start_service_if_installed() {
     //
     //   2. The bounce branch in 0.1.75 was guarded by `if helpers_repaired`,
     //      but a user who'd previously run install.ps1 already had
-    //      helpers in `%LOCALAPPDATA%\closedmesh\bin\` — so
+    //      helpers in `%LOCALAPPDATA%\senda\bin\` — so
     //      `repair_missing_helpers` returned false, the bounce was
     //      skipped, and the old running runtime kept going from the
     //      legacy path despite the migration.
     //
     //   3. `schtasks /End` only signals; the wscript -> cmd ->
-    //      closedmesh.exe tree can outlive it for several seconds.
-    //      Belt-and-braces taskkill of orphans (closedmesh.exe,
+    //      senda.exe tree can outlive it for several seconds.
+    //      Belt-and-braces taskkill of orphans (senda.exe,
     //      rpc-server.exe, llama-server.exe by image name) ensures
     //      the binary is unlocked by the time migration runs.
     //
@@ -1025,9 +1025,9 @@ pub fn start_service_if_installed() {
     stop_runtime_aggressively_windows("startup");
 
     // Windows hygiene: the auto-installer in 0.1.40-0.1.74 dropped
-    // closedmesh.exe into `~/.local/bin\` (a Linux convention applied
+    // senda.exe into `~/.local/bin\` (a Linux convention applied
     // by accident — see `runtime_install_path` for the post-mortem).
-    // install.ps1 always used `%LOCALAPPDATA%\closedmesh\bin`, and so
+    // install.ps1 always used `%LOCALAPPDATA%\senda\bin`, and so
     // do v0.1.75+ in-app installs, so we now have two install
     // locations in the wild that need consolidating before
     // `locate_binary` runs. Migrate any legacy install we find.
@@ -1046,7 +1046,7 @@ pub fn start_service_if_installed() {
                 Some(b)
             } else {
                 eprintln!(
-                    "[closedmesh] runtime at {} is below minimum version; \
+                    "[senda] runtime at {} is below minimum version; \
                      reinstalling from GitHub releases",
                     b.display()
                 );
@@ -1063,8 +1063,8 @@ pub fn start_service_if_installed() {
         // runtime joins the mesh successfully but blows up the moment
         // it tries to host a model with `<name> not found in <dir>`.
         // This handles users who installed via `install.sh` (which
-        // only ships the `closedmesh` binary, not the helpers) or
-        // whose previous auto-upgrade swapped `closedmesh` without
+        // only ships the `senda` binary, not the helpers) or
+        // whose previous auto-upgrade swapped `senda` without
         // touching the helpers (the bug shipped in 0.1.40-0.1.43).
         //
         let helpers_repaired = repair_missing_helpers(&bin);
@@ -1081,7 +1081,7 @@ pub fn start_service_if_installed() {
             if let Some(plist_path) = launchd_plist_path() {
                 if plist_path.is_file() {
                     eprintln!(
-                        "[closedmesh] helpers: bouncing launchd agent to clear KeepAlive throttle"
+                        "[senda] helpers: bouncing launchd agent to clear KeepAlive throttle"
                     );
                     bounce_launchd_agent(&plist_path);
                 }
@@ -1099,7 +1099,7 @@ pub fn start_service_if_installed() {
         let _ = helpers_repaired;
 
         // Windows: register (or refresh) the Scheduled Task that turns
-        // `closedmesh.exe serve --auto …` into a logon-triggered, restart-
+        // `senda.exe serve --auto …` into a logon-triggered, restart-
         // on-failure background service. Mirrors what install.ps1 does
         // for users who came in through the PowerShell installer, and
         // makes the .msi → first-launch path single-click — no terminal
@@ -1240,7 +1240,7 @@ enum UpgradeOutcome {
     /// version (when we got that far) so the dashboard can still
     /// show the user what they're running while we keep retrying,
     /// plus a short human-readable reason so the dashboard can render
-    /// "last check failed: HTTP 404 on closedmesh-windows-x86_64-vulkan.zip"
+    /// "last check failed: HTTP 404 on senda-windows-x86_64-vulkan.zip"
     /// instead of leaving the user (and us) guessing through the log.
     /// Reason strings are short (single sentence ish) and intended for
     /// direct UI display.
@@ -1303,7 +1303,7 @@ struct RuntimeUpgradeState {
     /// dashboard once we've recovered. Set on every Failed outcome so
     /// the user can see whether "last check failed" is a 404, a
     /// network blip, a permissions problem, or something else without
-    /// digging through `~/Library/Logs/closedmesh/desktop.log`.
+    /// digging through `~/Library/Logs/senda/desktop.log`.
     last_error: Option<String>,
 }
 
@@ -1397,7 +1397,7 @@ fn write_runtime_upgrade_state(state: &RuntimeUpgradeState) {
     };
     if let Err(e) = std::fs::create_dir_all(parent) {
         eprintln!(
-            "[closedmesh] runtime upgrade: state dir create {} failed: {e}",
+            "[senda] runtime upgrade: state dir create {} failed: {e}",
             parent.display()
         );
         return;
@@ -1405,7 +1405,7 @@ fn write_runtime_upgrade_state(state: &RuntimeUpgradeState) {
     let body = match serde_json::to_string_pretty(state) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[closedmesh] runtime upgrade: state serialize failed: {e}");
+            eprintln!("[senda] runtime upgrade: state serialize failed: {e}");
             return;
         }
     };
@@ -1425,7 +1425,7 @@ fn write_runtime_upgrade_state(state: &RuntimeUpgradeState) {
     ));
     if let Err(e) = std::fs::write(&tmp, body.as_bytes()) {
         eprintln!(
-            "[closedmesh] runtime upgrade: state tmp write {} failed: {e}",
+            "[senda] runtime upgrade: state tmp write {} failed: {e}",
             tmp.display()
         );
         let _ = std::fs::remove_file(&tmp);
@@ -1433,7 +1433,7 @@ fn write_runtime_upgrade_state(state: &RuntimeUpgradeState) {
     }
     if let Err(e) = std::fs::rename(&tmp, &path) {
         eprintln!(
-            "[closedmesh] runtime upgrade: state rename {} -> {} failed: {e}",
+            "[senda] runtime upgrade: state rename {} -> {} failed: {e}",
             tmp.display(),
             path.display()
         );
@@ -1496,7 +1496,7 @@ fn wait_for_upgrade_request_or(total: Duration) -> bool {
 /// authenticated `/api/repos/.../releases/latest` endpoint caps
 /// unauthenticated callers at 60 req/hr per IP, which would be tight
 /// for a multi-user network behind one NAT).
-const RUNTIME_LATEST_PAGE: &str = "https://github.com/closedmesh/closedmesh-llm/releases/latest";
+const RUNTIME_LATEST_PAGE: &str = "https://github.com/senda-network/senda-llm/releases/latest";
 
 /// Background thread: poll GitHub for a newer runtime, download and
 /// hot-swap when one appears. The first check fires after
@@ -1647,7 +1647,7 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
             let next_sleep = match &outcome {
                 UpgradeOutcome::Upgraded { .. } => {
                     eprintln!(
-                        "[closedmesh] runtime upgrade: success; sleeping {:?} before next check",
+                        "[senda] runtime upgrade: success; sleeping {:?} before next check",
                         RUNTIME_UPGRADE_INTERVAL
                     );
                     backoff_idx = None;
@@ -1666,7 +1666,7 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
                         backoff_idx = Some(next_idx);
                         let d = RUNTIME_UPGRADE_FAILURE_BACKOFF[next_idx];
                         eprintln!(
-                            "[closedmesh] runtime upgrade: failed (attempt {}); retrying in {:?}",
+                            "[senda] runtime upgrade: failed (attempt {}); retrying in {:?}",
                             next_idx + 1,
                             d
                         );
@@ -1676,7 +1676,7 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
                         // to the steady cadence and start fresh on the
                         // next failure cluster.
                         eprintln!(
-                            "[closedmesh] runtime upgrade: failed and backoff exhausted; \
+                            "[senda] runtime upgrade: failed and backoff exhausted; \
                              sleeping {:?}",
                             RUNTIME_UPGRADE_INTERVAL
                         );
@@ -1692,7 +1692,7 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
             // re-trigger off a stale flag.
             if wait_for_upgrade_request_or(next_sleep) {
                 eprintln!(
-                    "[closedmesh] runtime upgrade: manual check requested; \
+                    "[senda] runtime upgrade: manual check requested; \
                      waking from {:?} sleep early",
                     next_sleep
                 );
@@ -1709,7 +1709,7 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
 /// on v0.65.6 with no second attempt until 19:41.
 ///
 /// Strategy:
-///   1. Read installed version (`closedmesh --version`).
+///   1. Read installed version (`senda --version`).
 ///   2. Read latest release tag (GitHub redirect probe).
 ///   3. If installed >= latest, return [`UpgradeOutcome::UpToDate`].
 ///   4. Download tarball into a sibling staging dir on the same
@@ -1731,7 +1731,7 @@ fn spawn_runtime_upgrade_loop(bin: PathBuf) {
 fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     let Some(installed) = installed_runtime_version(bin) else {
         eprintln!(
-            "[closedmesh] runtime upgrade: could not read installed version from {}",
+            "[senda] runtime upgrade: could not read installed version from {}",
             bin.display()
         );
         return UpgradeOutcome::Failed {
@@ -1765,13 +1765,13 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         };
     }
     eprintln!(
-        "[closedmesh] runtime upgrade available: {} -> {}; staging download",
+        "[senda] runtime upgrade available: {} -> {}; staging download",
         installed_str, latest_str,
     );
 
     let Some(asset) = runtime_asset_name() else {
         eprintln!(
-            "[closedmesh] runtime upgrade: no published asset for this OS/arch; \
+            "[senda] runtime upgrade: no published asset for this OS/arch; \
              skipping (this is a build-time configuration, not a transient failure)"
         );
         // Not really `Failed` in the retry-soon sense — there's nothing
@@ -1789,7 +1789,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         };
     };
     let Some(dest) = runtime_install_path() else {
-        eprintln!("[closedmesh] runtime upgrade: could not resolve install path");
+        eprintln!("[senda] runtime upgrade: could not resolve install path");
         return UpgradeOutcome::Failed {
             installed: Some(installed_str),
             latest: Some(latest_str),
@@ -1799,7 +1799,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     };
     let Some(parent) = dest.parent() else {
         eprintln!(
-            "[closedmesh] runtime upgrade: install path {} has no parent",
+            "[senda] runtime upgrade: install path {} has no parent",
             dest.display()
         );
         return UpgradeOutcome::Failed {
@@ -1812,10 +1812,10 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         };
     };
 
-    let stage_dir = parent.join(format!(".closedmesh.upgrade-{}", fmt_version(&latest)));
+    let stage_dir = parent.join(format!(".senda.upgrade-{}", fmt_version(&latest)));
     let _ = std::fs::remove_dir_all(&stage_dir);
     if let Err(e) = std::fs::create_dir_all(&stage_dir) {
-        eprintln!("[closedmesh] runtime upgrade: mkdir staging failed: {e}");
+        eprintln!("[senda] runtime upgrade: mkdir staging failed: {e}");
         return UpgradeOutcome::Failed {
             installed: Some(installed_str.clone()),
             latest: Some(latest_str.clone()),
@@ -1835,7 +1835,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     let resp = match agent.get(&url).call() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[closedmesh] runtime upgrade: download {url} failed: {e}");
+            eprintln!("[senda] runtime upgrade: download {url} failed: {e}");
             let _ = std::fs::remove_dir_all(&stage_dir);
             // Stringify ureq errors specifically — Status(404, _) is the
             // signature failure mode for an asset name the release
@@ -1863,7 +1863,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         Ok(f) => f,
         Err(e) => {
             eprintln!(
-                "[closedmesh] runtime upgrade: create {} failed: {e}",
+                "[senda] runtime upgrade: create {} failed: {e}",
                 archive.display()
             );
             let _ = std::fs::remove_dir_all(&stage_dir);
@@ -1879,7 +1879,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
         }
     };
     if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut tmp_file) {
-        eprintln!("[closedmesh] runtime upgrade: stream failed: {e}");
+        eprintln!("[senda] runtime upgrade: stream failed: {e}");
         let _ = std::fs::remove_dir_all(&stage_dir);
         return UpgradeOutcome::Failed {
             installed: Some(installed_str.clone()),
@@ -1896,7 +1896,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     } else if asset.ends_with(".zip") {
         extract_zip(&archive, &stage_dir)
     } else {
-        eprintln!("[closedmesh] runtime upgrade: unknown archive type for {asset}");
+        eprintln!("[senda] runtime upgrade: unknown archive type for {asset}");
         false
     };
     if !extracted_ok {
@@ -1913,14 +1913,14 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     let _ = std::fs::remove_file(&archive);
 
     let exe_name = if cfg!(windows) {
-        "closedmesh.exe"
+        "senda.exe"
     } else {
-        "closedmesh"
+        "senda"
     };
     let new_bin = stage_dir.join(exe_name);
     if !new_bin.is_file() {
         eprintln!(
-            "[closedmesh] runtime upgrade: extraction OK but {} is missing",
+            "[senda] runtime upgrade: extraction OK but {} is missing",
             new_bin.display()
         );
         let _ = std::fs::remove_dir_all(&stage_dir);
@@ -1959,7 +1959,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     let actual = installed_runtime_version(&new_bin);
     if actual.as_ref() != Some(&latest) {
         eprintln!(
-            "[closedmesh] runtime upgrade: staged binary reports {:?}, expected {}; aborting",
+            "[senda] runtime upgrade: staged binary reports {:?}, expected {}; aborting",
             actual.as_ref().map(fmt_version),
             fmt_version(&latest),
         );
@@ -1982,16 +1982,16 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     // legal (the kernel keeps the old inode alive for the running
     // process) but Windows holds an exclusive lock.
     //
-    // On Windows the gentle `closedmesh service stop` (= `schtasks /End`)
+    // On Windows the gentle `senda service stop` (= `schtasks /End`)
     // is not enough by itself: it kills the wscript wrapper but the
-    // wscript -> cmd -> closedmesh.exe -> {blobstore plugin, rpc-server,
+    // wscript -> cmd -> senda.exe -> {blobstore plugin, rpc-server,
     // llama-server} subtree gets reparented and keeps holding an
-    // exclusive section handle on closedmesh.exe (the plugin
-    // subprocess is itself another `closedmesh.exe` instance, so the
+    // exclusive section handle on senda.exe (the plugin
+    // subprocess is itself another `senda.exe` instance, so the
     // file is mapped twice). The rename below then fails with
     // ERROR_ACCESS_DENIED. Use the same belt-and-braces stop the
     // startup path uses: schtasks /End, then `taskkill /F /T /IM` for
-    // every closedmesh-family image (with a `PID ne <self>` filter so
+    // every senda-family image (with a `PID ne <self>` filter so
     // the GUI doesn't kill itself), then a settle sleep so NTFS
     // releases the handles before we rename.
     #[cfg(target_os = "windows")]
@@ -2004,7 +2004,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
 
     if let Err(e) = std::fs::rename(&new_bin, &dest) {
         eprintln!(
-            "[closedmesh] runtime upgrade: rename {} -> {} failed: {e}; restarting old service",
+            "[senda] runtime upgrade: rename {} -> {} failed: {e}; restarting old service",
             new_bin.display(),
             dest.display()
         );
@@ -2035,7 +2035,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
 
     let _ = std::fs::remove_dir_all(&stage_dir);
     eprintln!(
-        "[closedmesh] runtime upgraded to {} at {} ({} helper(s) refreshed)",
+        "[senda] runtime upgraded to {} at {} ({} helper(s) refreshed)",
         fmt_version(&latest),
         dest.display(),
         helpers_moved,
@@ -2043,7 +2043,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
 
     // Bring the service back. On macOS we go straight through our own
     // launchd routines (`bounce_launchd_agent`) — calling
-    // `closedmesh service start` here as well used to race with the
+    // `senda service start` here as well used to race with the
     // `repair_launchd_plist` bounce immediately after, leaving us in a
     // state where the agent was bootout'd but the racing bootstrap had
     // hit EIO. The new flow:
@@ -2068,7 +2068,7 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
                 bounce_launchd_agent(&plist_path);
             } else {
                 eprintln!(
-                    "[closedmesh] post-upgrade: plist {} missing, calling `service start`",
+                    "[senda] post-upgrade: plist {} missing, calling `service start`",
                     plist_path.display()
                 );
                 start_service();
@@ -2123,7 +2123,7 @@ fn latest_runtime_version() -> Option<(u32, u32, u32, Option<String>)> {
         // hands back the response so we can read its headers.
         Err(ureq::Error::Status(_, r)) => r,
         Err(e) => {
-            eprintln!("[closedmesh] runtime upgrade: latest version probe failed: {e}");
+            eprintln!("[senda] runtime upgrade: latest version probe failed: {e}");
             return None;
         }
     };
@@ -2132,7 +2132,7 @@ fn latest_runtime_version() -> Option<(u32, u32, u32, Option<String>)> {
     let stripped = tag.strip_prefix('v').unwrap_or(tag);
     let parsed = parse_semver(stripped);
     if parsed == (0, 0, 0, None) {
-        eprintln!("[closedmesh] runtime upgrade: could not parse latest tag {tag:?}");
+        eprintln!("[senda] runtime upgrade: could not parse latest tag {tag:?}");
         return None;
     }
     Some(parsed)
@@ -2169,22 +2169,22 @@ fn fmt_version(v: &(u32, u32, u32, Option<String>)) -> String {
 // ---------- Launchd self-healing (macOS) --------------------------------
 
 #[cfg(target_os = "macos")]
-const SERVICE_LABEL: &str = "dev.closedmesh.closedmesh";
+const SERVICE_LABEL: &str = "network.senda.runtime";
 
 /// Windows Task Scheduler task name. Matches install.ps1.
 #[cfg(target_os = "windows")]
-const SERVICE_NAME_WINDOWS: &str = "ClosedMesh";
+const SERVICE_NAME_WINDOWS: &str = "Senda";
 
 /// Live join endpoint for the canonical entry node. Used by both the
 /// macOS launchd plist and the Windows Scheduled Task: the runtime
 /// re-fetches the token from this URL on every restart so an entry-node
 /// key rotation never strands existing installs.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-const ENTRY_STATUS_URL: &str = "https://mesh.closedmesh.com/api/status";
+const ENTRY_STATUS_URL: &str = "https://entry.senda.network/api/status";
 
 /// Fallback join token baked in at build time.
 ///
-/// The canonical entry node (mesh.closedmesh.com) runs in Docker on AWS
+/// The canonical entry node (entry.senda.network) runs in Docker on AWS
 /// Lightsail. As of the May 5 2026 cleanup the entry no longer publishes
 /// itself on the upstream `mesh-llm` Nostr channel and no longer auto-joins
 /// other meshes (`--auto` and `--publish` removed from its systemd unit) —
@@ -2196,8 +2196,8 @@ const ENTRY_STATUS_URL: &str = "https://mesh.closedmesh.com/api/status";
 /// public→private (or vice-versa), so any future "make the entry public
 /// again" flip will also force a token refresh here.
 ///
-/// The live `--join-url https://mesh.closedmesh.com/api/status` path
-/// (added in closedmesh-llm v0.65.0) always re-fetches on restart, so this
+/// The live `--join-url https://entry.senda.network/api/status` path
+/// (added in senda-llm v0.65.0) always re-fetches on restart, so this
 /// fallback also covers users whose installed CLI is older than that.
 ///
 /// Update this constant whenever the entry node container is restarted
@@ -2209,12 +2209,12 @@ const FALLBACK_JOIN_TOKEN: &str = "eyJpZCI6IjRkMWQ1NzcxN2UyNDBmNDU4NTk4NTcxZGQ3O
 
 /// Public Iroh relays we explicitly hand to the runtime via `--relay`.
 ///
-/// closedmesh-llm v0.65.0-rc2 (the latest published release at the time
+/// senda-llm v0.65.0-rc2 (the latest published release at the time
 /// of writing) hard-codes a default relay map of
 /// `*.michaelneale.mesh-llm.iroh.link` URLs that no longer resolve, so
 /// without an override the runtime can't punch through NAT to reach the
 /// public entry node — which is exactly the failure that surfaces on
-/// `closedmesh.com` as "Mesh online · 0 models" even when a user is
+/// `senda.network` as "Mesh online · 0 models" even when a user is
 /// running a model locally. Until the runtime ships a fix we override
 /// the relay map at the launchd plist level. n0's canary relays are
 /// public and operationally maintained by the iroh team.
@@ -2224,15 +2224,15 @@ const DEFAULT_RELAYS: &[&str] = &[
     "https://euw-1.relay.n0.iroh-canary.iroh.link./",
 ];
 
-/// Rewrites `~/Library/LaunchAgents/dev.closedmesh.closedmesh.plist` so the
-/// service uses arguments compatible with the installed `closedmesh` binary,
+/// Rewrites `~/Library/LaunchAgents/network.senda.runtime.plist` so the
+/// service uses arguments compatible with the installed `senda` binary,
 /// then bounces the launchd agent. A no-op if we can't locate `$HOME` or if
 /// rewriting fails; the user falls back to whatever plist they had, which
 /// is no worse than today.
 ///
 /// Strategy:
 ///   1. Probe the installed CLI for `--join-url` support (added in
-///      closedmesh-llm v0.65.0). If present, embed the canonical entry
+///      senda-llm v0.65.0). If present, embed the canonical entry
 ///      URL — the runtime then re-fetches the token on every restart,
 ///      which means an entry-node restart that rotates its node id
 ///      doesn't permanently strand existing installs.
@@ -2256,7 +2256,7 @@ fn repair_launchd_plist(bin: &std::path::Path) {
         vec!["--join-url".to_string(), ENTRY_STATUS_URL.to_string()]
     } else {
         // fetch_entry_token always returns a token — either live from
-        // mesh.closedmesh.com or the built-in fallback. Either way we
+        // entry.senda.network or the built-in fallback. Either way we
         // always get --join in the plist.
         let token = fetch_entry_token();
         vec!["--join".to_string(), token]
@@ -2290,11 +2290,11 @@ fn repair_launchd_plist(bin: &std::path::Path) {
             .map(|(new, _)| new.trim())
             .unwrap_or("<length mismatch>");
         eprintln!(
-            "[closedmesh] self-heal: plist changed — first diff: \
+            "[senda] self-heal: plist changed — first diff: \
              old={first_old_diff:?} new={first_new_diff:?}; bouncing launchd"
         );
     } else {
-        eprintln!("[closedmesh] self-heal: writing plist for the first time; bouncing launchd");
+        eprintln!("[senda] self-heal: writing plist for the first time; bouncing launchd");
     }
 
     // Some users (and at least one previous incarnation of this code,
@@ -2313,7 +2313,7 @@ fn repair_launchd_plist(bin: &std::path::Path) {
     // refuses to bootstrap (exit code 5 / EIO) if it can't open the log
     // files, and it does NOT create the directory itself.
     if let Some(home) = dirs::home_dir() {
-        let _ = std::fs::create_dir_all(home.join("Library/Logs/closedmesh"));
+        let _ = std::fs::create_dir_all(home.join("Library/Logs/senda"));
     }
 
     // Clear the macOS quarantine attribute on the binary before bootstrapping.
@@ -2333,14 +2333,14 @@ fn repair_launchd_plist(bin: &std::path::Path) {
     }
     if let Err(e) = std::fs::write(&tmp_path, xml.as_bytes()) {
         eprintln!(
-            "[closedmesh] self-heal: failed to write {}: {e}",
+            "[senda] self-heal: failed to write {}: {e}",
             tmp_path.display()
         );
         return;
     }
     if let Err(e) = std::fs::rename(&tmp_path, &plist_path) {
         eprintln!(
-            "[closedmesh] self-heal: failed to rename {} -> {}: {e}",
+            "[senda] self-heal: failed to rename {} -> {}: {e}",
             tmp_path.display(),
             plist_path.display()
         );
@@ -2360,7 +2360,7 @@ fn launchd_plist_path() -> Option<PathBuf> {
     })
 }
 
-/// Probes `closedmesh serve --help` for the `--join-url` token. Cheap (a
+/// Probes `senda serve --help` for the `--join-url` token. Cheap (a
 /// fork+exec of our own binary printing static help text) and avoids
 /// hard-coding a CLI version the desktop has to keep in sync with.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -2386,7 +2386,7 @@ fn cli_supports_join_url(bin: &std::path::Path) -> bool {
 /// 30s if the user's offline.
 ///
 /// Logs each failure mode to stderr (which lands in
-/// `~/Library/Logs/closedmesh/stderr.log` once launchd takes over the
+/// `~/Library/Logs/senda/stderr.log` once launchd takes over the
 /// process). The previous implementation used `.ok()?` to swallow every
 /// error — when this silently returned `None` for a v0.1.16 user we had
 /// no way to tell whether DNS, TLS, the HTTP fetch, or the JSON decode
@@ -2404,11 +2404,11 @@ fn fetch_entry_token() -> String {
 
     let live = (|| {
         let resp = agent.get(ENTRY_STATUS_URL).call().map_err(|e| {
-            eprintln!("[closedmesh] self-heal: GET {ENTRY_STATUS_URL} failed: {e}");
+            eprintln!("[senda] self-heal: GET {ENTRY_STATUS_URL} failed: {e}");
             e.to_string()
         })?;
         let payload: InvitePayload = resp.into_json().map_err(|e| {
-            eprintln!("[closedmesh] self-heal: parse {ENTRY_STATUS_URL} body failed: {e}");
+            eprintln!("[senda] self-heal: parse {ENTRY_STATUS_URL} body failed: {e}");
             e.to_string()
         })?;
         let t = payload
@@ -2416,19 +2416,19 @@ fn fetch_entry_token() -> String {
             .map(|t| t.trim().to_string())
             .filter(|t| !t.is_empty());
         t.ok_or_else(|| {
-            eprintln!("[closedmesh] self-heal: {ENTRY_STATUS_URL} returned no `token` field");
+            eprintln!("[senda] self-heal: {ENTRY_STATUS_URL} returned no `token` field");
             "no token field".to_string()
         })
     })();
 
     match live {
         Ok(t) => {
-            eprintln!("[closedmesh] self-heal: fetched live entry token");
+            eprintln!("[senda] self-heal: fetched live entry token");
             t
         }
         Err(_) => {
             eprintln!(
-                "[closedmesh] self-heal: live fetch failed — using built-in fallback token \
+                "[senda] self-heal: live fetch failed — using built-in fallback token \
                  (relay-based connection will still work)"
             );
             FALLBACK_JOIN_TOKEN.to_string()
@@ -2444,7 +2444,7 @@ fn fetch_entry_token() -> String {
 /// `--publish` is required even when joining via `--join` / `--join-url`:
 /// without it, the local node is in private mode and won't broadcast
 /// itself on Nostr — meaning peers (and the public entry node behind
-/// `mesh.closedmesh.com`) can't discover it, and `closedmesh.com` shows
+/// `entry.senda.network`) can't discover it, and `senda.network` shows
 /// "0 models" even though we successfully joined the canonical mesh.
 /// This was the headline bug in v0.1.16.
 #[cfg(target_os = "macos")]
@@ -2452,7 +2452,7 @@ fn build_launchd_plist_xml(bin: &std::path::Path, join_args: &[String]) -> Strin
     let home = dirs::home_dir()
         .map(|h| h.display().to_string())
         .unwrap_or_else(|| "/".to_string());
-    let log_dir = format!("{home}/Library/Logs/closedmesh");
+    let log_dir = format!("{home}/Library/Logs/senda");
 
     // `--log-format json` is a top-level flag and must precede the `serve`
     // subcommand. Without it, headless mode falls through to the runtime's
@@ -2470,7 +2470,7 @@ fn build_launchd_plist_xml(bin: &std::path::Path, join_args: &[String]) -> Strin
         "--auto".to_string(),
         "--publish".to_string(),
         "--mesh-name".to_string(),
-        "closedmesh".to_string(),
+        "senda".to_string(),
     ];
     program_args.extend(join_args.iter().cloned());
     for relay in DEFAULT_RELAYS {
@@ -2595,7 +2595,7 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
         match &bootstrap {
             Ok(out) if out.status.success() => {
                 eprintln!(
-                    "[closedmesh] launchctl bootstrap succeeded (attempt {})",
+                    "[senda] launchctl bootstrap succeeded (attempt {})",
                     i + 1
                 );
                 succeeded = true;
@@ -2611,7 +2611,7 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
                 .collect::<Vec<_>>()
                 .join(" / ");
                 eprintln!(
-                    "[closedmesh] launchctl bootstrap attempt {} failed (exit {:?}): {msg}",
+                    "[senda] launchctl bootstrap attempt {} failed (exit {:?}): {msg}",
                     i + 1,
                     out.status.code()
                 );
@@ -2619,7 +2619,7 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
             }
             Err(e) => {
                 eprintln!(
-                    "[closedmesh] launchctl bootstrap attempt {} could not spawn: {e}",
+                    "[senda] launchctl bootstrap attempt {} could not spawn: {e}",
                     i + 1
                 );
                 last_failure = Some((None, e.to_string()));
@@ -2630,8 +2630,8 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
     if !succeeded {
         let (code, detail) = last_failure.unwrap_or((None, "no attempt made".to_string()));
         eprintln!(
-            "[closedmesh] launchctl bootstrap exhausted retries (last exit {:?}): {detail}; \
-             plist={} — falling back to `closedmesh service start`",
+            "[senda] launchctl bootstrap exhausted retries (last exit {:?}): {detail}; \
+             plist={} — falling back to `senda service start`",
             code,
             plist_path.display(),
         );
@@ -2658,7 +2658,7 @@ fn cap_runtime_logs() {
     let Some(home) = dirs::home_dir() else {
         return;
     };
-    let log_dir = home.join("Library/Logs/closedmesh");
+    let log_dir = home.join("Library/Logs/senda");
     for name in ["stdout.log", "stderr.log"] {
         let path = log_dir.join(name);
         let size = match std::fs::metadata(&path) {
@@ -2670,11 +2670,11 @@ fn cap_runtime_logs() {
         }
         match trim_log_to_tail(&path, KEEP_TAIL_BYTES) {
             Ok(()) => eprintln!(
-                "[closedmesh] log cap: trimmed {} ({size} bytes → last {KEEP_TAIL_BYTES} bytes)",
+                "[senda] log cap: trimmed {} ({size} bytes → last {KEEP_TAIL_BYTES} bytes)",
                 path.display()
             ),
             Err(e) => eprintln!(
-                "[closedmesh] log cap: failed to trim {} ({size} bytes): {e}",
+                "[senda] log cap: failed to trim {} ({size} bytes): {e}",
                 path.display()
             ),
         }
@@ -2699,7 +2699,7 @@ fn trim_log_to_tail(path: &std::path::Path, keep_tail: u64) -> std::io::Result<(
     let tmp = path.with_extension("log.tmp");
     {
         let mut out = std::fs::File::create(&tmp)?;
-        out.write_all(b"... [closedmesh log trimmed by size cap \xe2\x80\x94 older lines dropped] ...\n")?;
+        out.write_all(b"... [senda log trimmed by size cap \xe2\x80\x94 older lines dropped] ...\n")?;
         // Skip a leading partial line so the first retained record is whole.
         let body = match tail.iter().position(|&b| b == b'\n') {
             Some(nl) => &tail[nl + 1..],
@@ -2740,7 +2740,7 @@ pub fn keep_running_after_quit() -> bool {
     let Some(home) = dirs::home_dir() else {
         return false;
     };
-    let path = home.join(".closedmesh").join("controller-settings.json");
+    let path = home.join(".senda").join("controller-settings.json");
     let Ok(raw) = std::fs::read_to_string(&path) else {
         return false;
     };
@@ -2760,7 +2760,7 @@ pub fn keep_running_after_quit() -> bool {
 
 // ---------- Windows / Task Scheduler ------------------------------------
 
-/// PowerShell script that registers (or refreshes) the ClosedMesh
+/// PowerShell script that registers (or refreshes) the Senda
 /// Scheduled Task. Mirrors `Install-ScheduledTaskUnit` in
 /// `public/install.ps1` so a user who started from the .msi gets the
 /// exact same task definition (RestartInterval, AllowStartIfOnBatteries,
@@ -2793,17 +2793,17 @@ $ErrorActionPreference = 'Stop'
 
 # Stop any running runtime first. Without this:
 #   - Stop-ScheduledTask + Register-ScheduledTask can race against a
-#     running closedmesh.exe that still holds the binary file open,
+#     running senda.exe that still holds the binary file open,
 #     and the user's next launch quietly runs the old image.
 #   - The wscript.exe launcher (see below) holds an exclusive lock
-#     on closedmesh-launch.vbs while it's shepherding the runtime,
+#     on senda-launch.vbs while it's shepherding the runtime,
 #     so re-writing the .vbs from this script would fail with a
 #     "file in use" error.
 try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Out-Null } catch { }
 $installDir = Split-Path -Parent $BinPath
 for ($i = 0; $i -lt 2; $i++) {
     try {
-        Get-Process -Name closedmesh -ErrorAction SilentlyContinue |
+        Get-Process -Name senda -ErrorAction SilentlyContinue |
             Where-Object { $_.Path -and ($_.Path -ieq $BinPath) } |
             Stop-Process -Force -ErrorAction SilentlyContinue
     } catch { }
@@ -2811,7 +2811,7 @@ for ($i = 0; $i -lt 2; $i++) {
 }
 try {
     Get-CimInstance Win32_Process -Filter "Name = 'wscript.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -and ($_.CommandLine -like "*closedmesh-launch.vbs*") } |
+        Where-Object { $_.CommandLine -and ($_.CommandLine -like "*senda-launch.vbs*") } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 } catch { }
 Start-Sleep -Milliseconds 400
@@ -2823,14 +2823,14 @@ Start-Sleep -Milliseconds 400
 # a missing prior task is silently OK.
 try { schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null } catch { }
 
-# Generate a tiny VBScript that CreateProcess()'s closedmesh.exe with
+# Generate a tiny VBScript that CreateProcess()'s senda.exe with
 # no console window AND redirects its stdout/stderr to log files,
 # then blocks until it exits. See public/install.ps1::Write-LaunchVbs
 # for the rationale (mirrored verbatim - keep the two in sync).
 #
 # Two problems solved at once:
 #
-#   1. console window. closedmesh.exe is a console-subsystem binary,
+#   1. console window. senda.exe is a console-subsystem binary,
 #      so a Scheduled Task with LogonType=Interactive allocates a
 #      console for it and Win11's default terminal handler pops a
 #      visible Windows Terminal tab on every login.
@@ -2846,7 +2846,7 @@ try { schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null } catch { }
 # streams to disk; sh.Run "..", 0, True hides the (now-redundant) cmd
 # window and blocks wscript on the child so Stop-ScheduledTask still
 # has something to terminate.
-$logDir  = Join-Path $env:LOCALAPPDATA 'closedmesh\logs'
+$logDir  = Join-Path $env:LOCALAPPDATA 'senda\logs'
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
 $logFileStdout = Join-Path $logDir 'stdout.log'
 $logFileStderr = Join-Path $logDir 'stderr.log'
@@ -2857,7 +2857,7 @@ $logFileStderr = Join-Path $logDir 'stderr.log'
 # `HOME` is unset and the resolver collapses to `./.cache/huggingface/hub`
 # - i.e. relative to whichever process's CWD launched it. Two launch
 # contexts (the Scheduled Task running with USERPROFILE as CWD vs the
-# bundled Node controller running with %LOCALAPPDATA%\ClosedMesh as CWD)
+# bundled Node controller running with %LOCALAPPDATA%\Senda as CWD)
 # produced two different cache dirs, so a model the user downloaded via
 # the dashboard ended up invisible to the startup-loading task -
 # which silently re-downloaded a 33 GB file from scratch. Setting the
@@ -2866,24 +2866,24 @@ $logFileStderr = Join-Path $logDir 'stderr.log'
 $hfCacheDir = Join-Path $env:LOCALAPPDATA 'huggingface\hub'
 if (-not (Test-Path $hfCacheDir)) { New-Item -ItemType Directory -Force -Path $hfCacheDir | Out-Null }
 
-$vbsPath = Join-Path $installDir 'closedmesh-launch.vbs'
+$vbsPath = Join-Path $installDir 'senda-launch.vbs'
 $vbs = @"
-' Auto-generated by ClosedMesh desktop app. Do not edit by hand;
+' Auto-generated by Senda desktop app. Do not edit by hand;
 ' relaunching the desktop app regenerates this file. See
 ' public/install.ps1::Write-LaunchVbs for the same wrapper used by the
 ' standalone PowerShell installer.
 '
-' CLOSEDMESH_BIN: ${BinPath}
-' CLOSEDMESH_ARGS: ${ArgString}
-' CLOSEDMESH_LOGDIR: ${logDir}
-' CLOSEDMESH_HF_HUB_CACHE: ${hfCacheDir}
+' SENDA_BIN: ${BinPath}
+' SENDA_ARGS: ${ArgString}
+' SENDA_LOGDIR: ${logDir}
+' SENDA_HF_HUB_CACHE: ${hfCacheDir}
 Option Explicit
 Dim sh, fso, cmd, q
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 If Not fso.FolderExists("${logDir}") Then fso.CreateFolder("${logDir}")
 If Not fso.FolderExists("${hfCacheDir}") Then fso.CreateFolder("${hfCacheDir}")
-' Pin the HuggingFace cache for THIS process (and every child cmd/closedmesh
+' Pin the HuggingFace cache for THIS process (and every child cmd/senda
 ' inherits the value). The runtime would otherwise resolve the cache from
 ' \$HOME, which Windows doesn't set, and fall back to a CWD-relative path.
 sh.Environment("PROCESS")("HF_HUB_CACHE") = "${hfCacheDir}"
@@ -2911,7 +2911,7 @@ Register-ScheduledTask -TaskName $TaskName `
     -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
-    -Description 'ClosedMesh - private LLM mesh node' | Out-Null
+    -Description 'Senda - private LLM mesh node' | Out-Null
 "#;
 
 /// Compose the runtime CLI argument string baked into the Scheduled
@@ -2942,19 +2942,19 @@ fn build_windows_service_args(bin: &std::path::Path) -> String {
     // the headless runtime re-renders the full dashboard text into stderr on
     // every output event, producing ~36 MB/day of redundant frames.
     format!(
-        "--log-format json serve --auto --publish --mesh-name closedmesh{join_segment}{relays} --headless"
+        "--log-format json serve --auto --publish --mesh-name senda{join_segment}{relays} --headless"
     )
 }
 
 /// Returns the (binPath, argString) the currently installed Scheduled
-/// Task will pass to `closedmesh.exe`, or `None` if no .vbs launcher
+/// Task will pass to `senda.exe`, or `None` if no .vbs launcher
 /// exists (the task isn't registered yet, or it's from a
 /// pre-VBS-launcher version of the desktop app, or the .vbs is from
 /// before the redirected-output rewrite).
 ///
 /// We can't read the task's Action.Arguments directly because as of
 /// the VBS-launcher refactor the task runs `wscript.exe //B //Nologo
-/// "<vbs>"` — the actual closedmesh args live inside the `.vbs`. We
+/// "<vbs>"` — the actual senda args live inside the `.vbs`. We
 /// also can't reliably parse the embedded `cmd /S /c` invocation
 /// because the VBS uses Chr(34) string concatenation to assemble
 /// quotes, which would force this side to mirror the same string-
@@ -2962,8 +2962,8 @@ fn build_windows_service_args(bin: &std::path::Path) -> String {
 /// REGISTER_TASK_PS sibling here) emit the canonical bin path and
 /// args string as stable comment markers at the top of the file:
 ///
-///     ' CLOSEDMESH_BIN: C:\Users\u\AppData\Local\closedmesh\bin\closedmesh.exe
-///     ' CLOSEDMESH_ARGS: serve --auto --publish ... --headless
+///     ' SENDA_BIN: C:\Users\u\AppData\Local\senda\bin\senda.exe
+///     ' SENDA_ARGS: serve --auto --publish ... --headless
 ///
 /// This function reads both lines back. Robust against future changes
 /// to the runtime invocation as long as the markers stay.
@@ -2973,9 +2973,9 @@ fn build_windows_service_args(bin: &std::path::Path) -> String {
 /// kill the running task (delete + create) and disconnect any in-flight
 /// inference. Same idempotency principle as the macOS plist self-heal.
 ///
-/// CRITICAL: 0.1.75-0.1.77 only checked CLOSEDMESH_ARGS, not
-/// CLOSEDMESH_BIN. Migration moves closedmesh.exe from
-/// `~/.local/bin\` to `%LOCALAPPDATA%\closedmesh\bin\`, but the
+/// CRITICAL: 0.1.75-0.1.77 only checked SENDA_ARGS, not
+/// SENDA_BIN. Migration moves senda.exe from
+/// `~/.local/bin\` to `%LOCALAPPDATA%\senda\bin\`, but the
 /// args string ("serve --auto ...") doesn't change with the path —
 /// so this function returned the OLD args, the comparison passed,
 /// re-registration was skipped, and the still-in-place VBS pointed
@@ -2986,11 +2986,11 @@ fn build_windows_service_args(bin: &std::path::Path) -> String {
 /// changes the path.
 #[cfg(target_os = "windows")]
 fn current_windows_task_args(bin: &std::path::Path) -> Option<(String, String)> {
-    let vbs_path = bin.parent()?.join("closedmesh-launch.vbs");
+    let vbs_path = bin.parent()?.join("senda-launch.vbs");
     let contents = std::fs::read_to_string(&vbs_path).ok()?;
 
-    const BIN_MARKER: &str = "' CLOSEDMESH_BIN:";
-    const ARGS_MARKER: &str = "' CLOSEDMESH_ARGS:";
+    const BIN_MARKER: &str = "' SENDA_BIN:";
+    const ARGS_MARKER: &str = "' SENDA_ARGS:";
 
     let bin_line = contents.lines().find(|l| l.starts_with(BIN_MARKER))?;
     let args_line = contents.lines().find(|l| l.starts_with(ARGS_MARKER))?;
@@ -3005,14 +3005,14 @@ fn current_windows_task_args(bin: &std::path::Path) -> Option<(String, String)> 
     }
 }
 
-/// Make sure the ClosedMesh Scheduled Task exists and points at `bin`
+/// Make sure the Senda Scheduled Task exists and points at `bin`
 /// with the right argument string. No-op when the task already matches
 /// what we'd write.
 ///
 /// Why this exists: pre-0.1.62 the desktop app's `start_service_if_installed`
-/// happily downloaded `closedmesh.exe` to `~/.local/bin/` on Windows, then
-/// called `closedmesh service start` — which on Windows just runs
-/// `schtasks /Run /TN ClosedMesh` and errors if the task isn't registered.
+/// happily downloaded `senda.exe` to `~/.local/bin/` on Windows, then
+/// called `senda service start` — which on Windows just runs
+/// `schtasks /Run /TN Senda` and errors if the task isn't registered.
 /// Result: a friend who installed the .msi and opened the app got
 /// "In-app install isn't wired for Windows yet. Run install.ps1 manually
 /// for now." This function closes that gap so .msi → first launch → online
@@ -3044,22 +3044,22 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
         }
         if !existing_bin.eq_ignore_ascii_case(&bin_str) {
             eprintln!(
-                "[closedmesh] scheduled task bin path changed: {existing_bin} -> {bin_str}; re-registering ({SERVICE_NAME_WINDOWS})"
+                "[senda] scheduled task bin path changed: {existing_bin} -> {bin_str}; re-registering ({SERVICE_NAME_WINDOWS})"
             );
         } else {
             eprintln!(
-                "[closedmesh] scheduled task args changed; re-registering ({SERVICE_NAME_WINDOWS})"
+                "[senda] scheduled task args changed; re-registering ({SERVICE_NAME_WINDOWS})"
             );
         }
     } else {
         eprintln!(
-            "[closedmesh] scheduled task '{SERVICE_NAME_WINDOWS}' not registered (or pre-VBS-launcher); creating it"
+            "[senda] scheduled task '{SERVICE_NAME_WINDOWS}' not registered (or pre-VBS-launcher); creating it"
         );
     }
 
     let user_name = std::env::var("USERNAME").unwrap_or_default();
     if user_name.is_empty() {
-        eprintln!("[closedmesh] cannot register scheduled task: USERNAME env var is empty");
+        eprintln!("[senda] cannot register scheduled task: USERNAME env var is empty");
         return;
     }
     let working_dir = std::env::var("USERPROFILE")
@@ -3068,10 +3068,10 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
         .unwrap_or_else(|| ".".to_string());
 
     let temp_dir = std::env::temp_dir();
-    let script_path = temp_dir.join("closedmesh-register-task.ps1");
+    let script_path = temp_dir.join("senda-register-task.ps1");
     if let Err(e) = std::fs::write(&script_path, REGISTER_TASK_PS) {
         eprintln!(
-            "[closedmesh] could not stage register-task script at {}: {e}",
+            "[senda] could not stage register-task script at {}: {e}",
             script_path.display()
         );
         return;
@@ -3096,7 +3096,7 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
     {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("[closedmesh] register-scheduled-task spawn failed: {e}");
+            eprintln!("[senda] register-scheduled-task spawn failed: {e}");
             let _ = std::fs::remove_file(&script_path);
             return;
         }
@@ -3104,7 +3104,7 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
     let _ = std::fs::remove_file(&script_path);
     if !output.status.success() {
         eprintln!(
-            "[closedmesh] register-scheduled-task failed (exit {:?}): stderr={:?} stdout={:?}",
+            "[senda] register-scheduled-task failed (exit {:?}): stderr={:?} stdout={:?}",
             output.status.code(),
             String::from_utf8_lossy(&output.stderr).trim(),
             String::from_utf8_lossy(&output.stdout).trim(),
@@ -3112,21 +3112,21 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
         return;
     }
     eprintln!(
-        "[closedmesh] scheduled task '{SERVICE_NAME_WINDOWS}' registered for {} (user {user_name})",
+        "[senda] scheduled task '{SERVICE_NAME_WINDOWS}' registered for {} (user {user_name})",
         bin.display()
     );
 }
 
 // ---------- Runtime auto-install ----------------------------------------
 
-/// GitHub "latest release" asset URL for the closedmesh-llm runtime. The
+/// GitHub "latest release" asset URL for the senda-llm runtime. The
 /// `/releases/latest/download/<asset>` shape redirects to whatever GitHub
 /// currently considers the latest non-prerelease — meaning desktop builds
 /// don't have to know specific tag names, the runtime can ship updates
 /// independently, and the desktop self-installer picks them up on the
 /// next first-launch (or any launch where the user has nuked the binary).
 const RUNTIME_RELEASE_BASE: &str =
-    "https://github.com/closedmesh/closedmesh-llm/releases/latest/download";
+    "https://github.com/senda-network/senda-llm/releases/latest/download";
 
 /// Return `true` if the installed runtime binary is new enough to support
 /// all the flags we emit in the launchd plist (`--relay`, `--join`,
@@ -3137,7 +3137,7 @@ const RUNTIME_RELEASE_BASE: &str =
 /// produced relay-less iroh invites, leaving home-network nodes invisible
 /// to the entry node and the production website).
 ///
-/// We call `closedmesh --version`, parse the `major.minor.patch` triplet
+/// We call `senda --version`, parse the `major.minor.patch` triplet
 /// from the first token that looks like a semantic version, and compare
 /// against the threshold (0, 65, 0). Pre-release suffixes are rejected.
 ///
@@ -3149,7 +3149,7 @@ fn runtime_meets_minimum(bin: &std::path::Path) -> bool {
         Ok(o) => o,
         Err(e) => {
             eprintln!(
-                "[closedmesh] runtime version check failed ({}): {e}",
+                "[senda] runtime version check failed ({}): {e}",
                 bin.display()
             );
             return false;
@@ -3157,7 +3157,7 @@ fn runtime_meets_minimum(bin: &std::path::Path) -> bool {
     };
     let text = String::from_utf8_lossy(&out.stdout);
     let text = text.trim();
-    eprintln!("[closedmesh] runtime reports version: {text:?}");
+    eprintln!("[senda] runtime reports version: {text:?}");
 
     // Find the first substring that looks like "MAJOR.MINOR.PATCH…"
     let version_token = text
@@ -3199,7 +3199,7 @@ fn parse_semver(s: &str) -> (u32, u32, u32, Option<String>) {
     (maj, min, patch, pre)
 }
 
-/// First-launch installer for the `closedmesh` CLI runtime.
+/// First-launch installer for the `senda` CLI runtime.
 ///
 /// The .app is a thin shell — it talks to a separate runtime binary that
 /// does the real work (joining the mesh, hosting llama.cpp, exposing the
@@ -3208,8 +3208,8 @@ fn parse_semver(s: &str) -> (u32, u32, u32, Option<String>) {
 /// pitch to non-technical users hit a wall the moment they opened the app.
 ///
 /// This function closes that gap: if `locate_binary` came up empty, we
-/// fetch the platform-appropriate tarball from the latest closedmesh-llm
-/// GitHub release, extract it into `~/.local/bin/closedmesh`, and return
+/// fetch the platform-appropriate tarball from the latest senda-llm
+/// GitHub release, extract it into `~/.local/bin/senda`, and return
 /// the resolved path. The caller (`start_service_if_installed`) then runs
 /// the normal launchd self-heal + service start on it.
 ///
@@ -3231,7 +3231,7 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
         return Some(dest);
     }
 
-    eprintln!("[closedmesh] runtime not found; fetching {asset} from GitHub releases");
+    eprintln!("[senda] runtime not found; fetching {asset} from GitHub releases");
 
     let url = format!("{RUNTIME_RELEASE_BASE}/{asset}");
     let agent = ureq::AgentBuilder::new()
@@ -3243,7 +3243,7 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
     let resp = match agent.get(&url).call() {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[closedmesh] runtime download failed: GET {url}: {e}");
+            eprintln!("[senda] runtime download failed: GET {url}: {e}");
             return None;
         }
     };
@@ -3252,21 +3252,21 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
     // to, so the rename/move at the end is on the same filesystem.
     let parent = dest.parent()?;
     let _ = std::fs::create_dir_all(parent);
-    let tmp_archive = parent.join(format!(".closedmesh.{asset}.partial"));
+    let tmp_archive = parent.join(format!(".senda.{asset}.partial"));
 
     let mut reader = resp.into_reader();
     let mut tmp_file = match std::fs::File::create(&tmp_archive) {
         Ok(f) => f,
         Err(e) => {
             eprintln!(
-                "[closedmesh] runtime install: create {} failed: {e}",
+                "[senda] runtime install: create {} failed: {e}",
                 tmp_archive.display()
             );
             return None;
         }
     };
     if let Err(e) = std::io::copy(&mut reader, &mut tmp_file) {
-        eprintln!("[closedmesh] runtime download: stream failed: {e}");
+        eprintln!("[senda] runtime download: stream failed: {e}");
         let _ = std::fs::remove_file(&tmp_archive);
         return None;
     }
@@ -3277,7 +3277,7 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
     } else if asset.ends_with(".zip") {
         extract_zip(&tmp_archive, parent)
     } else {
-        eprintln!("[closedmesh] runtime install: unknown archive type for {asset}");
+        eprintln!("[senda] runtime install: unknown archive type for {asset}");
         false
     };
 
@@ -3289,7 +3289,7 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
 
     if !dest.is_file() {
         eprintln!(
-            "[closedmesh] runtime install: extraction succeeded but {} is missing",
+            "[senda] runtime install: extraction succeeded but {} is missing",
             dest.display()
         );
         return None;
@@ -3319,7 +3319,7 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
             .output();
     }
 
-    eprintln!("[closedmesh] runtime installed at {}", dest.display());
+    eprintln!("[senda] runtime installed at {}", dest.display());
     Some(dest)
 }
 
@@ -3329,30 +3329,30 @@ fn ensure_runtime_installed() -> Option<PathBuf> {
 /// experience instead of running a node locally.
 ///
 /// Windows is the odd one out: the runtime release ships
-/// `closedmesh-windows-x86_64-{cuda,vulkan}.zip` (flavor-specific), not
-/// a single `closedmesh-windows-x86_64.zip`. Pre-0.1.72 we returned the
+/// `senda-windows-x86_64-{cuda,vulkan}.zip` (flavor-specific), not
+/// a single `senda-windows-x86_64.zip`. Pre-0.1.72 we returned the
 /// flavorless filename here and silently 404'd on every Windows
 /// auto-update / `repair_missing_helpers` call — which is why a user who
 /// upgraded the desktop without re-clicking Setup never picked up
 /// `rpc-server.exe`. Default to vulkan because it works on every GPU
 /// (NVIDIA / AMD / Intel) without a system CUDA install; the user can
-/// override via `CLOSEDMESH_BACKEND=cuda` if they actually have a
+/// override via `SENDA_BACKEND=cuda` if they actually have a
 /// modern NVIDIA card and CUDA 12.x runtime present.
 fn runtime_asset_name() -> Option<String> {
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some("closedmesh-darwin-aarch64.tar.gz".to_string())
+        Some("senda-darwin-aarch64.tar.gz".to_string())
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Some("closedmesh-darwin-x86_64.tar.gz".to_string())
+        Some("senda-darwin-x86_64.tar.gz".to_string())
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Some("closedmesh-linux-x86_64.tar.gz".to_string())
+        Some("senda-linux-x86_64.tar.gz".to_string())
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        Some("closedmesh-linux-aarch64.tar.gz".to_string())
+        Some("senda-linux-aarch64.tar.gz".to_string())
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        // The closedmesh-llm release pipeline currently publishes ONLY the
+        // The senda-llm release pipeline currently publishes ONLY the
         // CUDA Windows .zip (linux ships cpu/cuda/rocm/vulkan; macOS ships
         // a single Metal build; Windows is the odd one out). Defaulting
         // to "vulkan" here meant every Windows auto-upgrade attempt since
-        // 0.1.40 hit a GitHub 404 on `closedmesh-windows-x86_64-vulkan.zip`
+        // 0.1.40 hit a GitHub 404 on `senda-windows-x86_64-vulkan.zip`
         // and the loop silently stayed on whatever runtime the user
         // originally installed via install.ps1 / WiX (which had its own
         // resolution logic and always landed on the cuda zip). The
@@ -3360,12 +3360,12 @@ fn runtime_asset_name() -> Option<String> {
         // which is finally how we noticed.
         //
         // Pin to "cuda" as the default until the runtime release pipeline
-        // starts publishing vulkan / cpu zips for Windows. CLOSEDMESH_BACKEND
+        // starts publishing vulkan / cpu zips for Windows. SENDA_BACKEND
         // still wins when set explicitly, so anyone wanting to test an
         // experimental flavor (once published) can opt in via env. Revisit
-        // once `closedmesh-windows-x86_64-{cpu,vulkan}.zip` show up in
+        // once `senda-windows-x86_64-{cpu,vulkan}.zip` show up in
         // /releases/latest.
-        let flavor = match std::env::var("CLOSEDMESH_BACKEND")
+        let flavor = match std::env::var("SENDA_BACKEND")
             .ok()
             .map(|v| v.trim().to_ascii_lowercase())
             .as_deref()
@@ -3375,7 +3375,7 @@ fn runtime_asset_name() -> Option<String> {
             Some("vulkan") => "vulkan",
             _ => "cuda",
         };
-        Some(format!("closedmesh-windows-x86_64-{flavor}.zip"))
+        Some(format!("senda-windows-x86_64-{flavor}.zip"))
     } else {
         None
     }
@@ -3386,45 +3386,45 @@ fn runtime_asset_name() -> Option<String> {
 /// transparent to the rest of the codebase.
 ///
 /// Per-OS conventions (DO NOT cross-pollinate; that was the
-/// 0.1.40-0.1.74 bug that made Windows installs ship `closedmesh.exe`
+/// 0.1.40-0.1.74 bug that made Windows installs ship `senda.exe`
 /// to `~/.local/bin/`, where `install.ps1` and the
-/// `closedmesh-llm` runtime never look. The two install paths fought
-/// each other: helpers landed in `%LOCALAPPDATA%\closedmesh\bin\` from
+/// `senda-llm` runtime never look. The two install paths fought
+/// each other: helpers landed in `%LOCALAPPDATA%\senda\bin\` from
 /// `install.ps1`, the desktop's auto-installer dropped just
-/// `closedmesh.exe` into `~/.local/bin\`, `locate_binary` found the
+/// `senda.exe` into `~/.local/bin\`, `locate_binary` found the
 /// auto-installed one first, the runtime started with no helpers in
 /// its dir, and every model load died with
 /// `rpc-server.exe not found in C:\Users\…\.local\bin`):
 ///
-///   - Windows: `%LOCALAPPDATA%\closedmesh\bin\closedmesh.exe`
+///   - Windows: `%LOCALAPPDATA%\senda\bin\senda.exe`
 ///     (canonical for the runtime: matches install.ps1, the WiX/NSIS
 ///     installers, and the directory the Scheduled Task launches from).
-///   - macOS / Linux: `~/.local/bin/closedmesh` (XDG-ish; consistent
+///   - macOS / Linux: `~/.local/bin/senda` (XDG-ish; consistent
 ///     with what `install.sh` and Homebrew users already have).
 fn runtime_install_path() -> Option<PathBuf> {
     if cfg!(windows) {
-        return windows_canonical_runtime_dir().map(|d| d.join("closedmesh.exe"));
+        return windows_canonical_runtime_dir().map(|d| d.join("senda.exe"));
     }
     let home = dirs::home_dir()?;
-    Some(home.join(".local").join("bin").join("closedmesh"))
+    Some(home.join(".local").join("bin").join("senda"))
 }
 
-/// `%LOCALAPPDATA%\closedmesh\bin`. Falls back to
-/// `~/AppData/Local/closedmesh/bin` if `LOCALAPPDATA` isn't set (rare,
+/// `%LOCALAPPDATA%\senda\bin`. Falls back to
+/// `~/AppData/Local/senda/bin` if `LOCALAPPDATA` isn't set (rare,
 /// but Windows Sandbox / minimal user profiles can have it unset).
 #[cfg(windows)]
 fn windows_canonical_runtime_dir() -> Option<PathBuf> {
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
         let p = PathBuf::from(local);
         if !p.as_os_str().is_empty() {
-            return Some(p.join("closedmesh").join("bin"));
+            return Some(p.join("senda").join("bin"));
         }
     }
     let home = dirs::home_dir()?;
     Some(
         home.join("AppData")
             .join("Local")
-            .join("closedmesh")
+            .join("senda")
             .join("bin"),
     )
 }
@@ -3435,7 +3435,7 @@ fn windows_canonical_runtime_dir() -> Option<PathBuf> {
 }
 
 /// Extracts a `.tar.gz` archive into `dest_dir`, expecting the bundled
-/// `closedmesh` binary at the archive root. We shell out to `tar`
+/// `senda` binary at the archive root. We shell out to `tar`
 /// because every platform we target ships it (macOS, Linux, and
 /// Windows 10 1803+), and pulling in `flate2` + `tar` crates would
 /// double the desktop binary size for one-shot first-launch use.
@@ -3450,13 +3450,13 @@ fn extract_tar_gz(archive: &std::path::Path, dest_dir: &std::path::Path) -> bool
     {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("[closedmesh] runtime install: spawn `tar` failed: {e}");
+            eprintln!("[senda] runtime install: spawn `tar` failed: {e}");
             return false;
         }
     };
     if !output.status.success() {
         eprintln!(
-            "[closedmesh] runtime install: tar -xzf failed: {}",
+            "[senda] runtime install: tar -xzf failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
         return false;
@@ -3478,13 +3478,13 @@ fn extract_zip(archive: &std::path::Path, dest_dir: &std::path::Path) -> bool {
     {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("[closedmesh] runtime install: spawn `tar` failed (zip): {e}");
+            eprintln!("[senda] runtime install: spawn `tar` failed (zip): {e}");
             return false;
         }
     };
     if !output.status.success() {
         eprintln!(
-            "[closedmesh] runtime install: tar -xf (zip) failed: {}",
+            "[senda] runtime install: tar -xf (zip) failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
         return false;
@@ -3494,10 +3494,10 @@ fn extract_zip(archive: &std::path::Path, dest_dir: &std::path::Path) -> bool {
 
 // ---------- Binary discovery --------------------------------------------
 
-/// Resolves the `closedmesh` binary. Order matches the deprecated Swift
+/// Resolves the `senda` binary. Order matches the deprecated Swift
 /// implementation, plus Windows-specific install locations.
 fn locate_binary() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("CLOSEDMESH_BIN") {
+    if let Ok(p) = std::env::var("SENDA_BIN") {
         let path = PathBuf::from(p);
         if path.is_file() {
             return Some(path);
@@ -3506,7 +3506,7 @@ fn locate_binary() -> Option<PathBuf> {
 
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    // Windows: canonical %LOCALAPPDATA%\closedmesh\bin\closedmesh.exe
+    // Windows: canonical %LOCALAPPDATA%\senda\bin\senda.exe
     // FIRST, then legacy fallbacks. install.ps1, the WiX/NSIS
     // installer, and `runtime_install_path` all use the canonical path
     // — but pre-0.1.75 the auto-installer wrote to `~/.local/bin\`
@@ -3517,23 +3517,23 @@ fn locate_binary() -> Option<PathBuf> {
     // somehow missed migrating.
     if cfg!(windows) {
         if let Some(canonical) = windows_canonical_runtime_dir() {
-            candidates.push(canonical.join("closedmesh.exe"));
+            candidates.push(canonical.join("senda.exe"));
         }
         if let Some(home) = dirs::home_dir() {
-            candidates.push(home.join("AppData/Local/closedmesh/bin/closedmesh.exe"));
-            candidates.push(home.join("AppData/Local/closedmesh/closedmesh.exe"));
-            candidates.push(home.join(".local/bin/closedmesh.exe"));
+            candidates.push(home.join("AppData/Local/senda/bin/senda.exe"));
+            candidates.push(home.join("AppData/Local/senda-network/senda.exe"));
+            candidates.push(home.join(".local/bin/senda.exe"));
         }
     } else {
         if let Some(home) = dirs::home_dir() {
-            candidates.push(home.join(".local/bin/closedmesh"));
+            candidates.push(home.join(".local/bin/senda"));
         }
         if cfg!(target_os = "macos") {
-            candidates.push(PathBuf::from("/opt/homebrew/bin/closedmesh"));
-            candidates.push(PathBuf::from("/usr/local/bin/closedmesh"));
+            candidates.push(PathBuf::from("/opt/homebrew/bin/senda"));
+            candidates.push(PathBuf::from("/usr/local/bin/senda"));
         } else if cfg!(target_os = "linux") {
-            candidates.push(PathBuf::from("/usr/local/bin/closedmesh"));
-            candidates.push(PathBuf::from("/usr/bin/closedmesh"));
+            candidates.push(PathBuf::from("/usr/local/bin/senda"));
+            candidates.push(PathBuf::from("/usr/bin/senda"));
         }
     }
 
@@ -3547,9 +3547,9 @@ fn locate_binary() -> Option<PathBuf> {
     // pulling the `which` crate just for this would be silly.
     if let Ok(path_env) = std::env::var("PATH") {
         let exe_name = if cfg!(windows) {
-            "closedmesh.exe"
+            "senda.exe"
         } else {
-            "closedmesh"
+            "senda"
         };
         let separator = if cfg!(windows) { ';' } else { ':' };
         for dir in path_env.split(separator) {
@@ -3567,14 +3567,14 @@ fn run_cli(args: &[&str]) {
     let Some(bin) = locate_binary() else { return };
     // The tray polls `:3131/api/status` for ground truth, so we don't need
     // to parse output for success. But we do log failures so they appear in
-    // macOS Console (searchable with "closedmesh" subsystem) and in any
+    // macOS Console (searchable with "senda" subsystem) and in any
     // attached terminal session.
     match Command::new(&bin).args(args).hide_console().output() {
         Ok(out) if !out.status.success() => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             let stdout = String::from_utf8_lossy(&out.stdout);
             eprintln!(
-                "[closedmesh] {} {:?} failed (exit {:?}){}{}",
+                "[senda] {} {:?} failed (exit {:?}){}{}",
                 bin.display(),
                 args,
                 out.status.code(),
@@ -3592,7 +3592,7 @@ fn run_cli(args: &[&str]) {
         }
         Err(e) => {
             eprintln!(
-                "[closedmesh] failed to spawn {} {:?}: {e}",
+                "[senda] failed to spawn {} {:?}: {e}",
                 bin.display(),
                 args,
             );
@@ -3634,16 +3634,16 @@ mod tests {
     #[test]
     fn admin_url_honors_explicit_override() {
         assert_eq!(
-            resolve_admin_status_url(Some("https://mesh.closedmesh.com".into())),
-            "https://mesh.closedmesh.com/api/status",
+            resolve_admin_status_url(Some("https://entry.senda.network".into())),
+            "https://entry.senda.network/api/status",
         );
     }
 
     #[test]
     fn admin_url_strips_trailing_slash_so_path_does_not_double() {
         assert_eq!(
-            resolve_admin_status_url(Some("https://mesh.closedmesh.com/".into())),
-            "https://mesh.closedmesh.com/api/status",
+            resolve_admin_status_url(Some("https://entry.senda.network/".into())),
+            "https://entry.senda.network/api/status",
         );
     }
 
@@ -3653,8 +3653,8 @@ mod tests {
     #[test]
     fn admin_url_trims_whitespace_and_newlines() {
         assert_eq!(
-            resolve_admin_status_url(Some("  https://mesh.closedmesh.com\n".into())),
-            "https://mesh.closedmesh.com/api/status",
+            resolve_admin_status_url(Some("  https://entry.senda.network\n".into())),
+            "https://entry.senda.network/api/status",
         );
     }
 }

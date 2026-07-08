@@ -90,7 +90,7 @@ describe("pickDefaultModelByTier", () => {
       "Qwen3-8B-Q4_K_M",
       "DeepSeek-R1-Distill-70B-Q4_K_M",
     ];
-    // Operator's explicit CLOSEDMESH_MODEL pin wins over the tier gate.
+    // Operator's explicit SENDA_MODEL pin wins over the tier gate.
     expect(
       pickDefaultModelByTier(routable, "DeepSeek-R1-Distill-70B-Q4_K_M"),
     ).toBe("DeepSeek-R1-Distill-70B-Q4_K_M");

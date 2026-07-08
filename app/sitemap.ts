@@ -5,7 +5,7 @@ import type { MetadataRoute } from "next";
  * controller pages (`/dashboard`, `/models`, …) are machine-local and
  * excluded via `robots.ts`.
  */
-const BASE = "https://closedmesh.com";
+const BASE = "https://senda.network";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

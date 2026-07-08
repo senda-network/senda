@@ -132,7 +132,7 @@ export default function SettingsPage() {
     <div className="flex min-h-dvh flex-col">
       <PageHeader
         title="Settings"
-        subtitle="How ClosedMesh runs on this machine."
+        subtitle="How Senda runs on this machine."
       />
 
       <main className="flex-1 overflow-y-auto scrollbar-thin">
@@ -140,7 +140,7 @@ export default function SettingsPage() {
           <Card
             eyebrow="Startup"
             title="Start automatically when I log in"
-            hint="ClosedMesh will be running in the background, ready to share your machine and answer chat requests."
+            hint="Senda will be running in the background, ready to share your machine and answer chat requests."
           >
             <div className="flex items-center justify-between gap-4">
               <Toggle
@@ -167,7 +167,7 @@ export default function SettingsPage() {
 
           <Card
             eyebrow="Quitting"
-            title="Stay in the mesh after I quit ClosedMesh"
+            title="Stay in the mesh after I quit Senda"
             hint="On: the runtime keeps serving in the background after you close the app — your machine still answers chat requests for the mesh. Off (default): quitting actually leaves the mesh, like CMD+Q implies."
           >
             <div className="flex items-center justify-between gap-4">
@@ -279,7 +279,7 @@ export default function SettingsPage() {
                   }
                   rows={3}
                   className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2 font-mono text-xs text-[var(--fg)] focus:border-[var(--accent)]/60 focus:outline-none disabled:opacity-50"
-                  placeholder="https://closedmesh.com"
+                  placeholder="https://senda.network"
                 />
               </Field>
             </div>

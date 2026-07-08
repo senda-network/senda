@@ -11,9 +11,9 @@ import type {
 } from "../../api/desktop-release/route";
 
 export const metadata: Metadata = {
-  title: "Download ClosedMesh",
+  title: "Download Senda",
   description:
-    "Download the ClosedMesh desktop app — a tiny native shell around your private LLM mesh. Available for macOS, Windows, and Linux.",
+    "Download the Senda desktop app — a tiny native shell around your private LLM mesh. Available for macOS, Windows, and Linux.",
 };
 
 // Re-render on the same cadence as the release API so freshly-published
@@ -92,7 +92,7 @@ export default async function DownloadPage() {
                 Desktop app
               </div>
               <h1 className="mt-3 text-balance text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
-                Download ClosedMesh.
+                Download Senda.
               </h1>
               <p className="mt-5 max-w-2xl text-pretty text-base leading-relaxed text-[var(--fg-muted)] sm:text-lg">
                 A native app for chatting with the mesh — and, if you want
@@ -119,7 +119,7 @@ export default async function DownloadPage() {
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
               One Tauri 2 codebase, three native bundles. The runtime
-              (<code className="font-mono text-[12px]">closedmesh</code>{" "}
+              (<code className="font-mono text-[12px]">senda</code>{" "}
               CLI) installs separately — see{" "}
               <Link href="/" className="text-[var(--accent)] hover:underline">
                 the home page
@@ -177,7 +177,7 @@ export default async function DownloadPage() {
               </code>{" "}
               — or join the mesh from your browser at{" "}
               <Link href="/" className="text-[var(--accent)] hover:underline">
-                closedmesh.com
+                senda.network
               </Link>
               .
             </div>
@@ -195,7 +195,7 @@ export default async function DownloadPage() {
               Heads-up on the &quot;unidentified developer&quot; warning.
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              ClosedMesh Desktop isn&apos;t code-signed yet, so macOS
+              Senda Desktop isn&apos;t code-signed yet, so macOS
               Gatekeeper and Windows SmartScreen will both ask if you
               really want to run it the first time. Here&apos;s the
               30-second workaround for each platform.
@@ -206,9 +206,9 @@ export default async function DownloadPage() {
             <FirstLaunchCard
               os="macOS"
               steps={[
-                "Open the .dmg and drag ClosedMesh into Applications.",
-                'Double-click ClosedMesh. macOS will block it once with an "unidentified developer" dialog — click "Done".',
-                'Open System Settings → Privacy & Security, scroll to the "ClosedMesh was blocked" notice, and click "Open Anyway". Confirm with Touch ID / password. Future launches are normal double-clicks.',
+                "Open the .dmg and drag Senda into Applications.",
+                'Double-click Senda. macOS will block it once with an "unidentified developer" dialog — click "Done".',
+                'Open System Settings → Privacy & Security, scroll to the "Senda was blocked" notice, and click "Open Anyway". Confirm with Touch ID / password. Future launches are normal double-clicks.',
               ]}
             />
             <FirstLaunchCard
@@ -222,8 +222,8 @@ export default async function DownloadPage() {
             <FirstLaunchCard
               os="Linux"
               steps={[
-                ".deb: sudo dpkg -i closedmesh_*_amd64.deb",
-                ".AppImage: chmod +x closedmesh_*_amd64.AppImage && ./closedmesh_*.AppImage",
+                ".deb: sudo dpkg -i senda_*_amd64.deb",
+                ".AppImage: chmod +x senda_*_amd64.AppImage && ./senda_*.AppImage",
                 "Tray icon needs libayatana-appindicator on Wayland desktops.",
               ]}
             />
@@ -258,7 +258,7 @@ export default async function DownloadPage() {
                   href="/"
                   className="text-[var(--accent)] hover:underline"
                 >
-                  closedmesh.com
+                  senda.network
                 </Link>
                 . Nothing to install — the chat is served by the public
                 mesh.
@@ -270,10 +270,10 @@ export default async function DownloadPage() {
               </div>
               <pre className="mt-3 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-[12px] leading-snug text-[var(--fg)]">
                 {`# macOS / Linux
-curl -fsSL https://closedmesh.com/install | sh
+curl -fsSL https://senda.network/install | sh
 
 # Windows (PowerShell)
-iwr https://closedmesh.com/install.ps1 | iex`}
+iwr https://senda.network/install.ps1 | iex`}
               </pre>
               <p className="mt-3 text-[12px] text-[var(--fg-muted)]">
                 Drops the runtime into{" "}
@@ -404,8 +404,8 @@ function SourceCard({ release }: { release: DesktopRelease | null }) {
         Tauri 2 · Rust + system webview
       </div>
       <pre className="mt-4 flex-1 overflow-x-auto rounded-md border border-[var(--border)] bg-[var(--bg)] p-3 font-mono text-[11px] leading-snug text-[var(--fg)]">
-        {`git clone https://github.com/closedmesh/closedmesh
-cd closedmesh/desktop
+        {`git clone https://github.com/senda-network/senda
+cd senda/desktop
 npm install
 ./scripts/build.sh`}
       </pre>

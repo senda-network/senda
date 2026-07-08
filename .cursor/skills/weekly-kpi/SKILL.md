@@ -1,13 +1,13 @@
 ---
 name: weekly-kpi
 description: >-
-  Draft and refresh ClosedMesh company weekly-report KPIs from live mesh
+  Draft and refresh Senda company weekly-report KPIs from live mesh
   status, smoke tests, and prior snapshots. Use when the user mentions
   weekly reports, internal KPIs, team progress summaries, mesh metrics,
   tok/s, TTFT, contributor counts, or wants to compare week-over-week.
 ---
 
-# ClosedMesh weekly KPIs
+# Senda weekly KPIs
 
 ## What we are optimizing for
 
@@ -73,9 +73,9 @@ See [kpi-catalog.md](kpi-catalog.md) for alternates; default to the pair above u
 | Runtime `measured_tps_p50_by_model` / `measured_ttft_ms_p50_by_model` | In-memory only | Rolling **1 hour** per peer; gossiped on `/api/status` | **Live snapshot** at report time — not historical unless you save it |
 | Smoke scripts (`scripts/smoke-capability.sh`, `scripts/smoke-mesh-visibility.sh`) | **No** — stdout only | N/A | Pass/fail + eyeball; re-run to refresh |
 | Heterogeneous mesh validation (`docs/heterogeneous-mesh-validation.md`) | **No** — manual runbook | N/A | Milestone KPI (“Phase 3/4 passed”) when you complete a phase |
-| `closedmesh-llm/docs/BENCHMARKS.md` | **Yes** — hand-edited markdown | Permanent in git | Reference benchmarks, not auto-updated from tests |
-| GPU fingerprint (`~/.cache/closedmesh/benchmark-fingerprint.json`) | Per-machine disk cache | Until refresh | Hardware bandwidth, not chat KPIs |
-| Peer audit (`/api/peer-report` on closedmesh.com) | Vercel in-memory | ~minutes | Mesh visibility / “claimed but invisible” — not weekly history |
+| `senda-llm/docs/BENCHMARKS.md` | **Yes** — hand-edited markdown | Permanent in git | Reference benchmarks, not auto-updated from tests |
+| GPU fingerprint (`~/.cache/senda/benchmark-fingerprint.json`) | Per-machine disk cache | Until refresh | Hardware bandwidth, not chat KPIs |
+| Peer audit (`/api/peer-report` on senda.network) | Vercel in-memory | ~minutes | Mesh visibility / “claimed but invisible” — not weekly history |
 | **`internal/kpi/` snapshots** | **Optional, local** — gitignored via `internal/` | You choose | **This is the intended week-over-week store** — create when drafting a report |
 
 **Implication:** To show “18 → 22 tok/s”, someone must run a snapshot near report time (see below) and keep prior weeks under `internal/kpi/`.
@@ -84,7 +84,7 @@ See [kpi-catalog.md](kpi-catalog.md) for alternates; default to the pair above u
 
 ### Team / private mesh (local admin API)
 
-Default admin URL: `http://127.0.0.1:3131` (override with `CLOSEDMESH_ADMIN_URL` or script arg).
+Default admin URL: `http://127.0.0.1:3131` (override with `SENDA_ADMIN_URL` or script arg).
 
 ```bash
 ./.cursor/skills/weekly-kpi/scripts/snapshot-kpi.sh
@@ -95,10 +95,10 @@ Default admin URL: `http://127.0.0.1:3131` (override with `CLOSEDMESH_ADMIN_URL`
 ### Public mesh
 
 ```bash
-./.cursor/skills/weekly-kpi/scripts/snapshot-kpi.sh https://closedmesh.com/api/status
+./.cursor/skills/weekly-kpi/scripts/snapshot-kpi.sh https://senda.network/api/status
 ```
 
-Or open https://closedmesh.com/status — catalog rows already aggregate contributor count, median TPS, best TTFT per model.
+Or open https://senda.network/status — catalog rows already aggregate contributor count, median TPS, best TTFT per model.
 
 ### Manual jq (when script unavailable)
 
@@ -117,7 +117,7 @@ Replace model id with your weekly flagship. Peers need runtime **≥ v0.66.42** 
 ## Weekly report template
 
 ```markdown
-### ClosedMesh (week YYYY-Www)
+### Senda (week YYYY-Www)
 
 **KPI:** Qwen3-32B — {tps} tok/s mesh p50 ({delta}), {n} contributors ({n_delta})
 **Context:** {peers} peers · {pooled} GB pooled · {backends}
@@ -152,7 +152,7 @@ Do not claim week-over-week throughput from smoke output unless you saved a snap
 |-------|---------------|-------------------|
 | Entry (Lightsail) | `last-mesh` id only (~16 B on disk) | No |
 | Runtime peers | 1h rolling TPS/TTFT in RAM; gossiped live | No |
-| Website (`closedmesh.com`) | `peer-report` in **lambda in-memory Map**, 5 min TTL | No — also lost across cold starts / instances |
+| Website (`senda.network`) | `peer-report` in **lambda in-memory Map**, 5 min TTL | No — also lost across cold starts / instances |
 | Website `/api/status` | Proxies live entry + merges peer reports | Point-in-time only |
 | `internal/kpi/` | Local JSON via `snapshot-kpi.sh --save` | Yes, but not shared / not automated |
 
@@ -171,18 +171,18 @@ Do not claim week-over-week throughput from smoke output unless you saved a snap
 **Production (after Upstash linked on Vercel):**
 
 - Hourly cron: `vercel.json` → `GET /api/kpi-snapshot` (requires `CRON_SECRET` on project).
-- Public dashboard: https://closedmesh.com/metrics
-- Read latest week: `GET https://closedmesh.com/api/kpi-snapshot?latest=1`
-- Dashboard bundle: `GET https://closedmesh.com/api/kpi-snapshot?dashboard=1`
-- Read specific week: `GET https://closedmesh.com/api/kpi-snapshot?week=2026-W21`
-- Manual capture: `curl -H "Authorization: Bearer $CRON_SECRET" https://closedmesh.com/api/kpi-snapshot`
+- Public dashboard: https://senda.network/metrics
+- Read latest week: `GET https://senda.network/api/kpi-snapshot?latest=1`
+- Dashboard bundle: `GET https://senda.network/api/kpi-snapshot?dashboard=1`
+- Read specific week: `GET https://senda.network/api/kpi-snapshot?week=2026-W21`
+- Manual capture: `curl -H "Authorization: Bearer $CRON_SECRET" https://senda.network/api/kpi-snapshot`
 - Setup script: `./scripts/setup-upstash-vercel.sh` (accept marketplace terms in dashboard first if CLI prompts).
 
-Env: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (or legacy `KV_REST_*`), optional `CLOSEDMESH_KPI_FLAGSHIP_MODEL`, `CRON_SECRET`.
+Env: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` (or legacy `KV_REST_*`), optional `SENDA_KPI_FLAGSHIP_MODEL`, `CRON_SECRET`.
 
 ## Related docs
 
 - Mesh validation runbook: `docs/heterogeneous-mesh-validation.md`
 - Status UI aggregation (TPS/TTFT semantics): `app/(public)/status/page.tsx` (`CatalogRow`)
-- Runtime metric window: `closedmesh-llm/closedmesh/src/network/metrics.rs` (`MODEL_TIMING_WINDOW` = 1h)
-- Infra / status URLs: `.cursor/skills/closedmesh-infra/SKILL.md`
+- Runtime metric window: `senda-llm/senda/src/network/metrics.rs` (`MODEL_TIMING_WINDOW` = 1h)
+- Infra / status URLs: `.cursor/skills/senda-infra/SKILL.md`

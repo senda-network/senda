@@ -927,7 +927,7 @@ function NodeCard({
             </div>
             <div className="text-[11px] text-[var(--fg-muted)] truncate">
               {isEntryNode ? (
-                "mesh.closedmesh.com · always-on gateway"
+                "entry.senda.network · always-on gateway"
               ) : (
                 <>
                   {/* If the node is stuck loading we make it visually
@@ -1810,7 +1810,7 @@ export default function StatusPage() {
             What&apos;s running right now
           </h1>
           <p className="mt-2 text-[14px] text-[var(--fg-muted)]">
-            Machines connected to the ClosedMesh network and the models they&apos;re currently serving.{" "}
+            Machines connected to the Senda network and the models they&apos;re currently serving.{" "}
             <Link href="/metrics" className="text-[var(--accent)] hover:underline">
               Weekly metrics →
             </Link>

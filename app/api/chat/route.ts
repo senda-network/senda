@@ -34,20 +34,20 @@ function trimmedEnv(...keys: string[]): string | undefined {
 }
 
 const RUNTIME_URL =
-  trimmedEnv("CLOSEDMESH_RUNTIME_URL", "MESH_LLM_URL") ??
+  trimmedEnv("SENDA_RUNTIME_URL", "MESH_LLM_URL") ??
   "http://127.0.0.1:9337/v1";
 
 // Bearer token shared with the runtime's auth gateway. Set on Vercel for
 // the public deployment; unset in local dev where the runtime is on the
 // loopback.
-const RUNTIME_TOKEN = trimmedEnv("CLOSEDMESH_RUNTIME_TOKEN") ?? "";
+const RUNTIME_TOKEN = trimmedEnv("SENDA_RUNTIME_TOKEN") ?? "";
 
 const runtimeHeaders: Record<string, string> = RUNTIME_TOKEN
   ? { Authorization: `Bearer ${RUNTIME_TOKEN}` }
   : {};
 
-const closedmesh = createOpenAICompatible({
-  name: "closedmesh",
+const senda = createOpenAICompatible({
+  name: "senda",
   baseURL: RUNTIME_URL,
   headers: runtimeHeaders,
   // v0.66.43 marketplace metrics: the runtime backend proxy can only
@@ -58,7 +58,7 @@ const closedmesh = createOpenAICompatible({
   // `stream_options.include_usage: true` — without that flag the
   // final chunk omits `usage`, the runtime parses `None`, and the
   // catalog stays empty. Setting this here on the provider applies
-  // to every `streamText({ model: closedmesh.chatModel(...) })` call.
+  // to every `streamText({ model: senda.chatModel(...) })` call.
   includeUsage: true,
 });
 
@@ -83,14 +83,14 @@ async function pickDefaultModel(): Promise<string> {
     // listing happened to put it first.
     const tierPreferred = pickDefaultModelByTier(
       routable,
-      process.env.CLOSEDMESH_MODEL ?? process.env.MESH_LLM_MODEL ?? null,
+      process.env.SENDA_MODEL ?? process.env.MESH_LLM_MODEL ?? null,
     );
     if (tierPreferred) return tierPreferred;
   } catch {
     // fall through to env-default
   }
   return (
-    process.env.CLOSEDMESH_MODEL ??
+    process.env.SENDA_MODEL ??
     process.env.MESH_LLM_MODEL ??
     DEFAULT_DAILY_DRIVER_MODEL
   );
@@ -102,7 +102,7 @@ async function pickDefaultModel(): Promise<string> {
  * Open-weight models will faithfully self-identify by their lineage when
  * asked "where do you run" — GLM says "Z.ai", Qwen says "Alibaba", Llama
  * says "Meta". That's accurate from the model's POV (it knows who *trained*
- * it) but actively misleading for our users: ClosedMesh routes their
+ * it) but actively misleading for our users: Senda routes their
  * prompt to a peer running the open weights, not to any of those vendors'
  * APIs. This prompt corrects the runtime-location story without trying
  * to suppress the model's identity.
@@ -111,17 +111,17 @@ async function pickDefaultModel(): Promise<string> {
  * a tone, or product marketing — just the one piece of context the model
  * couldn't possibly have learned on its own.
  */
-const SYSTEM_PROMPT = `You are an AI assistant accessed through ClosedMesh, an open peer-to-peer network where open-weight models run on hardware contributed by individuals and teams.
+const SYSTEM_PROMPT = `You are an AI assistant accessed through Senda, an open peer-to-peer network where open-weight models run on hardware contributed by individuals and teams.
 
 Important context about your runtime:
 - You are NOT running on Z.ai, OpenAI, Anthropic, Google, Meta, Alibaba, or any other AI provider's cloud, even if you were trained by one of them.
-- You are being served by a peer in the ClosedMesh network — a contributor's machine (laptop, workstation, or GPU box) that chose to share its compute.
+- You are being served by a peer in the Senda network — a contributor's machine (laptop, workstation, or GPU box) that chose to share its compute.
 - Conversations do not pass through a third-party AI API. The mesh routes the request directly to whichever peer can serve the requested model.
 - It is fine to acknowledge your model lineage (e.g. "I'm a Qwen 3 model" or "I'm based on GLM"). Do not claim to be hosted by the company that trained you.
 
-If asked about ClosedMesh itself: it's a peer-to-peer LLM mesh. Anyone can use the chat at closedmesh.com or in the desktop app, and anyone with a capable machine can run a node and contribute compute. The runtime is open source.
+If asked about Senda itself: it's a peer-to-peer LLM mesh. Anyone can use the chat at senda.network or in the desktop app, and anyone with a capable machine can run a node and contribute compute. The runtime is open source.
 
-ClosedMesh's value proposition is privacy and decentralization — your prompt is not sent to any third-party AI provider, sessions are pseudonymous, and the runtime is open source and auditable. It is NOT a promise that the network has no content rules. If asked about censorship or content moderation, do not invent or speculate about a ClosedMesh content policy: ClosedMesh does not impose a network-wide content policy, individual node operators set their own limits, and any refusals you make come from your own judgment as a model, not from a ClosedMesh rule. Be honest that, like any assistant, you decline to give instructions for serious real-world harm.`;
+Senda's value proposition is privacy and decentralization — your prompt is not sent to any third-party AI provider, sessions are pseudonymous, and the runtime is open source and auditable. It is NOT a promise that the network has no content rules. If asked about censorship or content moderation, do not invent or speculate about a Senda content policy: Senda does not impose a network-wide content policy, individual node operators set their own limits, and any refusals you make come from your own judgment as a model, not from a Senda rule. Be honest that, like any assistant, you decline to give instructions for serious real-world harm.`;
 
 export async function OPTIONS(req: Request) {
   return preflightResponse(req);
@@ -303,17 +303,17 @@ export async function POST(req: Request) {
   let meshCredits = servedBy === "mesh";
 
   const headers: Record<string, string> = {
-    "x-closedmesh-served-by": servedBy,
-    "x-closedmesh-sla-status": sla.meetsSla ? "meet" : sla.reason,
-    "x-closedmesh-sla-tier": sla.tier,
-    "x-closedmesh-sla-candidates": String(sla.candidatePeerCount),
-    "x-closedmesh-fallback-status": decision.verdict,
+    "x-senda-served-by": servedBy,
+    "x-senda-sla-status": sla.meetsSla ? "meet" : sla.reason,
+    "x-senda-sla-tier": sla.tier,
+    "x-senda-sla-candidates": String(sla.candidatePeerCount),
+    "x-senda-fallback-status": decision.verdict,
   };
   if (sla.bestPeerTtftMs !== null) {
-    headers["x-closedmesh-sla-best-ttft-ms"] = String(sla.bestPeerTtftMs);
+    headers["x-senda-sla-best-ttft-ms"] = String(sla.bestPeerTtftMs);
   }
   if (sla.bestPeerTps !== null) {
-    headers["x-closedmesh-sla-best-tps"] = sla.bestPeerTps.toFixed(2);
+    headers["x-senda-sla-best-tps"] = sla.bestPeerTps.toFixed(2);
   }
   // Through-mesh / native throughput ratio of the peer the gate would
   // route to. ~1.0 for a healthy solo serve; below the tier floor means
@@ -321,13 +321,13 @@ export async function POST(req: Request) {
   // own native baseline. Surfaced so the narrowing of the ratio is
   // observable on every response before it gates real routing in 5.E.
   if (sla.bestPeerNativeRatio !== null) {
-    headers["x-closedmesh-sla-native-ratio"] = sla.bestPeerNativeRatio.toFixed(2);
+    headers["x-senda-sla-native-ratio"] = sla.bestPeerNativeRatio.toFixed(2);
   }
   if (decision.useFallback) {
-    headers["x-closedmesh-fallback-provider"] = "openrouter";
-    headers["x-closedmesh-fallback-model"] = decision.fallbackModelSlug ?? "";
+    headers["x-senda-fallback-provider"] = "openrouter";
+    headers["x-senda-fallback-model"] = decision.fallbackModelSlug ?? "";
     if (budgetRemaining !== null) {
-      headers["x-closedmesh-fallback-budget-remaining"] = String(budgetRemaining);
+      headers["x-senda-fallback-budget-remaining"] = String(budgetRemaining);
     }
   }
 
@@ -348,11 +348,11 @@ export async function POST(req: Request) {
         verdict: "fallback-disabled",
         fallbackModelSlug: null,
       };
-      headers["x-closedmesh-served-by"] = "mesh";
-      headers["x-closedmesh-fallback-status"] = "fallback-disabled";
+      headers["x-senda-served-by"] = "mesh";
+      headers["x-senda-fallback-status"] = "fallback-disabled";
       meshCredits = true;
       result = streamText({
-        model: closedmesh.chatModel(modelId),
+        model: senda.chatModel(modelId),
         system: SYSTEM_PROMPT,
         messages: convertToModelMessages(parsed.body.messages),
         maxRetries: 0,
@@ -368,7 +368,7 @@ export async function POST(req: Request) {
     }
   } else {
     result = streamText({
-      model: closedmesh.chatModel(modelId),
+      model: senda.chatModel(modelId),
       system: SYSTEM_PROMPT,
       messages: convertToModelMessages(parsed.body.messages),
       // The AI SDK retries up to 2x on 5xx by default. For a peer-to-peer

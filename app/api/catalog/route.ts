@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /**
  * Canonical model catalog.
  *
- * Lives on the public site (closedmesh.com). The desktop app's bundled
+ * Lives on the public site (senda.network). The desktop app's bundled
  * controller fetches this URL **directly** from the browser — no local
  * proxy in between. Editing `model-catalog.ts` and shipping the website
  * is the one-step "ship a new model to all users" path; existing desktop

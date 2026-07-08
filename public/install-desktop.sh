@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# ClosedMesh Desktop installer — macOS, Linux.
+# Senda Desktop installer — macOS, Linux.
 #
-#   curl -fsSL https://closedmesh.com/install-desktop.sh | sh
+#   curl -fsSL https://senda.network/install-desktop.sh | sh
 #
 # What it does:
 #   1. Resolves the latest v* GitHub Release (legacy desktop-v* tags are
 #      also recognised so users on a stale link still install something).
 #   2. Downloads the right bundle for this machine:
-#        - macOS arm64  → ClosedMesh_*_aarch64.dmg
-#        - macOS x86_64 → ClosedMesh_*_x64.dmg
-#        - Linux x86_64 → ClosedMesh_*_amd64.AppImage  (or .deb if dpkg)
+#        - macOS arm64  → Senda_*_aarch64.dmg
+#        - macOS x86_64 → Senda_*_x64.dmg
+#        - Linux x86_64 → Senda_*_amd64.AppImage  (or .deb if dpkg)
 #   3. Installs it into the conventional location (/Applications,
 #      ~/.local/bin, or via dpkg) and clears macOS Gatekeeper quarantine
 #      so the first launch doesn't trip the "unidentified developer"
@@ -21,16 +21,16 @@
 # the runtime running on at least one machine on your team — install
 # it separately with:
 #
-#     curl -fsSL https://closedmesh.com/install | sh -s -- --service
+#     curl -fsSL https://senda.network/install | sh -s -- --service
 #
 # Override points (rarely needed):
-#   CLOSEDMESH_DESKTOP_REPO=closedmesh/closedmesh
-#   CLOSEDMESH_DESKTOP_VERSION=v0.1.93   # pin a specific release
+#   SENDA_DESKTOP_REPO=senda-network/senda
+#   SENDA_DESKTOP_VERSION=v0.1.93   # pin a specific release
 
 set -euo pipefail
 
-REPO="${CLOSEDMESH_DESKTOP_REPO:-closedmesh/closedmesh}"
-VERSION="${CLOSEDMESH_DESKTOP_VERSION:-}"
+REPO="${SENDA_DESKTOP_REPO:-senda-network/senda}"
+VERSION="${SENDA_DESKTOP_VERSION:-}"
 # Desktop releases live under plain `vX.Y.Z` tags. Legacy `desktop-v*`
 # tags from before May 2026 are still accepted so existing pins keep
 # resolving.
@@ -38,9 +38,9 @@ TAG_PREFIX="v"
 LEGACY_TAG_PREFIX="desktop-v"
 
 color() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
-info()  { color "0;36" "[closedmesh-desktop] $*"; }
-warn()  { color "0;33" "[closedmesh-desktop] $*"; }
-fail()  { color "0;31" "[closedmesh-desktop] $*"; exit 1; }
+info()  { color "0;36" "[senda-desktop] $*"; }
+warn()  { color "0;33" "[senda-desktop] $*"; }
+fail()  { color "0;31" "[senda-desktop] $*"; exit 1; }
 
 require() {
     command -v "$1" >/dev/null 2>&1 || fail "missing required tool: $1"
@@ -54,8 +54,8 @@ ARCH="$(uname -m)"
 # ---------------------------------------------------------------------------
 # Pick the asset filename pattern for this machine.
 #
-# Tauri's bundle naming is stable: ClosedMesh_<version>_<arch>.<ext> on
-# macOS, closedmesh_<version>_<debarch>.<ext> on Linux. We match by
+# Tauri's bundle naming is stable: Senda_<version>_<arch>.<ext> on
+# macOS, senda_<version>_<debarch>.<ext> on Linux. We match by
 # substring so a future minor version bump (e.g. _0.2.0_) doesn't require
 # touching this script.
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ case "$OS" in
         mount_output="$(hdiutil attach -nobrowse -quiet "$tmpdir/$asset_name")"
         # `hdiutil attach` prints lines like
         #   /dev/disk5    GUID_partition_scheme
-        #   /dev/disk5s1  Apple_HFS    /Volumes/ClosedMesh
+        #   /dev/disk5s1  Apple_HFS    /Volumes/Senda
         # the last whitespace-trimmed field on the last line is the mount
         # point.
         mount_point="$(printf '%s\n' "$mount_output" | awk '/\/Volumes\// { for (i=3; i<=NF; i++) printf "%s%s", $i, (i==NF ? "" : " "); print ""; exit }')"
@@ -203,7 +203,7 @@ case "$OS" in
         fi
 
         info "Installed: $target"
-        info "Launching ClosedMesh…"
+        info "Launching Senda…"
         open "$target" || warn "Couldn't auto-launch — open it from /Applications."
         ;;
 
@@ -217,11 +217,11 @@ case "$OS" in
                     require sudo
                     sudo dpkg -i "$tmpdir/$asset_name" || sudo apt-get install -fy
                 fi
-                info "Installed: closedmesh (run from your app launcher or 'closedmesh' on the CLI)."
+                info "Installed: senda (run from your app launcher or 'senda' on the CLI)."
                 ;;
             *.AppImage)
-                target_dir="${CLOSEDMESH_DESKTOP_INSTALL_DIR:-$HOME/.local/bin}"
-                target="$target_dir/closedmesh-desktop"
+                target_dir="${SENDA_DESKTOP_INSTALL_DIR:-$HOME/.local/bin}"
+                target="$target_dir/senda-desktop"
                 mkdir -p "$target_dir"
                 cp "$tmpdir/$asset_name" "$target"
                 chmod +x "$target"
@@ -245,11 +245,11 @@ case "$OS" in
         ;;
 esac
 
-color "1;32" "[closedmesh-desktop] Done. v$version installed."
+color "1;32" "[senda-desktop] Done. v$version installed."
 echo
 echo "Next steps:"
 echo "  1. If you haven't already, install the runtime on at least one machine:"
-echo "       curl -fsSL https://closedmesh.com/install | sh -s -- --service"
-echo "  2. Open ClosedMesh — the system-tray pill should show 'Mesh online'."
+echo "       curl -fsSL https://senda.network/install | sh -s -- --service"
+echo "  2. Open Senda — the system-tray pill should show 'Mesh online'."
 echo "  3. Generate an invite for a teammate from the tray menu, or via:"
-echo "       closedmesh invite create"
+echo "       senda invite create"

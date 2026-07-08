@@ -1,23 +1,23 @@
-# ClosedMesh Desktop installer - Windows x86_64.
+# Senda Desktop installer - Windows x86_64.
 #
-#   iwr -useb https://closedmesh.com/install-desktop.ps1 | iex
+#   iwr -useb https://senda.network/install-desktop.ps1 | iex
 #
 # What it does:
 #   1. Resolves the latest v* GitHub Release (legacy desktop-v* tags
 #      are still accepted so older pinned versions keep resolving).
-#   2. Downloads ClosedMesh_<version>_x64-setup.exe (NSIS installer).
+#   2. Downloads Senda_<version>_x64-setup.exe (NSIS installer).
 #   3. Runs it silently and waits for it to finish.
-#   4. Optionally launches ClosedMesh once installation completes.
+#   4. Optionally launches Senda once installation completes.
 #
 # This is a *companion* to the runtime installer (install.ps1). The
 # desktop app is a UI shell; it does not host inference. Install the
 # runtime separately:
 #
-#     iwr -useb https://closedmesh.com/install.ps1 | iex
+#     iwr -useb https://senda.network/install.ps1 | iex
 #
 # Override points (rarely needed):
-#   $env:CLOSEDMESH_DESKTOP_REPO = 'closedmesh/closedmesh'
-#   $env:CLOSEDMESH_DESKTOP_VERSION = 'v0.1.93'  # pin a release
+#   $env:SENDA_DESKTOP_REPO = 'senda-network/senda'
+#   $env:SENDA_DESKTOP_VERSION = 'v0.1.93'  # pin a release
 
 [CmdletBinding()]
 param(
@@ -30,10 +30,10 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $Repo) {
-    $Repo = if ($env:CLOSEDMESH_DESKTOP_REPO) { $env:CLOSEDMESH_DESKTOP_REPO } else { 'closedmesh/closedmesh' }
+    $Repo = if ($env:SENDA_DESKTOP_REPO) { $env:SENDA_DESKTOP_REPO } else { 'senda-network/senda' }
 }
 if (-not $Version) {
-    $Version = if ($env:CLOSEDMESH_DESKTOP_VERSION) { $env:CLOSEDMESH_DESKTOP_VERSION } else { '' }
+    $Version = if ($env:SENDA_DESKTOP_VERSION) { $env:SENDA_DESKTOP_VERSION } else { '' }
 }
 
 # Desktop releases use plain `vX.Y.Z` tags (per release policy). Legacy
@@ -58,9 +58,9 @@ function Remove-TagPrefix([string]$name) {
     return $name
 }
 
-function Info($msg)  { Write-Host "[closedmesh-desktop] $msg" -ForegroundColor Cyan }
-function Warn($msg)  { Write-Host "[closedmesh-desktop] $msg" -ForegroundColor Yellow }
-function Fail($msg)  { Write-Host "[closedmesh-desktop] $msg" -ForegroundColor Red; exit 1 }
+function Info($msg)  { Write-Host "[senda-desktop] $msg" -ForegroundColor Cyan }
+function Warn($msg)  { Write-Host "[senda-desktop] $msg" -ForegroundColor Yellow }
+function Fail($msg)  { Write-Host "[senda-desktop] $msg" -ForegroundColor Red; exit 1 }
 
 # TLS 1.2 is required to talk to api.github.com on PS5 hosts (Windows 10
 # without recent updates still defaults to 1.0/1.1).
@@ -70,7 +70,7 @@ function Invoke-GitHub($path) {
     $headers = @{
         'Accept'               = 'application/vnd.github+json'
         'X-GitHub-Api-Version' = '2022-11-28'
-        'User-Agent'           = 'closedmesh-desktop-installer'
+        'User-Agent'           = 'senda-desktop-installer'
     }
     if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $($env:GITHUB_TOKEN)" }
     return Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$Repo$path"
@@ -137,7 +137,7 @@ if (-not $asset) {
 # --------------------------------------------------------------------------
 # Download.
 # --------------------------------------------------------------------------
-$tempDir = Join-Path $env:TEMP "closedmesh-desktop-install"
+$tempDir = Join-Path $env:TEMP "senda-desktop-install"
 if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
 New-Item -ItemType Directory -Path $tempDir | Out-Null
 
@@ -174,30 +174,30 @@ else {
 # Find the freshly-installed app and launch it (unless suppressed).
 # --------------------------------------------------------------------------
 $candidates = @(
-    "$env:LOCALAPPDATA\Programs\ClosedMesh\closedmesh.exe",
-    "$env:LOCALAPPDATA\ClosedMesh\closedmesh.exe",
-    "$env:ProgramFiles\ClosedMesh\closedmesh.exe",
-    "${env:ProgramFiles(x86)}\ClosedMesh\closedmesh.exe"
+    "$env:LOCALAPPDATA\Programs\Senda\senda.exe",
+    "$env:LOCALAPPDATA\Senda\senda.exe",
+    "$env:ProgramFiles\Senda\senda.exe",
+    "${env:ProgramFiles(x86)}\Senda\senda.exe"
 )
 $installedExe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 if ($installedExe) {
     Info "Installed: $installedExe"
     if (-not $NoLaunch) {
-        Info "Launching ClosedMesh..."
+        Info "Launching Senda..."
         Start-Process -FilePath $installedExe
     }
 }
 else {
-    Warn "Installer succeeded but I couldn't locate closedmesh.exe in the usual places. Check your Start menu under 'ClosedMesh'."
+    Warn "Installer succeeded but I couldn't locate senda.exe in the usual places. Check your Start menu under 'Senda'."
 }
 
 Write-Host ""
-Write-Host "[closedmesh-desktop] Done. v$versionNumber installed." -ForegroundColor Green
+Write-Host "[senda-desktop] Done. v$versionNumber installed." -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  1. If you haven't already, install the runtime on at least one machine:"
-Write-Host "       iwr -useb https://closedmesh.com/install.ps1 | iex"
-Write-Host "  2. Open ClosedMesh - the system-tray pill should show 'Mesh online'."
+Write-Host "       iwr -useb https://senda.network/install.ps1 | iex"
+Write-Host "  2. Open Senda - the system-tray pill should show 'Mesh online'."
 Write-Host "  3. Generate an invite for a teammate from the tray menu, or via:"
-Write-Host "       closedmesh invite create"
+Write-Host "       senda invite create"

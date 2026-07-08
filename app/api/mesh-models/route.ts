@@ -24,10 +24,10 @@ function trimmedEnv(...keys: string[]): string | undefined {
 }
 
 const ADMIN_URL =
-  trimmedEnv("CLOSEDMESH_ADMIN_URL", "MESH_CONSOLE_URL") ??
+  trimmedEnv("SENDA_ADMIN_URL", "MESH_CONSOLE_URL") ??
   "http://127.0.0.1:3131";
 
-const RUNTIME_TOKEN = trimmedEnv("CLOSEDMESH_RUNTIME_TOKEN") ?? "";
+const RUNTIME_TOKEN = trimmedEnv("SENDA_RUNTIME_TOKEN") ?? "";
 
 const runtimeHeaders: Record<string, string> = RUNTIME_TOKEN
   ? { Authorization: `Bearer ${RUNTIME_TOKEN}` }

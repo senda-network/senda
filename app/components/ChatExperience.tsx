@@ -9,8 +9,8 @@ import { MeshUnderprovisionedNote } from "./MeshUnderprovisionedNote";
 import { ModelSelector } from "./ModelSelector";
 import { apiUrl } from "../lib/runtime-target";
 
-const SESSION_KEY = "closedmesh:threadId";
-const STORAGE_PREFIX = "closedmesh:thread:";
+const SESSION_KEY = "senda:threadId";
+const STORAGE_PREFIX = "senda:thread:";
 
 function newThreadId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -74,7 +74,7 @@ export type ChatExperienceProps = {
  * The chat experience shared by the public homepage at `/` and the local
  * controller's `/chat` page. Same wire protocol in both: a same-origin
  * fetch to `/api/chat`, which the surrounding Next.js process is responsible
- * for proxying to whichever closedmesh-llm endpoint it's been pointed at
+ * for proxying to whichever senda-llm endpoint it's been pointed at
  * (the public mesh entry, or the visitor's local runtime). This component
  * has no knowledge of "is the mesh local or remote" and deliberately makes
  * no assumptions about whether the visitor has anything installed.
@@ -324,7 +324,7 @@ export function ChatExperience({
             )}
           </form>
           <div className="mt-2 flex items-center justify-center gap-3 text-[11px] text-[var(--fg-muted)]">
-            <span>{footnote ?? "Powered by ClosedMesh — open peer-to-peer LLM mesh."}</span>
+            <span>{footnote ?? "Powered by Senda — open peer-to-peer LLM mesh."}</span>
             {messages.length > 0 && (
               <>
                 <span aria-hidden>·</span>

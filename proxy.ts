@@ -3,7 +3,7 @@ import { isPublicDeploymentServer } from "./app/lib/deployment";
 
 /**
  * Edge proxy (Next 16's middleware replacement). Its sole job is to make
- * absolutely sure that the public Vercel deployment (closedmesh.com) does
+ * absolutely sure that the public Vercel deployment (senda.network) does
  * not expose anything that's only meaningful on the user's own machine.
  *
  * The codebase has two surfaces that share components and libs:
@@ -36,7 +36,7 @@ const CONTROL_API_PREFIX = "/api/control";
 
 // Single source of truth for "is this the public Vercel deployment?".
 // Honors every accepted server-side env name (NEXT_PUBLIC_DEPLOYMENT,
-// NEXT_PUBLIC_CLOSEDMESH_DEPLOYMENT, CLOSEDMESH_DEPLOYMENT,
+// NEXT_PUBLIC_SENDA_DEPLOYMENT, SENDA_DEPLOYMENT,
 // FORGEMESH_DEPLOYMENT) so the edge firewall and the /api/control/*
 // handlers can never disagree because of a legacy var name.
 const PUBLIC_DEPLOYMENT = isPublicDeploymentServer();

@@ -29,7 +29,7 @@ const MAIN_WINDOW: &str = "main";
 struct AppState {
     last_status: Mutex<MeshStatus>,
     /// The bundled Next.js controller sidecar (None during dev runs that
-    /// pass `CLOSEDMESH_APP_URL` to bypass it, or if the sidecar failed
+    /// pass `SENDA_APP_URL` to bypass it, or if the sidecar failed
     /// to spawn — we degrade to the fallback URL chain in that case).
     sidecar: Mutex<Option<Arc<Sidecar>>>,
 }
@@ -57,10 +57,10 @@ fn main() {
     //
     //   * Scheduled Task launcher (wscript.exe): WorkingDirectory =
     //     %USERPROFILE% → cache at C:\Users\<u>\.cache\huggingface\hub
-    //   * `closedmesh models download` invoked from the bundled Node
+    //   * `senda models download` invoked from the bundled Node
     //     controller (sidecar): inherits the desktop app's CWD,
-    //     %LOCALAPPDATA%\ClosedMesh → cache at
-    //     C:\Users\<u>\AppData\Local\ClosedMesh\.cache\huggingface\hub
+    //     %LOCALAPPDATA%\Senda → cache at
+    //     C:\Users\<u>\AppData\Local\Senda\.cache\huggingface\hub
     //
     // The user downloads a model via the dashboard (path #2), then sets
     // it as the startup model — which restarts the runtime via the
@@ -71,7 +71,7 @@ fn main() {
     // the model, set it as startup, and then it got stuck on loading."
     //
     // Setting HF_HUB_CACHE explicitly here pins the location across
-    // every codepath (this process, the Node sidecar, every closedmesh
+    // every codepath (this process, the Node sidecar, every senda
     // child the sidecar spawns, the Scheduled Task — see also the
     // mirror set in mesh.rs::REGISTER_TASK_PS and install.ps1).
     pin_huggingface_cache_dir();
@@ -85,7 +85,7 @@ fn main() {
     let exit_state = state.clone();
 
     tauri::Builder::default()
-        // Single-instance guard. If a second `ClosedMesh.exe` is launched
+        // Single-instance guard. If a second `Senda.exe` is launched
         // (WiX installer's "Launch on completion" tick, Start Menu shortcut,
         // double-click on the desktop icon, file-association open, …), the
         // plugin contacts the running instance, runs this callback in *that*
@@ -110,7 +110,7 @@ fn main() {
             // new chunk hashes; cached HTML from the previous version
             // points at chunk URLs that no longer exist on disk, leaving
             // the user staring at an unstyled page until they manually
-            // delete ~/Library/Caches/dev.closedmesh.shell. We track the
+            // delete ~/Library/Caches/network.senda.shell. We track the
             // last-seen version in a tiny stamp file and nuke the cache
             // dirs whenever it changes.
             wipe_webview_cache_on_version_change(app);
@@ -125,7 +125,7 @@ fn main() {
             match Sidecar::spawn(log_dir.as_deref()) {
                 Ok(sc) => {
                     eprintln!(
-                        "[closedmesh] controller sidecar spawned on http://127.0.0.1:{}",
+                        "[senda] controller sidecar spawned on http://127.0.0.1:{}",
                         sc.port()
                     );
                     sidecar::record_port(sc.port());
@@ -136,7 +136,7 @@ fn main() {
                     // we should surface a "loading" state instead.
                     if let Err(e) = sc.wait_until_ready(Duration::from_secs(12)) {
                         eprintln!(
-                            "[closedmesh] controller sidecar didn't become ready in time: {e}"
+                            "[senda] controller sidecar didn't become ready in time: {e}"
                         );
                     }
                     if let Ok(mut guard) = setup_state.sidecar.lock() {
@@ -145,8 +145,8 @@ fn main() {
                 }
                 Err(e) => {
                     eprintln!(
-                        "[closedmesh] could not spawn controller sidecar: {e}. Falling back \
-                         to closedmesh.com (no local mesh control until installed)."
+                        "[senda] could not spawn controller sidecar: {e}. Falling back \
+                         to senda.network (no local mesh control until installed)."
                     );
                 }
             }
@@ -155,7 +155,7 @@ fn main() {
             // the public marketing homepage. `mesh::preferred_url()`
             // returns just the base; we append `/dashboard` (the control
             // group's entry point) here. If the bundled controller failed
-            // to start and we fell back to closedmesh.com, /dashboard is
+            // to start and we fell back to senda.network, /dashboard is
             // 404'd by middleware on the public site — that path renders
             // a styled "not found" with a link to /, which is the
             // graceful fallback we want anyway.
@@ -166,7 +166,7 @@ fn main() {
                 .map_err(|e| format!("invalid chat URL `{url}`: {e}"))?;
 
             WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::External(parsed))
-                .title("ClosedMesh")
+                .title("Senda")
                 .inner_size(1100.0, 760.0)
                 .min_inner_size(720.0, 520.0)
                 .center()
@@ -201,11 +201,11 @@ fn main() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("failed to build ClosedMesh desktop")
+        .expect("failed to build Senda desktop")
         .run(move |_app, event| {
             match event {
                 // We honor every ExitRequested now — Cmd+Q on macOS, the
-                // tray's "Quit ClosedMesh" item, and `app.exit(0)` all
+                // tray's "Quit Senda" item, and `app.exit(0)` all
                 // route here, and they all mean the user is done. The
                 // tray-only "click X to hide" pattern is enforced by the
                 // window-level CloseRequested handler above (which calls
@@ -216,7 +216,7 @@ fn main() {
                 // which made Cmd+Q a silent no-op *and* meant the tray's
                 // own Quit item didn't really quit either — the GUI
                 // disappeared but launchd kept the runtime alive, so
-                // closedmesh.com would still report the node online
+                // senda.network would still report the node online
                 // serving inference long after the user thought they'd
                 // left the mesh. This block is the load-bearing fix.
                 RunEvent::Exit => {
@@ -260,16 +260,16 @@ fn build_tray(app: &tauri::App, state: Arc<AppState>) -> tauri::Result<()> {
     // menu tracker needs to keep itself open while the user moves the
     // cursor onto an item, so the menu closes on hover. We let the
     // standard tracker drive on every platform now, and put "Show
-    // ClosedMesh" as the first menu item with a global Cmd+O shortcut
+    // Senda" as the first menu item with a global Cmd+O shortcut
     // so the click-to-open habit still works in two clicks.
-    let tray = TrayIconBuilder::with_id("closedmesh-tray")
+    let tray = TrayIconBuilder::with_id("senda-tray")
         .icon(
             app.default_window_icon()
                 .cloned()
                 .ok_or_else(|| tauri::Error::AssetNotFound("default tray icon".into()))?,
         )
         .icon_as_template(true)
-        .tooltip("ClosedMesh — offline")
+        .tooltip("Senda — offline")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(handle_menu_event)
@@ -293,12 +293,12 @@ fn build_tray_menu_for_handle(
 ) -> tauri::Result<Menu<tauri::Wry>> {
     let header = if status.online {
         format!(
-            "ClosedMesh · {} node{} online",
+            "Senda · {} node{} online",
             status.node_count,
             if status.node_count == 1 { "" } else { "s" }
         )
     } else {
-        "ClosedMesh · offline".to_string()
+        "Senda · offline".to_string()
     };
     let header_item = MenuItemBuilder::with_id("header", header)
         .enabled(false)
@@ -322,7 +322,7 @@ fn build_tray_menu_for_handle(
         .item(&MenuItem::with_id(
             app,
             MENU_OPEN,
-            "Open ClosedMesh",
+            "Open Senda",
             true,
             Some("CmdOrCtrl+O"),
         )?)
@@ -339,7 +339,7 @@ fn build_tray_menu_for_handle(
         builder = builder.item(&MenuItem::with_id(
             app,
             MENU_STOP,
-            "Stop ClosedMesh Service",
+            "Stop Senda Service",
             true,
             None::<&str>,
         )?);
@@ -347,7 +347,7 @@ fn build_tray_menu_for_handle(
         builder = builder.item(&MenuItem::with_id(
             app,
             MENU_START,
-            "Start ClosedMesh Service",
+            "Start Senda Service",
             true,
             None::<&str>,
         )?);
@@ -358,7 +358,7 @@ fn build_tray_menu_for_handle(
         .item(&MenuItem::with_id(
             app,
             MENU_QUIT,
-            "Quit ClosedMesh",
+            "Quit Senda",
             true,
             Some("CmdOrCtrl+Q"),
         )?)
@@ -438,7 +438,7 @@ fn apply_status(app: &AppHandle, state: &Arc<AppState>, status: &MeshStatus) {
     }
 
     let tooltip = render_tooltip(status);
-    if let Some(tray) = app.tray_by_id("closedmesh-tray") {
+    if let Some(tray) = app.tray_by_id("senda-tray") {
         let _ = tray.set_tooltip(Some(&tooltip));
 
         if let Ok(menu) = build_tray_menu_for_handle(app, status) {
@@ -449,7 +449,7 @@ fn apply_status(app: &AppHandle, state: &Arc<AppState>, status: &MeshStatus) {
 
 fn render_tooltip(status: &MeshStatus) -> String {
     if !status.online {
-        return "ClosedMesh — offline".to_string();
+        return "Senda — offline".to_string();
     }
     let mut parts = vec![format!(
         "{} node{} online",
@@ -462,7 +462,7 @@ fn render_tooltip(status: &MeshStatus) -> String {
     if let Some(m) = status.model.as_ref() {
         parts.push(m.clone());
     }
-    format!("ClosedMesh — {}", parts.join(" · "))
+    format!("Senda — {}", parts.join(" · "))
 }
 
 // ---------- Misc helpers ------------------------------------------------
@@ -498,7 +498,7 @@ fn pin_huggingface_cache_dir() {
     if let Some(hf_home) = std::env::var_os("HF_HOME").and_then(nonempty) {
         let cache = std::path::PathBuf::from(hf_home).join("hub");
         eprintln!(
-            "[closedmesh] pinning HF_HUB_CACHE={} (derived from HF_HOME)",
+            "[senda] pinning HF_HUB_CACHE={} (derived from HF_HOME)",
             cache.display()
         );
         std::env::set_var("HF_HUB_CACHE", cache);
@@ -509,7 +509,7 @@ fn pin_huggingface_cache_dir() {
             .join("huggingface")
             .join("hub");
         eprintln!(
-            "[closedmesh] pinning HF_HUB_CACHE={} (derived from XDG_CACHE_HOME)",
+            "[senda] pinning HF_HUB_CACHE={} (derived from XDG_CACHE_HOME)",
             cache.display()
         );
         std::env::set_var("HF_HUB_CACHE", cache);
@@ -521,7 +521,7 @@ fn pin_huggingface_cache_dir() {
     if let Some(cache_root) = dirs::cache_dir() {
         let cache = cache_root.join("huggingface").join("hub");
         eprintln!(
-            "[closedmesh] pinning HF_HUB_CACHE={} (platform user cache dir)",
+            "[senda] pinning HF_HUB_CACHE={} (platform user cache dir)",
             cache.display()
         );
         let _ = std::fs::create_dir_all(&cache);
@@ -529,7 +529,7 @@ fn pin_huggingface_cache_dir() {
         return;
     }
     eprintln!(
-        "[closedmesh] could not resolve a user cache dir; HF_HUB_CACHE left unset \
+        "[senda] could not resolve a user cache dir; HF_HUB_CACHE left unset \
          (runtime will fall back to its built-in default)"
     );
 }
@@ -537,7 +537,7 @@ fn pin_huggingface_cache_dir() {
 /// Append the control-group entry path (`/dashboard`) to the controller's
 /// base URL. Handles both `http://127.0.0.1:42141` and `http://127.0.0.1:42141/`
 /// inputs without producing a double slash. When the fallback URL is the
-/// public site (https://closedmesh.com), this still produces a valid URL
+/// public site (https://senda.network), this still produces a valid URL
 /// — middleware on the public site renders a 404 with a link back to /,
 /// which is acceptable degradation when there's no local controller.
 fn control_entry_url(base: &str) -> String {
@@ -588,7 +588,7 @@ fn wipe_webview_cache_on_version_change(app: &tauri::App) {
     }
 
     eprintln!(
-        "[closedmesh] version changed ({} -> {}); wiping webview cache",
+        "[senda] version changed ({} -> {}); wiping webview cache",
         if previous_version.is_empty() {
             "<first launch>"
         } else {
@@ -611,7 +611,7 @@ fn wipe_webview_cache_on_version_change(app: &tauri::App) {
 /// nuking too much rather than too little — these dirs are 100%
 /// regeneratable from the .app bundle on next load.
 fn webview_cache_dirs() -> Vec<std::path::PathBuf> {
-    let bundle_id = "dev.closedmesh.shell";
+    let bundle_id = "network.senda.shell";
     let mut out: Vec<std::path::PathBuf> = Vec::new();
 
     #[cfg(target_os = "macos")]
@@ -653,7 +653,7 @@ fn webview_cache_dirs() -> Vec<std::path::PathBuf> {
     out
 }
 
-/// Open `~/Library/Logs/closedmesh/desktop.log` (or the platform
+/// Open `~/Library/Logs/senda/desktop.log` (or the platform
 /// equivalent) and `dup2` it over file descriptor 2. After this call,
 /// every `eprintln!` and every `tracing::error` written to stderr lands
 /// in that file regardless of which thread emits it. We deliberately
@@ -695,7 +695,7 @@ fn redirect_stderr_to_desktop_log() {
     let mut writer = &f;
     let _ = writeln!(
         writer,
-        "\n=== ClosedMesh desktop {} starting at {} (pid {}) ===",
+        "\n=== Senda desktop {} starting at {} (pid {}) ===",
         env!("CARGO_PKG_VERSION"),
         chrono_like_now(),
         std::process::id(),
@@ -717,7 +717,7 @@ fn redirect_stderr_to_desktop_log() {
     std::mem::forget(f);
 }
 
-/// Windows equivalent: redirect stderr to %LOCALAPPDATA%\closedmesh\logs\
+/// Windows equivalent: redirect stderr to %LOCALAPPDATA%\senda\logs\
 /// desktop.log so the runtime auto-upgrade / repair_missing_helpers /
 /// ggml-org fallback paths leave forensic traces. A Tauri windowed app
 /// on Windows is started under the "windows" subsystem with no console
@@ -727,7 +727,7 @@ fn redirect_stderr_to_desktop_log() {
 /// after first launch — repair_missing_helpers might have run cleanly
 /// and reported success, or might have failed at the HTTPS download,
 /// and we couldn't tell. Now both go on disk and are inspectable at
-/// %LOCALAPPDATA%\closedmesh\logs\desktop.log.
+/// %LOCALAPPDATA%\senda\logs\desktop.log.
 #[cfg(windows)]
 fn redirect_stderr_to_desktop_log() {
     use std::io::Write;
@@ -753,7 +753,7 @@ fn redirect_stderr_to_desktop_log() {
     let mut writer = &f;
     let _ = writeln!(
         writer,
-        "\n=== ClosedMesh desktop {} starting at {} (pid {}) ===",
+        "\n=== Senda desktop {} starting at {} (pid {}) ===",
         env!("CARGO_PKG_VERSION"),
         chrono_like_now(),
         std::process::id(),
@@ -827,7 +827,7 @@ fn cap_desktop_log(path: &std::path::Path) {
         return;
     };
     if out
-        .write_all(b"... [closedmesh desktop.log trimmed by size cap \xe2\x80\x94 older lines dropped] ...\n")
+        .write_all(b"... [senda desktop.log trimmed by size cap \xe2\x80\x94 older lines dropped] ...\n")
         .and_then(|_| out.write_all(body))
         .and_then(|_| out.flush())
         .is_err()

@@ -76,7 +76,7 @@ export function ArchitectureDiagram() {
         viewBox="0 0 880 320"
         className="h-auto w-full"
         role="img"
-        aria-label="ClosedMesh architecture: chat clients to mesh entry point to peer compute"
+        aria-label="Senda architecture: chat clients to mesh entry point to peer compute"
       >
         <defs>
           <marker
@@ -122,7 +122,7 @@ export function ArchitectureDiagram() {
             fontSize="11"
             fill={fgMuted}
           >
-            closedmesh.com
+            senda.network
           </text>
           <text
             x="110"
@@ -242,7 +242,7 @@ export function ArchitectureDiagram() {
             fontSize="11"
             fill={fgMuted}
           >
-            ClosedMesh LLM peers
+            Senda LLM peers
           </text>
 
           {/* Three peer dots with center hub */}

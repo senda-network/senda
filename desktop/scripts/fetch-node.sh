@@ -5,20 +5,20 @@
 # `bundle.externalBin` expects.
 #
 # Output:
-#     desktop/sidecar/binaries/closedmesh-node-<target-triple>          (executable)
-#     desktop/sidecar/binaries/closedmesh-node-<target-triple>.exe      (Windows)
+#     desktop/sidecar/binaries/senda-node-<target-triple>          (executable)
+#     desktop/sidecar/binaries/senda-node-<target-triple>.exe      (Windows)
 #
-# Why the `closedmesh-node` prefix instead of plain `node`: on Windows we
+# Why the `senda-node` prefix instead of plain `node`: on Windows we
 # need a path-safe way to terminate just *our* sidecar Node process during
 # .msi/.exe upgrade — the installer is otherwise greeted with "Error
 # opening file for writing: ...node.exe" because the running sidecar holds
 # a write lock on the destination. The clean fix is to give the bundled
-# binary a unique image name (`closedmesh-node.exe`) so a kill-by-image-
+# binary a unique image name (`senda-node.exe`) so a kill-by-image-
 # name in the installer hook doesn't disturb the user's other node.exe
 # processes (Node dev server, VS Code extension host, Electron renderers).
 # Bundle-as renaming happens automatically: Tauri's `bundle.externalBin`
 # strips the `-<triple>` suffix and ships whatever's left, so a source
-# named `closedmesh-node-<triple>(.exe)` lands as `closedmesh-node(.exe)`
+# named `senda-node-<triple>(.exe)` lands as `senda-node(.exe)`
 # in the installed app dir on every platform.
 #
 # Usage:
@@ -91,7 +91,7 @@ case "$TARGET" in
     *) err "unsupported target: $TARGET"; exit 1 ;;
 esac
 
-OUT_PATH="$BIN_DIR/closedmesh-node-${TARGET}${OUT_EXT}"
+OUT_PATH="$BIN_DIR/senda-node-${TARGET}${OUT_EXT}"
 
 if [[ -x "$OUT_PATH" || -f "$OUT_PATH" ]]; then
     # Skip re-fetch if the target file already exists. Bumping NODE_VERSION

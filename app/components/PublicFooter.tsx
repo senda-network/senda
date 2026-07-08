@@ -14,7 +14,7 @@ export function PublicFooter() {
         <div className="flex items-center gap-2.5">
           <Logo />
           <div className="text-[12px] text-[var(--fg-muted)]">
-            ClosedMesh — open peer-to-peer LLM mesh.
+            Senda — open peer-to-peer LLM mesh.
           </div>
         </div>
         <nav className="grid grid-cols-2 gap-x-12 gap-y-2 text-[12px] sm:grid-cols-3">
@@ -79,7 +79,7 @@ export function PublicFooter() {
             Terms
           </Link>
           <a
-            href="https://github.com/closedmesh/closedmesh-llm"
+            href="https://github.com/senda-network/senda-llm"
             target="_blank"
             rel="noreferrer"
             className="text-[var(--fg-muted)] hover:text-[var(--fg)]"

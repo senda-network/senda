@@ -268,7 +268,7 @@ export function MeshLiveStatus({
   // available; fall back to model-only phrasing for legacy meshes.
   const lead =
     contributorCount > 0
-      ? `Right now ClosedMesh is a ${pooledVramGb >= 100 ? Math.round(pooledVramGb) : pooledVramGb.toFixed(0)} GB computer made of ${contributorCount} ${
+      ? `Right now Senda is a ${pooledVramGb >= 100 ? Math.round(pooledVramGb) : pooledVramGb.toFixed(0)} GB computer made of ${contributorCount} ${
           contributorCount === 1 ? "contributor" : "contributors"
         }, serving`
       : "Right now the mesh is serving";

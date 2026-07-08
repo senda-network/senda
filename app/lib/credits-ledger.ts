@@ -16,9 +16,9 @@ import {
 } from "./model-tiers";
 import { getRedis } from "./redis";
 
-const BALANCE_PREFIX = "closedmesh:credits:balance";
-const TOKENS_PREFIX = "closedmesh:credits:tokens";
-const LEADERBOARD_KEY = "closedmesh:credits:leaderboard";
+const BALANCE_PREFIX = "senda:credits:balance";
+const TOKENS_PREFIX = "senda:credits:tokens";
+const LEADERBOARD_KEY = "senda:credits:leaderboard";
 const LEDGER_TTL_SEC = 120 * 24 * 3600; // ~120 days
 
 /** 1 credit = one micro-dollar ($0.000001). */

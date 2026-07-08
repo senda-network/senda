@@ -5,7 +5,7 @@ import { useMeshModels } from "../lib/use-mesh-models";
 import type { MeshModel } from "../lib/use-mesh-status";
 import { DEFAULT_DAILY_DRIVER_MODEL, getModelTier } from "../lib/model-tiers";
 
-const STORAGE_KEY = "closedmesh:selectedModel";
+const STORAGE_KEY = "senda:selectedModel";
 
 /**
  * Strip quant suffix and `.gguf` from a runtime model id so the dropdown

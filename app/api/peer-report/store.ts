@@ -41,15 +41,15 @@ function reportKey(nodeId: string): string {
 }
 
 type GlobalWithStore = typeof globalThis & {
-  __closedmeshPeerReportStore?: Map<string, StoredPeerReport>;
+  __sendaPeerReportStore?: Map<string, StoredPeerReport>;
 };
 
 function backingMap(): Map<string, StoredPeerReport> {
   const g = globalThis as GlobalWithStore;
-  if (!g.__closedmeshPeerReportStore) {
-    g.__closedmeshPeerReportStore = new Map();
+  if (!g.__sendaPeerReportStore) {
+    g.__sendaPeerReportStore = new Map();
   }
-  return g.__closedmeshPeerReportStore;
+  return g.__sendaPeerReportStore;
 }
 
 function nowUnix(): number {
@@ -174,5 +174,5 @@ export async function getReport(
 /** Test-only: reset in-memory store (Redis tests are not run in CI). */
 export function __resetForTest(): void {
   const g = globalThis as GlobalWithStore;
-  g.__closedmeshPeerReportStore = new Map();
+  g.__sendaPeerReportStore = new Map();
 }

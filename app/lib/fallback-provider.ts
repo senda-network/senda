@@ -1,7 +1,7 @@
 /**
  * Phase 4.C — external-supply fallback provider.
  *
- * ClosedMesh is a paid inference API (Phase 5) with two supply
+ * Senda is a paid inference API (Phase 5) with two supply
  * paths: the mesh (our differentiated supply, mesh peers earn from
  * each request they serve) and an external OpenAI-compatible
  * provider (cost-of-goods that guarantees uptime so the API is
@@ -12,7 +12,7 @@
  * Today the only concrete provider is OpenRouter; the factory
  * pattern leaves room to add Together / Groq / direct provider
  * keys later. The same provider abstraction runs on both the free
- * `closedmesh.com/chat` testbed (today, Phase 4) and the paid API
+ * `senda.network/chat` testbed (today, Phase 4) and the paid API
  * surface (Phase 5) — what changes between the two is the billing
  * layer wrapping this module, not this module itself.
  *
@@ -35,7 +35,7 @@
  *
  * The provider activates only when `OPENROUTER_API_KEY` is set in
  * the environment. Without it, the route stays on the mesh-only
- * path and emits `x-closedmesh-fallback-status: fallback-disabled`
+ * path and emits `x-senda-fallback-status: fallback-disabled`
  * on every response — so the code path can ship before the key is
  * provisioned and flip on by setting the env var.
  */
@@ -93,7 +93,7 @@ export function fallbackAvailableFor(modelId: string): boolean {
 
 /**
  * Why a request did (or did not) get routed to fallback. Surfaced
- * as the value of the `x-closedmesh-fallback-status` response
+ * as the value of the `x-senda-fallback-status` response
  * header so we can debug routing decisions without server logs.
  */
 export type FallbackVerdict =
@@ -185,8 +185,8 @@ export function getOpenRouterProvider(): OpenRouterProvider | null {
     apiKey: process.env.OPENROUTER_API_KEY!.trim(),
     includeUsage: true,
     headers: {
-      "HTTP-Referer": "https://closedmesh.com",
-      "X-Title": "ClosedMesh",
+      "HTTP-Referer": "https://senda.network",
+      "X-Title": "Senda",
     },
   });
   return cachedProvider;
@@ -197,7 +197,7 @@ export function getOpenRouterProvider(): OpenRouterProvider | null {
 // ---------------------------------------------------------------------------
 
 function fallbackHourlyBudget(): number {
-  const raw = process.env.CLOSEDMESH_FALLBACK_HOURLY_BUDGET?.trim();
+  const raw = process.env.SENDA_FALLBACK_HOURLY_BUDGET?.trim();
   if (!raw) return 20;
   const parsed = Number.parseInt(raw, 10);
   if (Number.isNaN(parsed) || parsed <= 0) return 20;
@@ -209,7 +209,7 @@ function currentHourBucket(at = new Date()): string {
 }
 
 function budgetKey(clientIp: string, hour = currentHourBucket()): string {
-  return `closedmesh:fallback:budget:${clientIp}:${hour}`;
+  return `senda:fallback:budget:${clientIp}:${hour}`;
 }
 
 export type BudgetResult =
@@ -223,7 +223,7 @@ export type BudgetResult =
  * is always allowed.
  *
  * Default cap 20/hour/IP, override via
- * `CLOSEDMESH_FALLBACK_HOURLY_BUDGET`. Phase 5's paid API replaces
+ * `SENDA_FALLBACK_HOURLY_BUDGET`. Phase 5's paid API replaces
  * this counter with the customer's credit balance — the rate card
  * is constructed so each request's price covers the supply cost
  * (mesh peer payout or external-provider COGS) plus margin.

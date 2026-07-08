@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../../_lib";
+import { findSendaBin, isPublic, runSenda } from "../../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Remove the launchd / systemd-user / Scheduled Task unit so ClosedMesh
+ * Remove the launchd / systemd-user / Scheduled Task unit so Senda
  * stops auto-starting at login. The runtime keeps working for the current
  * session — this just unhooks autostart.
  */
@@ -16,18 +16,18 @@ export async function POST() {
       { status: 403 },
     );
   }
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     return NextResponse.json(
-      { ok: false, message: "closedmesh binary not found." },
+      { ok: false, message: "senda binary not found." },
       { status: 404 },
     );
   }
-  const result = await runClosedmesh(bin, ["service", "uninstall"], 15000);
+  const result = await runSenda(bin, ["service", "uninstall"], 15000);
   return NextResponse.json({
     ok: result.ok,
     message: result.ok
-      ? "ClosedMesh won't start automatically anymore."
+      ? "Senda won't start automatically anymore."
       : (result.stderr || result.stdout || "service uninstall failed"),
   });
 }

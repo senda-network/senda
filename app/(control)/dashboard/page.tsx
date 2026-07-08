@@ -165,7 +165,7 @@ type QuickStartPhase =
 // 24 h staleness guard: if we still find a stamp from yesterday's
 // session (runtime crashed mid-load, machine slept, browser tab closed
 // before the load finished), reset rather than show "loading for 14h22m".
-const LOAD_STARTED_KEY_PREFIX = "closedmesh:loadingStartedAt:";
+const LOAD_STARTED_KEY_PREFIX = "senda:loadingStartedAt:";
 const LOAD_STARTED_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function readLoadingStartedAt(modelId: string): number | null {
@@ -425,10 +425,10 @@ export default function DashboardPage() {
     const last = runtimeUpgrade.lastUpgrade;
     if (!last) return;
     try {
-      const seen = localStorage.getItem("closedmesh:runtime-upgrade-seen");
+      const seen = localStorage.getItem("senda:runtime-upgrade-seen");
       if (seen === last.at) return;
       setRuntimeUpgradeCardFor({ from: last.from, to: last.to });
-      localStorage.setItem("closedmesh:runtime-upgrade-seen", last.at);
+      localStorage.setItem("senda:runtime-upgrade-seen", last.at);
     } catch {
       // private mode — surface the card for this session, accept that
       // we may show it again on next launch; better than losing it.
@@ -644,7 +644,7 @@ export default function DashboardPage() {
       return;
     }
     try {
-      const stored = localStorage.getItem("closedmesh:update-dismissed");
+      const stored = localStorage.getItem("senda:update-dismissed");
       setUpdateDismissed(stored === update.latestVersion);
     } catch {
       setUpdateDismissed(false);
@@ -655,7 +655,7 @@ export default function DashboardPage() {
     if (!update || !update.ok) return;
     try {
       localStorage.setItem(
-        "closedmesh:update-dismissed",
+        "senda:update-dismissed",
         update.latestVersion,
       );
     } catch {
@@ -693,7 +693,7 @@ export default function DashboardPage() {
     0,
   );
   // Mesh connectivity is the source of truth for "is this machine actually
-  // running". `closedmesh service status` only knows about launchd-managed
+  // running". `senda service status` only knows about launchd-managed
   // processes — but the desktop app frequently spawns the runtime directly
   // (and on first install, before launchd is set up). If the runtime is
   // answering at :3131 and shows up in the mesh, it IS running, regardless
@@ -1032,7 +1032,7 @@ function UpdateBanner({
             Update available
           </div>
           <div className="mt-0.5 text-base font-semibold tracking-tight text-[var(--fg)]">
-            ClosedMesh {check.latestVersion}
+            Senda {check.latestVersion}
             <span className="ml-2 font-mono text-[11px] font-normal text-[var(--fg-muted)]">
               you&apos;re on {check.currentVersion}
             </span>
@@ -1138,7 +1138,7 @@ function RepairBanner({
  *
  * The runtime's self-audit loop (Slice 1) tracks whether the mesh entry
  * node currently sees us in its peers list. If it doesn't, every chat
- * request routed via `https://closedmesh.com` will skip us — but the
+ * request routed via `https://senda.network` will skip us — but the
  * old dashboard would still render a cheerful green "Ready · Serving X"
  * pill because the *local* runtime had decided to commit to a model and
  * we treated that as ground truth.
@@ -1417,7 +1417,7 @@ function ThisNodeCard({
         // (authoritative for the local runtime) and fall back to
         // self-node's reported version. Either should agree, but the
         // state file is what `try_upgrade_runtime` actually probed via
-        // `closedmesh --version`, so prefer it when present.
+        // `senda --version`, so prefer it when present.
         installed={
           (runtimeUpgrade?.ok ? runtimeUpgrade.installedVersion : null) ??
           self?.version ??
@@ -2175,7 +2175,7 @@ function ModelReadyCard({
             <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
               {danger
                 ? `This model needs about ${underprovisioning.needGb.toFixed(0)} GB of pooled memory to serve. Your machine offers ${underprovisioning.haveGb.toFixed(0)} GB on its own — connect another peer to bring it online.`
-                : "The runtime is serving this model — you're live on the public mesh. See your machine on closedmesh.com/status."}
+                : "The runtime is serving this model — you're live on the public mesh. See your machine on senda.network/status."}
             </div>
           </div>
         </div>
@@ -2489,7 +2489,7 @@ function formatEstimateUsd(n: number): string {
 /**
  * Earnings *preview* for the local machine.
  *
- * Honesty contract (this is the whole point of the card): ClosedMesh has
+ * Honesty contract (this is the whole point of the card): Senda has
  * no payments, no ledger, and no payout today. This renders the runtime's
  * disk-persisted rolling-7-day served-token tally
  * (`self.servingTokens7dByModel`) multiplied by an explicitly-illustrative
@@ -2583,7 +2583,7 @@ function EarningsPreviewCard({
           <span className="font-semibold text-amber-300">
             Illustrative estimate — not a payout.
           </span>{" "}
-          ClosedMesh has no payments or credit ledger yet. These are
+          Senda has no payments or credit ledger yet. These are
           placeholder rates showing how your contribution will map to value
           once the economy ships — not money owed.
         </div>
@@ -2612,9 +2612,9 @@ function EarningsPreviewCard({
 // token here — that token is regenerated every service restart, so a link
 // shared today would be dead by the time a friend installs tomorrow. The
 // token path stays where it belongs: the live "add a remote machine" flow.
-const SHARE_URL = "https://closedmesh.com";
+const SHARE_URL = "https://senda.network";
 const SHARE_TEXT =
-  "I'm running ClosedMesh — it pools idle computers into a private AI mesh that runs models locally, no cloud. Add your machine:";
+  "I'm running Senda — it pools idle computers into a private AI mesh that runs models locally, no cloud. Add your machine:";
 const SHARE_MESSAGE = `${SHARE_TEXT} ${SHARE_URL}`;
 
 // The public live-status page (Vercel-hosted, independent of the mesh entry
@@ -2622,7 +2622,7 @@ const SHARE_MESSAGE = `${SHARE_TEXT} ${SHARE_URL}`;
 // with target="_blank" + rel="noreferrer", the same external-link pattern the
 // runtime-update banner already uses, so the desktop webview hands it to the
 // system browser instead of navigating away from the control panel.
-const PUBLIC_STATUS_URL = "https://closedmesh.com/status";
+const PUBLIC_STATUS_URL = "https://senda.network/status";
 
 /**
  * Persistent link to the public status page from the "This machine" card.
@@ -2663,7 +2663,7 @@ function PublicStatusRow({
         </div>
       </div>
       <span className="shrink-0 text-[12px] font-medium text-[var(--accent)]">
-        closedmesh.com/status →
+        senda.network/status →
       </span>
     </a>
   );
@@ -2693,7 +2693,7 @@ function ShareInviteCard() {
     ) {
       try {
         await navigator.share({
-          title: "ClosedMesh",
+          title: "Senda",
           text: SHARE_TEXT,
           url: SHARE_URL,
         });
@@ -2777,7 +2777,7 @@ function PublicNoMesh() {
           You don&apos;t have a mesh yet.
         </h1>
         <p className="mt-3 text-pretty text-sm text-[var(--fg-muted)]">
-          ClosedMesh runs on machines you own. Install the desktop app and
+          Senda runs on machines you own. Install the desktop app and
           this dashboard lights up — chat, mesh, models, all in one place.
         </p>
         <div className="mt-6 flex justify-center gap-3">

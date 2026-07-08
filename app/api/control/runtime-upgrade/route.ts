@@ -33,7 +33,7 @@ export const dynamic = "force-dynamic";
  * runs inside a Tauri webview pointing at a Next.js sidecar process
  * (Node.js), not at the Rust shell directly. There's no first-party
  * channel for the JS side to call a Rust function. A tiny JSON file
- * in `~/Library/Logs/closedmesh/` (or platform equivalent) lets the
+ * in `~/Library/Logs/senda/` (or platform equivalent) lets the
  * two processes communicate with zero coupling, survives sidecar
  * restarts, and shows up in the existing log directory the user can
  * already inspect when something goes wrong.
@@ -53,21 +53,21 @@ const STATE_FILE_BASENAME = "runtime-upgrade-state.json";
 function logDir(): string {
   const home = homedir();
   if (process.platform === "darwin") {
-    return path.join(home, "Library", "Logs", "closedmesh");
+    return path.join(home, "Library", "Logs", "senda");
   }
   if (process.platform === "linux") {
-    return path.join(home, ".local", "state", "closedmesh");
+    return path.join(home, ".local", "state", "senda");
   }
   // Windows: dirs::data_dir() resolves to %APPDATA%\Roaming on Win10+;
-  // the Rust side appends "closedmesh\logs". Note this differs from the
-  // runtime's own log location (%LOCALAPPDATA%\closedmesh\logs) used by
+  // the Rust side appends "senda\logs". Note this differs from the
+  // runtime's own log location (%LOCALAPPDATA%\senda\logs) used by
   // LOG_PATHS — the desktop shell deliberately writes its own logs
-  // under Roaming\closedmesh\logs to keep "desktop event log" and
+  // under Roaming\senda\logs to keep "desktop event log" and
   // "runtime stdout/stderr" separate, so the user can rotate one
   // without nuking the other.
   return path.join(
     process.env.APPDATA ?? path.join(home, "AppData", "Roaming"),
-    "closedmesh",
+    "senda",
     "logs",
   );
 }
