@@ -88,13 +88,13 @@ For one-off llama-server-level fixes (per-launch CLI flag overrides), the saner 
 
 ### Website (senda.network)
 
-> **Vercel auto-deploy requires GitHub App access.** If push-to-deploy is
-> off, reconnect at Vercel → Project **senda** → Settings → Git →
-> `senda-network/senda`. Manual deploy always works:
+> **Auto-deploy:** push to `main` triggers `.github/workflows/vercel-production.yml`
+> (uses `VERCEL_*` repo secrets). Native Vercel↔GitHub App link is optional;
+> if reconnecting via dashboard, grant the app access to `senda-network/senda`.
 
 ```bash
 cd /Users/al/apps/senda
-vercel --prod
+vercel --prod   # manual fallback
 ```
 
 Check existing deployments: `vercel ls`
