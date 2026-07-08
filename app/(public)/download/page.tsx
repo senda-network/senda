@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { Logo } from "../../components/Logo";
 import { PublicHeader } from "../../components/PublicHeader";
 import { PublicFooter } from "../../components/PublicFooter";
+import { ArtBand } from "../../components/marketing";
 import type {
   DesktopAsset,
   DesktopAssetKind,
@@ -107,6 +108,12 @@ export default async function DownloadPage() {
           </div>
         </div>
       </section>
+
+      <ArtBand
+        src="/senda-capacity.png"
+        alt="Interconnected leaf-vein cells with glowing nodes — distributed capacity"
+        className="h-44 sm:h-56 lg:h-64"
+      />
 
       <section className="border-b border-[var(--border)]">
         <div className="mx-auto max-w-5xl px-6 py-16">

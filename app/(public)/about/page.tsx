@@ -6,6 +6,7 @@ import { PublicHeader } from "../../components/PublicHeader";
 import { PublicFooter } from "../../components/PublicFooter";
 import {
   ArchitectureDiagram,
+  ArtBand,
   Feature,
   NumberedStep,
 } from "../../components/marketing";
@@ -67,6 +68,12 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
+
+      <ArtBand
+        src="/senda-hero.png"
+        alt="A luminous path winding through a branching leaf-vein network"
+        className="h-48 sm:h-64 lg:h-72"
+      />
 
       {/* The physics — sessions, not tokens */}
       <section className="border-b border-[var(--border)]">

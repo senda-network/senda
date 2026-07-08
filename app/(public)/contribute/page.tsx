@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicHeader } from "../../components/PublicHeader";
 import { PublicFooter } from "../../components/PublicFooter";
+import { ArtBand } from "../../components/marketing";
 import { MeshLiveStats } from "../../components/MeshLiveStats";
 import { CreditsLeaderboard } from "../../components/CreditsLeaderboard";
 import { CreditsChecker } from "../../components/CreditsChecker";
@@ -78,6 +79,12 @@ export default function ContributePage() {
             </div>
           </div>
         </section>
+
+        <ArtBand
+          src="/senda-mesh.png"
+          alt="Peer clusters linked by curved luminous routing lines"
+          className="h-44 sm:h-56 lg:h-64"
+        />
 
         <section
           id="earn"
