@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #0a0a0b;
-  --bg-elev: #111114;
-  --bg-elev-2: #17171c;
-  --border: #232329;
-  --fg: #ededed;
-  --fg-muted: #9a9aa6;
-  --accent: #ff7a45;
-  --accent-soft: rgba(255, 122, 69, 0.12);
+  --bg: #f6faf7;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #eef4ef;
+  --border: #dce7de;
+  --fg: #11201a;
+  --fg-muted: #55655c;
+  --accent: #1a9d5f;
+  --accent-soft: rgba(26, 157, 95, 0.12);
 }
 
 @theme inline {

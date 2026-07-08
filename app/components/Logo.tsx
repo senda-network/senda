@@ -1,7 +1,8 @@
 /**
- * The Senda wordmark icon: three peer nodes arranged around a central
- * coordinator. Re-used in the header, the /about hero, the favicon, and the
- * matching senda-llm/docs/senda-logo.svg.
+ * The Senda mark: a leaf whose veins branch like paths across a network —
+ * "senda" (Sp. path/trail) rendered as the routes a session takes. Green,
+ * fresh, nature-leaning. Re-used in the header, the /about hero, the
+ * favicon, and the matching senda-llm/docs/senda-logo.svg.
  */
 export function Logo({
   size = 22,
@@ -20,16 +21,16 @@ export function Logo({
       aria-hidden
       className={className}
     >
-      <circle cx="12" cy="4" r="2.2" fill="var(--accent)" />
-      <circle cx="4" cy="18" r="2.2" fill="var(--accent)" />
-      <circle cx="20" cy="18" r="2.2" fill="var(--accent)" />
-      <circle cx="12" cy="13" r="1.6" fill="var(--fg)" opacity="0.9" />
       <path
-        d="M12 6.2 L12 11.4 M5.6 16.6 L10.6 13.5 M18.4 16.6 L13.4 13.5"
-        stroke="var(--fg)"
+        d="M12 22 C5.5 17 4.8 8.8 12 2 C19.2 8.8 18.5 17 12 22 Z"
+        fill="var(--accent)"
+      />
+      <path
+        d="M12 21 L12 4.5 M12 15.5 L7.6 12.8 M12 15.5 L16.4 12.8 M12 10.5 L8.7 8.2 M12 10.5 L15.3 8.2"
+        stroke="var(--bg-elev)"
         strokeWidth="1.1"
         strokeLinecap="round"
-        opacity="0.55"
+        opacity="0.85"
       />
     </svg>
   );
