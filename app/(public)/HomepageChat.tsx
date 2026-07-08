@@ -66,7 +66,7 @@ export function HeroChat() {
             >
               <Logo />
               <span className="text-sm font-semibold tracking-tight">
-                ClosedMesh
+                Senda
               </span>
             </button>
             <button

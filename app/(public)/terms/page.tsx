@@ -4,9 +4,9 @@ import { PublicHeader } from "../../components/PublicHeader";
 import { PublicFooter } from "../../components/PublicFooter";
 
 export const metadata: Metadata = {
-  title: "Terms — ClosedMesh",
+  title: "Terms — Senda",
   description:
-    "The terms for using ClosedMesh during early access: as-is availability, acceptable use, how credits work (illustrative, not cash), and the responsibilities of contributors who run nodes.",
+    "The terms for using Senda during early access: as-is availability, acceptable use, how credits work (illustrative, not cash), and the responsibilities of contributors who run nodes.",
 };
 
 const UPDATED = "June 29, 2026";
@@ -31,8 +31,8 @@ export default function TermsPage() {
             The deal, in plain language.
           </h1>
           <p className="mt-5 text-pretty text-base leading-relaxed text-[var(--fg-muted)]">
-            By using ClosedMesh — the web chat, the API, or by running a node —
-            you agree to the terms below. ClosedMesh is in early access and
+            By using Senda — the web chat, the API, or by running a node —
+            you agree to the terms below. Senda is in early access and
             these will evolve with the product. Last updated {UPDATED}.
           </p>
         </div>
@@ -54,7 +54,7 @@ export default function TermsPage() {
 
             <Clause title="Model outputs">
               <p>
-                ClosedMesh serves open-weight models. Their outputs can be
+                Senda serves open-weight models. Their outputs can be
                 inaccurate, incomplete, or offensive, and do not constitute
                 professional advice. You&apos;re responsible for reviewing and
                 how you use anything the models generate.
@@ -62,7 +62,7 @@ export default function TermsPage() {
             </Clause>
 
             <Clause title="Acceptable use">
-              <p>You agree not to use ClosedMesh to:</p>
+              <p>You agree not to use Senda to:</p>
               <ul className="list-disc space-y-2 pl-5">
                 <li>break the law or generate content that is illegal where you are;</li>
                 <li>
@@ -108,7 +108,7 @@ export default function TermsPage() {
 
             <Clause title="Limitation of liability">
               <p>
-                To the maximum extent permitted by law, ClosedMesh and its
+                To the maximum extent permitted by law, Senda and its
                 contributors are not liable for any indirect, incidental, or
                 consequential damages, or for any loss arising from your use of
                 the service, the mesh, model outputs, or running a node.
@@ -122,7 +122,7 @@ export default function TermsPage() {
                 latest version. Continued use after a change means you accept
                 it. Questions: open an issue on{" "}
                 <a
-                  href="https://github.com/closedmesh/closedmesh-llm"
+                  href="https://github.com/senda-network/senda-llm"
                   target="_blank"
                   rel="noreferrer"
                   className="text-[var(--accent)] hover:underline"

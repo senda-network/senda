@@ -1,7 +1,7 @@
 ---
 name: dev-log
 description: >-
-  Maintain the public ClosedMesh development log at `closedmesh.com/updates`.
+  Maintain the public Senda development log at `senda.network/updates`.
   Use whenever a phase ships in full or in part (per `internal/STRATEGY.md`),
   whenever a major mesh metric milestone lands (first p50 sample, new
   measurable mode, throughput regime change), or whenever the user mentions
@@ -10,7 +10,7 @@ description: >-
   per-commit, per-release, or per-bugfix work.
 ---
 
-# ClosedMesh public dev log
+# Senda public dev log
 
 Maintain `app/(public)/updates/page.tsx` (served at `/updates`) as the
 public-facing translation of `internal/STRATEGY.md` and
@@ -74,7 +74,7 @@ The public entry is a **re-narration**, not a copy-paste.
   the metric was "0.482 tok/s on a streaming chat", say that.
 - No first-person plural cheerleading ("we built", "we believe"). The log
   is what shipped, not what the team feels about it.
-- Code identifiers (`v0.66.48`, `Qwen3-8B-Q4_K_M`, `CLOSEDMESH_FORCE_SPLIT_ROUTING`)
+- Code identifiers (`v0.66.48`, `Qwen3-8B-Q4_K_M`, `SENDA_FORCE_SPLIT_ROUTING`)
   in inline backticks or the version-anchor field; not in body prose.
 
 ## Entry shape
@@ -103,16 +103,16 @@ When updating:
    "Done when" evidence, and decision log entries.
 2. Read `internal/RESILIENCE.md` for the corresponding code-level section
    (if any).
-3. Pull live numbers from `https://mesh.closedmesh.com/api/status` or
-   `https://closedmesh.com/api/status` — use values from the same data
+3. Pull live numbers from `https://entry.senda.network/api/status` or
+   `https://senda.network/api/status` — use values from the same data
    path the public sees, not from a private benchmark.
 4. Draft the entry following the shape and tone rules above.
 5. Insert at the top of the `ENTRIES` array in
    `app/(public)/updates/page.tsx`.
 6. Verify: `npx tsc --noEmit -p .` from the website root.
 7. Deploy: `vercel --prod` from the website root (Vercel does NOT
-   auto-deploy on git push — see `.cursor/skills/closedmesh-infra/`).
-8. Spot-check `https://closedmesh.com/updates` renders the new entry and
+   auto-deploy on git push — see `.cursor/skills/senda-infra/`).
+8. Spot-check `https://senda.network/updates` renders the new entry and
    the metrics tiles aren't broken.
 
 ## Hard rules
@@ -134,5 +134,5 @@ When updating:
 - Live status surface: `app/(public)/status/page.tsx` (`/status`)
 - Internal strategy: `internal/STRATEGY.md`
 - Internal post-mortems: `internal/RESILIENCE.md`
-- Deploy flow: `.cursor/skills/closedmesh-infra/SKILL.md`
+- Deploy flow: `.cursor/skills/senda-infra/SKILL.md`
 - Weekly KPIs (related but different surface): `.cursor/skills/weekly-kpi/SKILL.md`

@@ -7,7 +7,7 @@ Today the Tauri desktop shell is a webview that loads either:
 - `http://127.0.0.1:42141` if the user separately ran
   `scripts/install-controller.sh` to install the Next.js controller as a
   launchd service, or
-- `https://closedmesh.com` if no local controller is responding.
+- `https://senda.network` if no local controller is responding.
 
 That second path *also* ultimately needs a controller on `127.0.0.1:42141`
 because the public site's chat client posts back to it via CORS. So the
@@ -20,11 +20,11 @@ needs the one download.
 ## Architecture
 
 ```
-ClosedMesh.app
+Senda.app
 ├── Contents/
 │   ├── MacOS/
-│   │   ├── closedmesh                ← Tauri shell (Rust binary)
-│   │   └── closedmesh-node           ← bundled Node.js (sidecar binary)
+│   │   ├── senda                ← Tauri shell (Rust binary)
+│   │   └── senda-node           ← bundled Node.js (sidecar binary)
 │   └── Resources/
 │       └── controller/               ← Next.js standalone bundle
 │           ├── server.js
@@ -47,9 +47,9 @@ On launch, `main.rs`:
 `mesh::preferred_url()` becomes:
 
 ```
-1. CLOSEDMESH_APP_URL env (dev override)              — unchanged
+1. SENDA_APP_URL env (dev override)              — unchanged
 2. http://127.0.0.1:<sidecar_port>/                   — NEW (default)
-3. https://closedmesh.com                             — last resort
+3. https://senda.network                             — last resort
 ```
 
 ## Pointing the sidecar at a remote mesh
@@ -59,15 +59,15 @@ proxies to does not have to be local. We forward three env vars from
 the desktop parent process into the Node child at spawn time:
 
 ```
-CLOSEDMESH_RUNTIME_URL    e.g. https://mesh.closedmesh.com/v1
-CLOSEDMESH_RUNTIME_TOKEN  bearer secret shared with the auth gateway
-CLOSEDMESH_ADMIN_URL      e.g. https://mesh.closedmesh.com
+SENDA_RUNTIME_URL    e.g. https://entry.senda.network/v1
+SENDA_RUNTIME_TOKEN  bearer secret shared with the auth gateway
+SENDA_ADMIN_URL      e.g. https://entry.senda.network
 ```
 
 When set, the bundled controller's `/api/chat` and `/api/status` routes
 talk to the public mesh entry point instead of the default
 `http://127.0.0.1:9337` local runtime. When unset, behaviour is
-unchanged — the controller looks for a local `closedmesh` CLI on the
+unchanged — the controller looks for a local `senda` CLI on the
 loopback exactly as before.
 
 This is what lets a release build of the `.app` ship pointed at the
@@ -90,7 +90,7 @@ Trade-offs we considered:
 | **Node.js sidecar**   | +60–80MB        | 100% — Next.js targets Node | low |
 | Bun sidecar           | +50MB           | Mostly works on Next.js but not officially supported | medium |
 | Node SEA (single-exe) | +40MB (no node_modules, just the bundled Next standalone) | Experimental; spawning child processes from a SEA has rough edges | high |
-| Static export         | +0MB             | Doesn't work — our /api/control/* routes need a Node runtime to spawn the closedmesh CLI | n/a |
+| Static export         | +0MB             | Doesn't work — our /api/control/* routes need a Node runtime to spawn the senda CLI | n/a |
 
 Node.js is the boring choice. We can revisit Bun once it has a track
 record with our exact Next.js feature set.
@@ -108,23 +108,23 @@ We fetch the official Node.js LTS distribution from `nodejs.org`:
 | `x86_64-pc-windows-msvc`   | `node-vXX.XX.X-win-x64.zip` (extract `node.exe`) |
 
 Tauri's `bundle.externalBin` requires platform-suffixed names. We use a
-`closedmesh-` prefix so the installed image name is unique to our
+`senda-` prefix so the installed image name is unique to our
 installer (see "Why the prefix?" below):
 
 ```
 desktop/sidecar/binaries/
-├── closedmesh-node-aarch64-apple-darwin
-├── closedmesh-node-x86_64-apple-darwin
-├── closedmesh-node-x86_64-unknown-linux-gnu
-├── closedmesh-node-aarch64-unknown-linux-gnu
-└── closedmesh-node-x86_64-pc-windows-msvc.exe
+├── senda-node-aarch64-apple-darwin
+├── senda-node-x86_64-apple-darwin
+├── senda-node-x86_64-unknown-linux-gnu
+├── senda-node-aarch64-unknown-linux-gnu
+└── senda-node-x86_64-pc-windows-msvc.exe
 ```
 
 `desktop/scripts/fetch-node.sh` downloads only the binary for the host
 target on local builds; CI fetches all of them in parallel jobs (matrix
 in `desktop-release.yml`).
 
-### Why the `closedmesh-` prefix?
+### Why the `senda-` prefix?
 
 Pre-0.1.69 we shipped this binary as plain `node.exe` on Windows (and
 `node` on macOS/Linux). The .msi/.exe upgrade flow then ran into a
@@ -137,7 +137,7 @@ renderers of unrelated apps). Both the path-filtered PowerShell sweep
 (0.1.65/0.1.66) and the kill-all-node.exe approach (0.1.67/0.1.68)
 were rejected for being fragile and disruptive respectively.
 
-Renaming to `closedmesh-node` solves the underlying problem
+Renaming to `senda-node` solves the underlying problem
 permanently: the image name is unique to our installer, so an
 unconditional kill-by-name in `installer/hooks.nsh` and
 `installer/close_running_app.wxs` can only match our process. The
@@ -154,7 +154,7 @@ Local build (`desktop/scripts/build.sh`) now does:
    into `desktop/sidecar/controller/`, including `.next/static` and
    `public/`.
 3. `desktop/scripts/fetch-node.sh` — download the host-platform Node
-   binary into `desktop/sidecar/binaries/closedmesh-node-<target-triple>`.
+   binary into `desktop/sidecar/binaries/senda-node-<target-triple>`.
 4. `tauri build` — bundles everything into the platform installers.
 
 CI (`.github/workflows/desktop-release.yml`) runs steps 1–3 inside each
@@ -170,10 +170,10 @@ is unchanged.
 - If the sidecar crashes mid-session, we restart it once (logged
   to the console). If it crashes again within 30s, we surface a
   toast and stop trying — the webview goes to the
-  `closedmesh.com` fallback so the user can still see the
+  `senda.network` fallback so the user can still see the
   marketing/install page.
 - The sidecar's logs go to
-  `~/Library/Logs/closedmesh/controller.{stdout,stderr}.log` (same
+  `~/Library/Logs/senda/controller.{stdout,stderr}.log` (same
   location as today's launchd-installed controller, for continuity).
 
 ## What this replaces

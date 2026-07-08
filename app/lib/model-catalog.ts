@@ -1,5 +1,5 @@
 /**
- * Curated catalog of models we know the ClosedMesh runtime can pull.
+ * Curated catalog of models we know the Senda runtime can pull.
  *
  * Hand-maintained for now — once the runtime exposes a /v1/models/catalog
  * endpoint we can swap this out for a fetch. Keeping it client-side keeps
@@ -72,7 +72,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 5,
     minVramGb: 8,
     description:
-      "ClosedMesh's reference demo model. Strong reasoning and code, runs comfortably on a 16GB Mac or a mid-range GPU.",
+      "Senda's reference demo model. Strong reasoning and code, runs comfortably on a 16GB Mac or a mid-range GPU.",
     recommended: true,
   },
   {
@@ -91,7 +91,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 4.7,
     minVramGb: 8,
     description:
-      "Coding-specialized 7B. Pair it with the OpenAI-compatible endpoint to use ClosedMesh as a local backend for editors and agents.",
+      "Coding-specialized 7B. Pair it with the OpenAI-compatible endpoint to use Senda as a local backend for editors and agents.",
   },
   {
     id: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M",
@@ -118,7 +118,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 17.3,
     minVramGb: 20,
     description:
-      "Mixture-of-experts: 30B total, ~3B active per token, 128 experts top-8. ClosedMesh splits by expert with zero per-token cross-node traffic — pools well across two contributors as long as each can hold the shared trunk (~6 GB) plus its expert shard.",
+      "Mixture-of-experts: 30B total, ~3B active per token, 128 experts top-8. Senda splits by expert with zero per-token cross-node traffic — pools well across two contributors as long as each can hold the shared trunk (~6 GB) plus its expert shard.",
   },
   {
     id: "GLM-4.7-Flash-Q4_K_M",

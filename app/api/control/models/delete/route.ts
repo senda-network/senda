@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../../_lib";
+import { findSendaBin, isPublic, runSenda } from "../../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /**
  * Delete a downloaded model from this node.
  *
- * Shells out to `closedmesh models delete <id> --yes --json`. The runtime
+ * Shells out to `senda models delete <id> --yes --json`. The runtime
  * CLI handles the actual file removal, the HF cache snapshot bookkeeping,
  * and the mesh-managed usage record cleanup; we just forward the parsed
  * JSON result up to the dashboard.
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  * mmap'd: the directory entry disappears immediately, the running
  * process keeps serving from its open handle, and disk space is
  * reclaimed when the last handle closes. The CLI relied on that
- * behaviour and `closedmesh models delete` would happily complete
+ * behaviour and `senda models delete` would happily complete
  * regardless of whether the runtime had the GGUF loaded.
  *
  * Windows does NOT have unlink-while-open semantics for regular file
@@ -37,7 +37,7 @@ export const dynamic = "force-dynamic";
  * the file might be deletable anyway (e.g. it was never loaded since the
  * last service restart).
  *
- * The proper fix lives in `closedmesh-llm` (`models/delete.rs` should
+ * The proper fix lives in `senda-llm` (`models/delete.rs` should
  * unload from the local runtime registry before calling `remove_file`)
  * and is tracked in the corresponding runtime issue. This controller
  * mitigation lets us ship the dashboard fix without waiting on a runtime
@@ -45,11 +45,11 @@ export const dynamic = "force-dynamic";
  */
 
 const ADMIN_URL = (
-  process.env.CLOSEDMESH_ADMIN_URL ??
+  process.env.SENDA_ADMIN_URL ??
   process.env.MESH_CONSOLE_URL ??
   "http://127.0.0.1:3131"
 ).trim();
-const RUNTIME_TOKEN = (process.env.CLOSEDMESH_RUNTIME_TOKEN ?? "").trim();
+const RUNTIME_TOKEN = (process.env.SENDA_RUNTIME_TOKEN ?? "").trim();
 
 /**
  * Best-effort unload of `id` from the local runtime so the GGUF mmap
@@ -136,10 +136,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     return NextResponse.json(
-      { ok: false, message: "closedmesh binary not found on this machine." },
+      { ok: false, message: "senda binary not found on this machine." },
       { status: 404 },
     );
   }
@@ -152,16 +152,16 @@ export async function POST(req: Request) {
   await unloadFromRuntime(id);
 
   // Big GGUFs (40 GB+) take a few seconds to unlink on a slow disk; the
-  // default 8 s in `runClosedmesh` is too tight. 60 s is generous enough
+  // default 8 s in `runSenda` is too tight. 60 s is generous enough
   // to cover any realistic case while still failing loudly if the CLI
   // hangs.
-  const result = await runClosedmesh(bin, ["models", "delete", id, "--yes", "--json"], 60_000);
+  const result = await runSenda(bin, ["models", "delete", id, "--yes", "--json"], 60_000);
   if (!result.ok) {
     const rawError =
-      result.stderr || result.stdout || `closedmesh models delete exited ${result.code}`;
+      result.stderr || result.stdout || `senda models delete exited ${result.code}`;
     const message =
       process.platform === "win32" && looksLikeWindowsFileLock(rawError)
-        ? `${id} is still in use by the running mesh service. Stop it from the dashboard (or run \`closedmesh service stop\`) and try again.`
+        ? `${id} is still in use by the running mesh service. Stop it from the dashboard (or run \`senda service stop\`) and try again.`
         : rawError;
     return NextResponse.json(
       { ok: false, message },

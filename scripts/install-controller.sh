@@ -1,37 +1,37 @@
 #!/usr/bin/env bash
-# scripts/install-controller.sh — install the ClosedMesh Next.js controller as
+# scripts/install-controller.sh — install the Senda Next.js controller as
 # a launchd service that auto-starts on login.
 #
 # What this does:
 #   1. Builds a self-contained Next.js bundle (next build with output=standalone).
-#   2. Copies the bundle into ~/.closedmesh/controller/.
-#   3. Writes ~/Library/LaunchAgents/dev.closedmesh.controller.plist.
+#   2. Copies the bundle into ~/.senda/controller/.
+#   3. Writes ~/Library/LaunchAgents/network.senda.controller.plist.
 #   4. Bootstraps the launchd service so the chat UI + /control panel are
 #      available at http://127.0.0.1:42141 every time you log in.
 #
 # Uninstall:
-#   launchctl bootout gui/$(id -u)/dev.closedmesh.controller
-#   rm -rf ~/.closedmesh/controller \
-#          ~/Library/LaunchAgents/dev.closedmesh.controller.plist \
-#          ~/Library/Logs/closedmesh/controller.{stdout,stderr}.log
+#   launchctl bootout gui/$(id -u)/network.senda.controller
+#   rm -rf ~/.senda/controller \
+#          ~/Library/LaunchAgents/network.senda.controller.plist \
+#          ~/Library/Logs/senda/controller.{stdout,stderr}.log
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-LABEL="dev.closedmesh.controller"
-TARGET_DIR="$HOME/.closedmesh/controller"
+LABEL="network.senda.controller"
+TARGET_DIR="$HOME/.senda/controller"
 LAUNCHD_DIR="$HOME/Library/LaunchAgents"
 PLIST="$LAUNCHD_DIR/$LABEL.plist"
-LOG_DIR="$HOME/Library/Logs/closedmesh"
-PORT="${CLOSEDMESH_CONTROLLER_PORT:-42141}"
+LOG_DIR="$HOME/Library/Logs/senda"
+PORT="${SENDA_CONTROLLER_PORT:-42141}"
 
 color() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
-info() { color "0;36" "[closedmesh] $*"; }
-ok()   { color "0;32" "[closedmesh] $*"; }
-warn() { color "0;33" "[closedmesh] $*"; }
-err()  { color "0;31" "[closedmesh] $*" >&2; }
+info() { color "0;36" "[senda] $*"; }
+ok()   { color "0;32" "[senda] $*"; }
+warn() { color "0;33" "[senda] $*"; }
+err()  { color "0;31" "[senda] $*" >&2; }
 
 require() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -143,7 +143,7 @@ done
 
 cat <<EOF
 
-  ClosedMesh controller installed.
+  Senda controller installed.
 
   Open:    http://localhost:${PORT}/control
   Chat:    http://localhost:${PORT}

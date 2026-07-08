@@ -333,7 +333,7 @@ export function snapshotFromMilestone(m: KpiMilestone): KpiSnapshot {
   const model = m.model ?? "DeepSeek-R1-Distill-70B-Q4_K_M";
   return {
     captured_at: m.at,
-    status_url: "https://mesh.closedmesh.com/api/status",
+    status_url: "https://entry.senda.network/api/status",
     flagship_model: model,
     online: true,
     node_count: m.peer_count ?? 0,

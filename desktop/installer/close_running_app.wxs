@@ -2,18 +2,18 @@
 <!--
   desktop/installer/close_running_app.wxs
 
-  WiX fragment that terminates a running ClosedMesh.exe (and its child
-  process tree, including the bundled closedmesh-node.exe sidecar) before
+  WiX fragment that terminates a running Senda.exe (and its child
+  process tree, including the bundled senda-node.exe sidecar) before
   the .msi installer starts copying files.
 
   Why this exists: the same problem the NSIS hook in hooks.nsh solves.
-  When a user upgrades while ClosedMesh is running, the sidecar is held
+  When a user upgrades while Senda is running, the sidecar is held
   open by the live process — and the installer pops a "file in use"
   dialog. Killing the process tree ahead of the file-copy phase makes
   the upgrade look like a single-click no-op to the user.
 
   In 0.1.69 the sidecar was renamed from `node.exe` to
-  `closedmesh-node.exe` so we can kill it by image name without
+  `senda-node.exe` so we can kill it by image name without
   affecting the user's other node.exe processes (Node dev servers,
   VS Code's extension host, Electron renderers).
 
@@ -39,43 +39,43 @@
 
     <!-- Two-step kill, in this order:
 
-         1. taskkill /F /T /IM ClosedMesh.exe — force-kills the desktop
+         1. taskkill /F /T /IM Senda.exe — force-kills the desktop
             window and its child tree. /T only catches descendants of
             an *alive* parent though, so an orphaned sidecar (left
             behind by an earlier crash or upgrade) survives this.
 
-         2. taskkill /F /IM closedmesh-node.exe — kills any leftover
+         2. taskkill /F /IM senda-node.exe — kills any leftover
             sidecar by image name. Safe to do unconditionally: the
-            `closedmesh-node` prefix is unique to our installer (set
+            `senda-node` prefix is unique to our installer (set
             up in desktop/scripts/fetch-node.sh + tauri.conf.json's
             externalBin), so this can't accidentally terminate a
             user's other Node processes.
 
          Return="ignore" on both because either action returns
-         non-zero on a clean install (no prior ClosedMesh, no sidecar
+         non-zero on a clean install (no prior Senda, no sidecar
          to match) — the expected case, definitely not a reason to
          abort the install. -->
-    <CustomAction Id="StopClosedMesh"
+    <CustomAction Id="StopSenda"
                   Directory="TARGETDIR"
                   Execute="immediate"
                   Return="ignore"
                   Impersonate="yes"
-                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM ClosedMesh.exe" />
+                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM Senda.exe" />
 
-    <CustomAction Id="StopClosedMeshSidecar"
+    <CustomAction Id="StopSendaSidecar"
                   Directory="TARGETDIR"
                   Execute="immediate"
                   Return="ignore"
                   Impersonate="yes"
-                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /IM closedmesh-node.exe" />
+                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /IM senda-node.exe" />
 
-    <!-- 0.1.76: also stop the closedmesh.exe runtime trio. The Tauri
+    <!-- 0.1.76: also stop the senda.exe runtime trio. The Tauri
          CheckIfAppIsRunning macro and the two CustomActions above
-         only handle ClosedMesh.exe (the Tauri shell) and
-         closedmesh-node.exe (the bundled Next.js sidecar). They miss
-         closedmesh.exe / rpc-server.exe / llama-server.exe, which
-         are spawned by the ClosedMesh Scheduled Task and survive
-         every reinstall — locking ~/.local/bin\closedmesh.exe so
+         only handle Senda.exe (the Tauri shell) and
+         senda-node.exe (the bundled Next.js sidecar). They miss
+         senda.exe / rpc-server.exe / llama-server.exe, which
+         are spawned by the Senda Scheduled Task and survive
+         every reinstall — locking ~/.local/bin\senda.exe so
          0.1.75's path migration couldn't move it, and keeping the
          Activity panel showing "rpc-server.exe not found" from the
          legacy path no matter what we shipped. The schtasks /End
@@ -83,49 +83,49 @@
          pidfiles); the taskkill calls are belt-and-braces for any
          orphan a previous crash left behind. Image names are unique
          to us so this can't hit unrelated user processes. -->
-    <CustomAction Id="EndClosedMeshTask"
+    <CustomAction Id="EndSendaTask"
                   Directory="TARGETDIR"
                   Execute="immediate"
                   Return="ignore"
                   Impersonate="yes"
-                  ExeCommand="&quot;[SystemFolder]schtasks.exe&quot; /End /TN ClosedMesh" />
+                  ExeCommand="&quot;[SystemFolder]schtasks.exe&quot; /End /TN Senda" />
 
-    <CustomAction Id="StopClosedMeshLlamaServer"
+    <CustomAction Id="StopSendaLlamaServer"
                   Directory="TARGETDIR"
                   Execute="immediate"
                   Return="ignore"
                   Impersonate="yes"
                   ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM llama-server.exe" />
 
-    <CustomAction Id="StopClosedMeshRpcServer"
+    <CustomAction Id="StopSendaRpcServer"
                   Directory="TARGETDIR"
                   Execute="immediate"
                   Return="ignore"
                   Impersonate="yes"
                   ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM rpc-server.exe" />
 
-    <CustomAction Id="StopClosedMeshRuntime"
+    <CustomAction Id="StopSendaRuntime"
                   Directory="TARGETDIR"
                   Execute="immediate"
                   Return="ignore"
                   Impersonate="yes"
-                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM closedmesh.exe" />
+                  ExeCommand="&quot;[SystemFolder]taskkill.exe&quot; /F /T /IM senda.exe" />
 
     <!-- Schedule the kills before InstallValidate, which is the phase
          where MSI checks whether any target files are in use. By the
-         time InstallValidate runs, ClosedMesh.exe and its
-         closedmesh-node.exe sidecar are gone and the file locks have
-         been released. The runtime trio (closedmesh.exe + helpers)
+         time InstallValidate runs, Senda.exe and its
+         senda-node.exe sidecar are gone and the file locks have
+         been released. The runtime trio (senda.exe + helpers)
          doesn't share files with the .msi payload but stopping it
          here ensures the migration in mesh.rs can move
-         ~/.local/bin\closedmesh.exe on the upcoming first launch. -->
+         ~/.local/bin\senda.exe on the upcoming first launch. -->
     <InstallExecuteSequence>
-      <Custom Action="StopClosedMesh" Before="InstallValidate">1</Custom>
-      <Custom Action="StopClosedMeshSidecar" After="StopClosedMesh">1</Custom>
-      <Custom Action="EndClosedMeshTask" After="StopClosedMeshSidecar">1</Custom>
-      <Custom Action="StopClosedMeshLlamaServer" After="EndClosedMeshTask">1</Custom>
-      <Custom Action="StopClosedMeshRpcServer" After="StopClosedMeshLlamaServer">1</Custom>
-      <Custom Action="StopClosedMeshRuntime" After="StopClosedMeshRpcServer">1</Custom>
+      <Custom Action="StopSenda" Before="InstallValidate">1</Custom>
+      <Custom Action="StopSendaSidecar" After="StopSenda">1</Custom>
+      <Custom Action="EndSendaTask" After="StopSendaSidecar">1</Custom>
+      <Custom Action="StopSendaLlamaServer" After="EndSendaTask">1</Custom>
+      <Custom Action="StopSendaRpcServer" After="StopSendaLlamaServer">1</Custom>
+      <Custom Action="StopSendaRuntime" After="StopSendaRpcServer">1</Custom>
     </InstallExecuteSequence>
   </Fragment>
 </Wix>

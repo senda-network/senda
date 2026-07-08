@@ -1,5 +1,5 @@
 /**
- * Layout for the public marketing surface (closedmesh.com). Each page in
+ * Layout for the public marketing surface (senda.network). Each page in
  * this group renders its own header — there's enough variation between the
  * chat-first homepage and the long-form /about that a single shared shell
  * was more friction than it was worth. We just pass children through here

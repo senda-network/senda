@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../../_lib";
+import { findSendaBin, isPublic, runSenda } from "../../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * Lists every model that's been downloaded onto THIS node — not just the
- * ones currently held in VRAM. Calls `closedmesh models installed` and
+ * ones currently held in VRAM. Calls `senda models installed` and
  * parses its decorated text output into `{ id, sizeBytes }` records.
  *
  * The CLI's `installed` output is grouped by model and looks roughly like:
@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
  *   📦 Qwen3-0.6B-Q4_K_M
  *      …
  *
- * Earlier versions of this route called `closedmesh models list`, which
+ * Earlier versions of this route called `senda models list`, which
  * doesn't exist as a subcommand and silently fell through to printing the
  * recommended-models catalog. The result was a Models page peppered with
  * "Custom model — not in our catalog" rows whose IDs were the first token
@@ -46,21 +46,21 @@ export async function GET() {
     });
   }
 
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     return NextResponse.json({
       ok: false,
-      message: "closedmesh binary not found on this machine.",
+      message: "senda binary not found on this machine.",
       models: [] as LocalModel[],
     });
   }
 
-  const result = await runClosedmesh(bin, ["models", "installed"]);
+  const result = await runSenda(bin, ["models", "installed"]);
   if (!result.ok) {
     return NextResponse.json({
       ok: false,
       message:
-        result.stderr || result.stdout || "closedmesh models installed failed",
+        result.stderr || result.stdout || "senda models installed failed",
       models: [] as LocalModel[],
     });
   }
@@ -77,7 +77,7 @@ const SIZE_UNITS: Record<string, number> = {
 };
 
 /**
- * Parse the indented `📦 <id>` blocks from `closedmesh models installed`.
+ * Parse the indented `📦 <id>` blocks from `senda models installed`.
  *
  * We deliberately don't try to parse every key — just the model ID (the
  * line that starts with the package emoji) and the on-disk size (the

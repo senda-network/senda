@@ -1,14 +1,14 @@
 import { spawn } from "node:child_process";
 import { statfs } from "node:fs/promises";
 import { homedir } from "node:os";
-import { findClosedmeshBin, isPublic } from "../../_lib";
+import { findSendaBin, isPublic } from "../../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * Downloads a model onto this node by shelling out to
- * `closedmesh models download <id>` and forwarding stdout/stderr to the
+ * `senda models download <id>` and forwarding stdout/stderr to the
  * client as newline-delimited JSON.
  *
  * Why NDJSON over SSE: same reasoning as /api/control/install — the AI
@@ -136,9 +136,9 @@ export async function POST(req: Request) {
     }
   }
 
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
-    return jsonErr(404, "closedmesh binary not found on this machine.");
+    return jsonErr(404, "senda binary not found on this machine.");
   }
 
   const stream = new ReadableStream<Uint8Array>({
@@ -148,13 +148,13 @@ export async function POST(req: Request) {
         controller.enqueue(enc.encode(JSON.stringify(obj) + "\n"));
       };
 
-      send({ kind: "stdout", text: `closedmesh models download ${id}` });
+      send({ kind: "stdout", text: `senda models download ${id}` });
 
       const child = spawn(bin, ["models", "download", id], {
         env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
         // See _lib.ts — without this every model download flashes a
-        // closedmesh.exe console window on Windows for the duration of
+        // senda.exe console window on Windows for the duration of
         // the (potentially multi-minute) download.
         windowsHide: true,
       });

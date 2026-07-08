@@ -1,4 +1,4 @@
-# ClosedMesh installer - Windows x86_64.
+# Senda installer - Windows x86_64.
 #
 # KEEP THIS FILE ASCII-ONLY. Windows PowerShell 5.1 reads .ps1 files
 # with no BOM using the system ANSI codepage (Windows-1252 on en-US
@@ -14,23 +14,23 @@
 # open brace below the offending line. The `iwr | iex` path doesn't
 # hit this because HTTP decoding hands iex a proper UTF-8 string.
 #
-#   iwr -useb https://closedmesh.com/install.ps1 | iex
-#   iwr -useb https://closedmesh.com/install.ps1 | iex; closedmesh-install -Service
+#   iwr -useb https://senda.network/install.ps1 | iex
+#   iwr -useb https://senda.network/install.ps1 | iex; senda-install -Service
 #
 # Detects whether your GPU prefers the CUDA or Vulkan flavor, downloads the
-# matching closedmesh-windows-x86_64-<flavor>.zip, installs closedmesh.exe to
-# %LOCALAPPDATA%\closedmesh\bin, then pulls the matching llama.cpp Windows
+# matching senda-windows-x86_64-<flavor>.zip, installs senda.exe to
+# %LOCALAPPDATA%\senda\bin, then pulls the matching llama.cpp Windows
 # helpers (rpc-server.exe / llama-server.exe + DLLs) from ggml-org/llama.cpp's
 # official release so the runtime can actually load models. With -Service it
 # also registers a Scheduled Task so it auto-starts at login.
 #
 # Backend override:
-#   $env:CLOSEDMESH_BACKEND = 'cuda' | 'vulkan' | 'cpu'
-#   iwr -useb https://closedmesh.com/install.ps1 | iex; closedmesh-install
+#   $env:SENDA_BACKEND = 'cuda' | 'vulkan' | 'cpu'
+#   iwr -useb https://senda.network/install.ps1 | iex; senda-install
 #
 # Uninstall:
-#   schtasks /Delete /TN ClosedMesh /F
-#   Remove-Item -Recurse $env:LOCALAPPDATA\closedmesh
+#   schtasks /Delete /TN Senda /F
+#   Remove-Item -Recurse $env:LOCALAPPDATA\senda
 
 [CmdletBinding()]
 param(
@@ -43,18 +43,18 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $Repo)        { $Repo        = if ($env:CLOSEDMESH_INSTALL_REPO) { $env:CLOSEDMESH_INSTALL_REPO } else { 'closedmesh/closedmesh-llm' } }
-if (-not $InstallDir)  { $InstallDir  = if ($env:CLOSEDMESH_INSTALL_DIR)  { $env:CLOSEDMESH_INSTALL_DIR }  else { Join-Path $env:LOCALAPPDATA 'closedmesh\bin' } }
-if (-not $Backend)     { $Backend     = $env:CLOSEDMESH_BACKEND }
+if (-not $Repo)        { $Repo        = if ($env:SENDA_INSTALL_REPO) { $env:SENDA_INSTALL_REPO } else { 'senda-network/senda-llm' } }
+if (-not $InstallDir)  { $InstallDir  = if ($env:SENDA_INSTALL_DIR)  { $env:SENDA_INSTALL_DIR }  else { Join-Path $env:LOCALAPPDATA 'senda\bin' } }
+if (-not $Backend)     { $Backend     = $env:SENDA_BACKEND }
 
-$TaskName = 'ClosedMesh'
-$DataDir  = Join-Path $env:USERPROFILE '.closedmesh'
-$LogDir   = Join-Path $env:LOCALAPPDATA 'closedmesh\logs'
+$TaskName = 'Senda'
+$DataDir  = Join-Path $env:USERPROFILE '.senda'
+$LogDir   = Join-Path $env:LOCALAPPDATA 'senda\logs'
 
-function Write-Info  { param($Msg) Write-Host "[closedmesh] $Msg" -ForegroundColor Cyan }
-function Write-Ok    { param($Msg) Write-Host "[closedmesh] $Msg" -ForegroundColor Green }
-function Write-Warn2 { param($Msg) Write-Host "[closedmesh] $Msg" -ForegroundColor Yellow }
-function Write-Err   { param($Msg) Write-Host "[closedmesh] $Msg" -ForegroundColor Red }
+function Write-Info  { param($Msg) Write-Host "[senda] $Msg" -ForegroundColor Cyan }
+function Write-Ok    { param($Msg) Write-Host "[senda] $Msg" -ForegroundColor Green }
+function Write-Warn2 { param($Msg) Write-Host "[senda] $Msg" -ForegroundColor Yellow }
+function Write-Err   { param($Msg) Write-Host "[senda] $Msg" -ForegroundColor Red }
 
 function Stop-RunningRuntime {
     # Stop the scheduled task gracefully if it exists. -ErrorAction
@@ -62,16 +62,16 @@ function Stop-RunningRuntime {
     # running" errors which are noise on a fresh install.
     try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Out-Null } catch { }
 
-    # Kill any lingering closedmesh.exe whose path is in our install
+    # Kill any lingering senda.exe whose path is in our install
     # tree. Match by full path (not just image name) to avoid touching
-    # an unrelated `closedmesh` build the user might be running from
+    # an unrelated `senda` build the user might be running from
     # source elsewhere. Repeat across two short sleeps because the
     # runtime can momentarily fork helper subprocesses (llama.cpp
     # workers) that we want to catch too.
-    $targetBin = Join-Path $InstallDir 'closedmesh.exe'
+    $targetBin = Join-Path $InstallDir 'senda.exe'
     for ($i = 0; $i -lt 2; $i++) {
         try {
-            Get-Process -Name closedmesh -ErrorAction SilentlyContinue |
+            Get-Process -Name senda -ErrorAction SilentlyContinue |
                 Where-Object { $_.Path -and ($_.Path -ieq $targetBin) } |
                 Stop-Process -Force -ErrorAction SilentlyContinue
         } catch { }
@@ -79,13 +79,13 @@ function Stop-RunningRuntime {
     }
 
     # Also kill the wscript.exe launcher (see Write-LaunchVbs) when
-    # it's currently shepherding a closedmesh.exe. Without this the
+    # it's currently shepherding a senda.exe. Without this the
     # scheduled task's wscript host process keeps the .vbs file
     # locked and we can't rewrite it on upgrade.
-    $vbsPath = Join-Path $InstallDir 'closedmesh-launch.vbs'
+    $vbsPath = Join-Path $InstallDir 'senda-launch.vbs'
     try {
         Get-CimInstance Win32_Process -Filter "Name = 'wscript.exe'" -ErrorAction SilentlyContinue |
-            Where-Object { $_.CommandLine -and ($_.CommandLine -like "*closedmesh-launch.vbs*") } |
+            Where-Object { $_.CommandLine -and ($_.CommandLine -like "*senda-launch.vbs*") } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     } catch { }
 
@@ -96,13 +96,13 @@ function Stop-RunningRuntime {
 
 function Write-LaunchVbs {
     # Generates a tiny VBScript next to the runtime binary that
-    # CreateProcess()'s closedmesh.exe with no console window, with
+    # CreateProcess()'s senda.exe with no console window, with
     # stdout and stderr redirected to log files, then blocks until
     # it exits.
     #
     # Why all this machinery:
     #
-    # 1. closedmesh.exe is a console-subsystem binary. When a
+    # 1. senda.exe is a console-subsystem binary. When a
     #    Scheduled Task with LogonType=Interactive runs it directly,
     #    Windows always allocates a console - and on Win11 the user's
     #    default terminal handler (Windows Terminal) opens a visible
@@ -111,7 +111,7 @@ function Write-LaunchVbs {
     #    tab. Looks exactly like the desktop app spawned a stray dev
     #    terminal on every login.
     #
-    # 2. Without redirection, closedmesh.exe's stdout and stderr go
+    # 2. Without redirection, senda.exe's stdout and stderr go
     #    to the void (Scheduled Task allocates a console and never
     #    captures it). The dashboard's Activity page reads these
     #    streams from disk, so on Windows it stayed permanently
@@ -124,7 +124,7 @@ function Write-LaunchVbs {
     # wscript.exe is a Windows-subsystem host so no console pops;
     # `cmd /S /c` strips its outer quote pair and runs the rest as a
     # single command line; the `>>` and `2>>` redirections are
-    # interpreted by cmd, not the runtime, so closedmesh's normal
+    # interpreted by cmd, not the runtime, so senda's normal
     # writes land on disk. `0` passed to sh.Run is SW_HIDE, `True`
     # makes wscript wait for the child to exit so the Scheduled Task
     # framework treats the task as running while the runtime is
@@ -137,15 +137,15 @@ function Write-LaunchVbs {
     # exact target string regardless of how many escape layers are
     # nominally in play.
     #
-    # The CLOSEDMESH_ARGS comment line at the top is the canonical
+    # The SENDA_ARGS comment line at the top is the canonical
     # source of args for the desktop app's idempotency check
     # (current_windows_task_args in desktop/src/mesh.rs reads it).
     # Don't remove it.
     param([string]$Bin, [string]$ArgString)
 
-    $vbsPath = Join-Path $InstallDir 'closedmesh-launch.vbs'
+    $vbsPath = Join-Path $InstallDir 'senda-launch.vbs'
 
-    # CLOSEDMESH_ARGS / CLOSEDMESH_BIN / CLOSEDMESH_LOGDIR are
+    # SENDA_ARGS / SENDA_BIN / SENDA_LOGDIR are
     # pre-formatted as a single literal in the VBS. The desktop's
     # idempotency check parses these comment lines verbatim, so
     # don't reorder or rename them.
@@ -168,22 +168,22 @@ function Write-LaunchVbs {
     if (-not (Test-Path $hfCacheDir)) { New-Item -ItemType Directory -Force -Path $hfCacheDir | Out-Null }
 
     $vbs = @"
-' Auto-generated by ClosedMesh installer. Do not edit by hand;
+' Auto-generated by Senda installer. Do not edit by hand;
 ' reinstall the runtime to regenerate. See install.ps1::Write-LaunchVbs
 ' and desktop/src/mesh.rs::REGISTER_TASK_PS for the same wrapper used
 ' by the desktop app's auto-install path.
 '
-' CLOSEDMESH_BIN: ${Bin}
-' CLOSEDMESH_ARGS: ${ArgString}
-' CLOSEDMESH_LOGDIR: ${LogDir}
-' CLOSEDMESH_HF_HUB_CACHE: ${hfCacheDir}
+' SENDA_BIN: ${Bin}
+' SENDA_ARGS: ${ArgString}
+' SENDA_LOGDIR: ${LogDir}
+' SENDA_HF_HUB_CACHE: ${hfCacheDir}
 Option Explicit
 Dim sh, fso, cmd, q
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 If Not fso.FolderExists("${LogDir}") Then fso.CreateFolder("${LogDir}")
 If Not fso.FolderExists("${hfCacheDir}") Then fso.CreateFolder("${hfCacheDir}")
-' Pin the HuggingFace cache for THIS process; cmd / closedmesh inherit.
+' Pin the HuggingFace cache for THIS process; cmd / senda inherit.
 sh.Environment("PROCESS")("HF_HUB_CACHE") = "${hfCacheDir}"
 q = Chr(34)
 cmd = "cmd /S /c " & q & q & "${Bin}" & q & " ${ArgString} >> " & q & "${logFileStdout}" & q & " 2>> " & q & "${logFileStderr}" & q & q
@@ -232,7 +232,7 @@ function Detect-Backend {
 function Get-Target {
     $arch = $env:PROCESSOR_ARCHITECTURE
     if ($arch -ne 'AMD64' -and $arch -ne 'x86_64') {
-        Write-Err "ClosedMesh on Windows requires x86_64. Detected: $arch"
+        Write-Err "Senda on Windows requires x86_64. Detected: $arch"
         Write-Err "ARM64 Windows is not yet supported. Build from source: https://github.com/$Repo"
         throw 'Unsupported architecture.'
     }
@@ -240,7 +240,7 @@ function Get-Target {
     $flavor = Detect-Backend
     if ($flavor -notin @('cuda', 'vulkan')) {
         Write-Err "Unsupported Windows backend: $flavor"
-        Write-Err "Set `$env:CLOSEDMESH_BACKEND = 'cuda' or 'vulkan' to override."
+        Write-Err "Set `$env:SENDA_BACKEND = 'cuda' or 'vulkan' to override."
         throw 'Unsupported backend.'
     }
     return "windows-x86_64-$flavor"
@@ -249,7 +249,7 @@ function Get-Target {
 function Download-Binary {
     param([string]$Target)
 
-    $asset = "closedmesh-$Target.zip"
+    $asset = "senda-$Target.zip"
     $url = "https://github.com/$Repo/releases/latest/download/$asset"
     $tmp = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString()))
 
@@ -260,7 +260,7 @@ function Download-Binary {
         } catch {
             Write-Err "Failed to download $url"
             Write-Err 'If your hardware does not have a release artifact yet, try'
-            Write-Err "  `$env:CLOSEDMESH_BACKEND = 'vulkan'; iwr -useb https://closedmesh.com/install.ps1 | iex"
+            Write-Err "  `$env:SENDA_BACKEND = 'vulkan'; iwr -useb https://senda.network/install.ps1 | iex"
             Write-Err 'or build from source: https://github.com/' + $Repo
             throw
         }
@@ -269,9 +269,9 @@ function Download-Binary {
         $unpack = Join-Path $tmp 'unpack'
         Expand-Archive -Path (Join-Path $tmp $asset) -DestinationPath $unpack -Force
 
-        $binSrc = Join-Path $unpack 'closedmesh.exe'
+        $binSrc = Join-Path $unpack 'senda.exe'
         if (-not (Test-Path $binSrc)) {
-            throw "Extracted archive did not contain closedmesh.exe at $binSrc"
+            throw "Extracted archive did not contain senda.exe at $binSrc"
         }
 
         if (-not (Test-Path $InstallDir)) {
@@ -280,20 +280,20 @@ function Download-Binary {
 
         # Make sure the previous runtime isn't holding the destination
         # binary open. Without this, Copy-Item -Force fails with
-        # "The process cannot access the file '...\closedmesh.exe'
+        # "The process cannot access the file '...\senda.exe'
         # because it is being used by another process." on every
         # re-install (e.g. user clicks the Setup button while the
         # service is already running).
         Stop-RunningRuntime
 
         # Drop EVERY file from the runtime ZIP into $InstallDir, not
-        # just closedmesh.exe. As of closedmesh-llm v0.66.4 the
-        # Windows ZIP is self-contained: closedmesh.exe + rpc-server.exe
+        # just senda.exe. As of senda-llm v0.66.4 the
+        # Windows ZIP is self-contained: senda.exe + rpc-server.exe
         # + llama-server.exe + the full ggml-*.dll fan-out (and on the
         # cuda flavor, cudart_64_*.dll). Pre-this-commit Copy-Item only
-        # touched closedmesh.exe and discarded the helpers - so a user
+        # touched senda.exe and discarded the helpers - so a user
         # who upgraded straight from a release that ALSO had only
-        # closedmesh.exe would still see "rpc-server.exe not found".
+        # senda.exe would still see "rpc-server.exe not found".
         # Install-LlamaCppHelpers below remains as a fallback for
         # (older / future) runtime ZIPs that don't bundle them.
         $copied = 0
@@ -305,7 +305,7 @@ function Download-Binary {
                 Write-Warn2 ("Could not place $($_.Name): " + $_.Exception.Message)
             }
         }
-        Write-Ok "Installed $copied file(s) into $InstallDir (closedmesh.exe + helpers if bundled)."
+        Write-Ok "Installed $copied file(s) into $InstallDir (senda.exe + helpers if bundled)."
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     }
@@ -324,25 +324,25 @@ function Add-PathHint {
 
 # llama.cpp release tag the runtime is built against. Bump this when the
 # runtime upgrades its `.deps/llama.cpp` checkout (see
-# `git -C closedmesh-llm/.deps/llama.cpp describe --tags`). The user's
+# `git -C senda-llm/.deps/llama.cpp describe --tags`). The user's
 # rpc-server.exe / llama-server.exe must speak the same RPC and CLI
-# protocol as the closedmesh.exe in this bundle, and llama.cpp does
+# protocol as the senda.exe in this bundle, and llama.cpp does
 # break protocol inside major releases - so keeping the two in lockstep
 # matters more than chasing the latest llama.cpp build.
 $LlamaCppTag = 'b9041'
 
-# Map closedmesh flavor (the suffix on closedmesh-windows-x86_64-<flavor>.zip)
+# Map senda flavor (the suffix on senda-windows-x86_64-<flavor>.zip)
 # to the matching llama.cpp official Windows release.
 #
 # Why we pull these from ggml-org/llama.cpp instead of bundling them in
-# the closedmesh runtime release: as of 0.66.x the closedmesh-llm
+# the senda runtime release: as of 0.66.x the senda-llm
 # Windows CI pipeline (release.yml::build_windows) only compiles
-# closedmesh.exe and skips the llama.cpp bundle (`scripts/release-
-# closedmesh.ps1` ships closedmesh.exe + LICENSE + the task XML, end of
+# senda.exe and skips the llama.cpp bundle (`scripts/release-
+# senda.ps1` ships senda.exe + LICENSE + the task XML, end of
 # list). So the runtime ZIP genuinely doesn't contain rpc-server.exe or
 # llama-server.exe - without this fallback the runtime fails every
 # model load with "rpc-server.exe not found in
-# C:\Users\...\AppData\Local\closedmesh\bin", which is exactly what
+# C:\Users\...\AppData\Local\senda\bin", which is exactly what
 # 0.1.70 users saw. Long-term fix is on the runtime side; until that
 # lands, this installer pulls the matching binaries directly from
 # llama.cpp's official Windows releases.
@@ -368,7 +368,7 @@ function Install-LlamaCppHelpers {
     #      installed this exact version; skip.
     #   2. If rpc-server.exe + llama-server.exe + at least one ggml
     #      dll are already on disk, the runtime ZIP just shipped them
-    #      (closedmesh-llm v0.66.4+ bundles helpers natively). We
+    #      (senda-llm v0.66.4+ bundles helpers natively). We
     #      don't know exactly which llama.cpp version the runtime
     #      bundled, but we trust the runtime's choice over ours, so
     #      skip and write the stamp as "bundled".
@@ -417,7 +417,7 @@ function Install-LlamaCppHelpers {
         } catch {
             Write-Err "Failed to download $url"
             Write-Err 'The runtime needs rpc-server.exe / llama-server.exe to host models.'
-            Write-Err 'Without these, closedmesh.exe joins the mesh but cannot load any local model.'
+            Write-Err 'Without these, senda.exe joins the mesh but cannot load any local model.'
             throw
         }
 
@@ -480,7 +480,7 @@ function Install-LlamaCppHelpers {
                 }
             } catch {
                 Write-Warn2 "Could not fetch $cudartAsset - CUDA models may fail to load with 0xC0000135."
-                Write-Warn2 "Manually install the CUDA 12.4 runtime if that happens, or set CLOSEDMESH_BACKEND=vulkan."
+                Write-Warn2 "Manually install the CUDA 12.4 runtime if that happens, or set SENDA_BACKEND=vulkan."
             }
         }
 
@@ -492,7 +492,7 @@ function Install-LlamaCppHelpers {
 }
 
 function Install-ScheduledTaskUnit {
-    $bin = Join-Path $InstallDir 'closedmesh.exe'
+    $bin = Join-Path $InstallDir 'senda.exe'
     if (-not (Test-Path $bin)) {
         Write-Err "Cannot register Scheduled Task: $bin does not exist."
         return
@@ -510,16 +510,16 @@ function Install-ScheduledTaskUnit {
     # eaten it - wrap in try/catch so a missing task is silently OK.
     try { schtasks.exe /Delete /TN $TaskName /F 2>$null | Out-Null } catch { }
 
-    # `serve --auto --publish --mesh-name closedmesh ...` discovers and
-    # joins the public ClosedMesh through the canonical entry node at
-    # mesh.closedmesh.com, AND advertises this node on Nostr so peers
-    # and the public entry can find it. Without --publish closedmesh.com
+    # `serve --auto --publish --mesh-name senda ...` discovers and
+    # joins the public Senda through the canonical entry node at
+    # entry.senda.network, AND advertises this node on Nostr so peers
+    # and the public entry can find it. Without --publish senda.network
     # shows "0 models" even when joined.
     #
     # `--join-url` is preferred (the runtime re-fetches the token on
     # every restart so an entry-node key rotation doesn't strand
     # installs), but we only embed it when the installed CLI actually
-    # understands the flag - closedmesh-llm < v0.65.0 crashloops with
+    # understands the flag - senda-llm < v0.65.0 crashloops with
     # `error: unexpected argument '--join-url'`. For older CLIs we
     # embed a literal `--join <token>` fetched at install-time instead.
     $supportsJoinUrl = $false
@@ -536,12 +536,12 @@ function Install-ScheduledTaskUnit {
 
     $joinSegment = ''
     if ($supportsJoinUrl) {
-        $joinSegment = ' --join-url https://mesh.closedmesh.com/api/status'
+        $joinSegment = ' --join-url https://entry.senda.network/api/status'
         Write-Info 'CLI supports --join-url; embedding it in the Scheduled Task.'
     } else {
         $token = $null
         try {
-            $resp  = Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 -Uri 'https://mesh.closedmesh.com/api/status'
+            $resp  = Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 -Uri 'https://entry.senda.network/api/status'
             $json  = $resp.Content | ConvertFrom-Json
             if ($json.token) { $token = [string]$json.token }
         } catch {
@@ -556,18 +556,18 @@ function Install-ScheduledTaskUnit {
         }
     }
 
-    # Override the runtime's default Iroh relay map: closedmesh-llm v0.65.0-rc2
+    # Override the runtime's default Iroh relay map: senda-llm v0.65.0-rc2
     # ships *.michaelneale.mesh-llm.iroh.link defaults that no longer resolve,
     # so without these the runtime can't tunnel through NAT to the public
-    # entry node and closedmesh.com shows "0 models". n0's canary relays
+    # entry node and senda.network shows "0 models". n0's canary relays
     # are publicly maintained.
     $relayArgs = '--relay https://use1-1.relay.n0.iroh-canary.iroh.link./ --relay https://euw-1.relay.n0.iroh-canary.iroh.link./'
-    $argString = "serve --auto --publish --mesh-name closedmesh${joinSegment} ${relayArgs} --headless"
+    $argString = "serve --auto --publish --mesh-name senda${joinSegment} ${relayArgs} --headless"
 
     # Wrap the runtime in a hidden VBS launcher so login doesn't pop a
     # Windows Terminal tab. See Write-LaunchVbs for the rationale.
     # We also Stop-RunningRuntime first so the previous wscript host
-    # releases its lock on closedmesh-launch.vbs before we rewrite it.
+    # releases its lock on senda-launch.vbs before we rewrite it.
     Stop-RunningRuntime
     $vbsPath   = Write-LaunchVbs -Bin $bin -ArgString $argString
     $action    = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "//B //Nologo `"$vbsPath`"" -WorkingDirectory $env:USERPROFILE
@@ -586,14 +586,14 @@ function Install-ScheduledTaskUnit {
         -Trigger $trigger `
         -Settings $settings `
         -Principal $principal `
-        -Description 'ClosedMesh - private LLM mesh node' | Out-Null
+        -Description 'Senda - private LLM mesh node' | Out-Null
 
     Write-Ok "Registered Scheduled Task: $TaskName"
 
     if (-not $NoStartService) {
         try {
             Start-ScheduledTask -TaskName $TaskName
-            Write-Ok 'Started ClosedMesh service'
+            Write-Ok 'Started Senda service'
         } catch {
             Write-Warn2 "Could not auto-start the service. Try: Start-ScheduledTask -TaskName $TaskName"
         }
@@ -603,7 +603,7 @@ function Install-ScheduledTaskUnit {
 }
 
 function Invoke-Install {
-    Write-Info 'Installing ClosedMesh - private LLM mesh on the compute you already own.'
+    Write-Info 'Installing Senda - private LLM mesh on the compute you already own.'
     Write-Info "Repo:    https://github.com/$Repo"
     Write-Info "Bin dir: $InstallDir"
 
@@ -613,8 +613,8 @@ function Invoke-Install {
     Download-Binary -Target $target
 
     try {
-        $null = & (Join-Path $InstallDir 'closedmesh.exe') --version 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "closedmesh --version exited $LASTEXITCODE" }
+        $null = & (Join-Path $InstallDir 'senda.exe') --version 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "senda --version exited $LASTEXITCODE" }
     } catch {
         Write-Err 'Installed binary did not run cleanly. Aborting.'
         throw
@@ -624,8 +624,8 @@ function Invoke-Install {
     # ggml-org/llama.cpp's official Windows release. Without these the
     # runtime joins the mesh but every model load fails immediately
     # with "rpc-server.exe not found in <InstallDir>" (see
-    # closedmesh-llm/closedmesh/src/inference/launch.rs::resolve_binary).
-    # Long-term this should move into the closedmesh-llm CI bundle.
+    # senda-llm/senda/src/inference/launch.rs::resolve_binary).
+    # Long-term this should move into the senda-llm CI bundle.
     # `$target` is "windows-x86_64-<flavor>"; strip the prefix.
     $flavorOnly = $target -replace '^windows-x86_64-', ''
     Install-LlamaCppHelpers -Flavor $flavorOnly
@@ -635,24 +635,24 @@ function Invoke-Install {
     Add-PathHint
 
     Write-Host ''
-    Write-Host '  ClosedMesh installed.'
+    Write-Host '  Senda installed.'
     Write-Host ''
     Write-Host '  Try:'
-    Write-Host '    closedmesh --version'
-    Write-Host '    closedmesh serve --auto              # foreground (joins the public mesh)'
+    Write-Host '    senda --version'
+    Write-Host '    senda serve --auto              # foreground (joins the public mesh)'
     if ($Service) {
         Write-Host "    Get-ScheduledTask -TaskName $TaskName | Get-ScheduledTaskInfo  # service status"
         Write-Host "    Stop-ScheduledTask -TaskName $TaskName                          # stop the service"
     }
     Write-Host ''
-    Write-Host '  Open the chat at https://closedmesh.com (or http://127.0.0.1:42141 if you ran the local app).'
+    Write-Host '  Open the chat at https://senda.network (or http://127.0.0.1:42141 if you ran the local app).'
     Write-Host ''
 }
 
 # When the script is fetched and piped to iex, the function below is exposed
 # so the user can re-invoke with arguments (e.g. -Service). The script also
-# runs Invoke-Install once on dot-source unless CLOSEDMESH_INSTALL_NO_AUTO=1.
-function closedmesh-install {
+# runs Invoke-Install once on dot-source unless SENDA_INSTALL_NO_AUTO=1.
+function senda-install {
     [CmdletBinding()]
     param(
         [switch]$Service,
@@ -669,6 +669,6 @@ function closedmesh-install {
     Invoke-Install
 }
 
-if (-not $env:CLOSEDMESH_INSTALL_NO_AUTO) {
+if (-not $env:SENDA_INSTALL_NO_AUTO) {
     Invoke-Install
 }

@@ -63,7 +63,7 @@ export function MeshComputer({
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-gradient-to-br from-[var(--bg-elev)] to-[var(--bg-elev-2)] p-5">
       <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--accent)]">
-        ClosedMesh, right now
+        Senda, right now
       </div>
       <div className="mt-2 text-[15px] leading-snug text-[var(--fg)]">
         <span className="text-2xl font-semibold tracking-tight">

@@ -6,7 +6,7 @@ import type { MeshFit, MeshModel, SplitKind } from "./use-mesh-status";
 
 /**
  * Wire shape of `MeshModelPayload` from
- * `closedmesh-llm/closedmesh/src/api/status.rs`. The runtime emits more
+ * `senda-llm/senda/src/api/status.rs`. The runtime emits more
  * fields than the chat product cares about (ranking_source, draft_model,
  * etc.); only the ones consumed by the UI are typed here so the schema
  * stays small.

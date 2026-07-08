@@ -1,7 +1,7 @@
 import { Redis } from "@upstash/redis";
 
 type GlobalRedis = typeof globalThis & {
-  __closedmeshRedis?: Redis | null;
+  __sendaRedis?: Redis | null;
 };
 
 /**
@@ -35,11 +35,11 @@ function restToken(): string | undefined {
 export function getRedis(): Redis | null {
   if (!kvConfigured()) return null;
   const g = globalThis as GlobalRedis;
-  if (g.__closedmeshRedis === undefined) {
-    g.__closedmeshRedis = new Redis({
+  if (g.__sendaRedis === undefined) {
+    g.__sendaRedis = new Redis({
       url: restUrl()!,
       token: restToken()!,
     });
   }
-  return g.__closedmeshRedis;
+  return g.__sendaRedis;
 }

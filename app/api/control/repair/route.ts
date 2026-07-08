@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../_lib";
+import { findSendaBin, isPublic, runSenda } from "../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,15 +12,15 @@ export const dynamic = "force-dynamic";
  * earlier versions of the installer with `--private-only`. That flag tells
  * the runtime to refuse to publish or discover any public mesh, which is
  * the right default for a hand-rolled install but the *wrong* default for
- * users who just downloaded the desktop app expecting closedmesh.com chat
+ * users who just downloaded the desktop app expecting senda.network chat
  * to start working as soon as a model loads.
  *
  *   GET  → { ok: true, issues: Issue[] }       (no side effects)
  *   POST → applies the fix, then re-detects.
  *
  * The issues we know how to repair right now:
- *   - Darwin launchd plist:        ~/Library/LaunchAgents/dev.closedmesh.closedmesh.plist
- *   - Linux  systemd --user unit:  ~/.config/systemd/user/closedmesh.service
+ *   - Darwin launchd plist:        ~/Library/LaunchAgents/network.senda.runtime.plist
+ *   - Linux  systemd --user unit:  ~/.config/systemd/user/senda.service
  *
  * Windows is detected but not auto-repaired — a Scheduled Task definition
  * isn't a flat file the same way, and writing the schtasks XML correctly
@@ -49,14 +49,14 @@ const LAUNCHD_PATH = path.join(
   homedir(),
   "Library",
   "LaunchAgents",
-  "dev.closedmesh.closedmesh.plist",
+  "network.senda.runtime.plist",
 );
 const SYSTEMD_PATH = path.join(
   homedir(),
   ".config",
   "systemd",
   "user",
-  "closedmesh.service",
+  "senda.service",
 );
 
 export async function GET() {
@@ -168,13 +168,13 @@ async function detectIssues(): Promise<RepairIssue[]> {
     // Best-effort detection: query the Scheduled Task XML and look for
     // the literal flag in its <Arguments> element. Auto-fix is left to a
     // follow-up release because schtasks /Create cross-locale needs care.
-    const task = await readScheduledTask("ClosedMesh");
+    const task = await readScheduledTask("Senda");
     if (task && task.includes("--private-only")) {
       issues.push({
         kind: "private-only-schtasks",
         message:
           "Your Scheduled Task is set to --private-only. Re-run install.ps1 to update it, or edit the task arguments manually.",
-        unit: "ClosedMesh",
+        unit: "Senda",
         fixable: false,
       });
     }
@@ -200,10 +200,10 @@ async function readIfExists(filepath: string): Promise<string | null> {
 
 async function readScheduledTask(name: string): Promise<string | null> {
   // Use schtasks rather than Get-ScheduledTask so we don't depend on
-  // PowerShell being on PATH from a Node child process. `runClosedmesh`
+  // PowerShell being on PATH from a Node child process. `runSenda`
   // is misnamed — it's a generic spawn wrapper — and accepts any bin
   // on PATH, so passing "schtasks" works on Windows runners.
-  const result = await runClosedmesh(
+  const result = await runSenda(
     "schtasks",
     ["/Query", "/TN", name, "/XML", "ONE"],
     5_000,
@@ -231,16 +231,16 @@ async function rewriteUnitFile(filepath: string): Promise<void> {
 }
 
 async function reloadLaunchd(): Promise<void> {
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     throw new Error(
-      "closedmesh binary missing; can't restart the launchd unit.",
+      "senda binary missing; can't restart the launchd unit.",
     );
   }
-  // `closedmesh service stop|start` wraps `launchctl bootout|bootstrap`
+  // `senda service stop|start` wraps `launchctl bootout|bootstrap`
   // and gives us a single uniform CLI to call cross-platform.
-  await runClosedmesh(bin, ["service", "stop"], 10_000);
-  const start = await runClosedmesh(bin, ["service", "start"], 15_000);
+  await runSenda(bin, ["service", "stop"], 10_000);
+  const start = await runSenda(bin, ["service", "start"], 15_000);
   if (!start.ok) {
     throw new Error(
       start.stderr ||
@@ -251,18 +251,18 @@ async function reloadLaunchd(): Promise<void> {
 }
 
 async function reloadSystemd(): Promise<void> {
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     throw new Error(
-      "closedmesh binary missing; can't restart the systemd unit.",
+      "senda binary missing; can't restart the systemd unit.",
     );
   }
   // systemd needs a daemon-reload to pick up the rewritten ExecStart.
   // We ignore the result here — the subsequent `service start` will fail
   // loudly if the reload didn't actually take.
-  await runClosedmesh("systemctl", ["--user", "daemon-reload"], 10_000);
-  await runClosedmesh(bin, ["service", "stop"], 10_000);
-  const start = await runClosedmesh(bin, ["service", "start"], 15_000);
+  await runSenda("systemctl", ["--user", "daemon-reload"], 10_000);
+  await runSenda(bin, ["service", "stop"], 10_000);
+  const start = await runSenda(bin, ["service", "start"], 15_000);
   if (!start.ok) {
     throw new Error(
       start.stderr ||

@@ -20,7 +20,7 @@
 #
 # Usage:
 #   ./scripts/smoke-mesh-visibility.sh
-#   ./scripts/smoke-mesh-visibility.sh https://closedmesh.com http://127.0.0.1:3131
+#   ./scripts/smoke-mesh-visibility.sh https://senda.network http://127.0.0.1:3131
 #
 # Exit codes:
 #   0 — every layer green
@@ -33,8 +33,8 @@
 
 set -euo pipefail
 
-SITE="${1:-${CLOSEDMESH_SITE:-https://closedmesh.com}}"
-ADMIN="${2:-${CLOSEDMESH_ADMIN_URL:-http://127.0.0.1:3131}}"
+SITE="${1:-${SENDA_SITE:-https://senda.network}}"
+ADMIN="${2:-${SENDA_ADMIN_URL:-http://127.0.0.1:3131}}"
 
 require_jq() {
     if ! command -v jq >/dev/null 2>&1; then
@@ -58,7 +58,7 @@ if local_body="$(curl -fsS --max-time 5 "$ADMIN/api/status" 2>/dev/null)"; then
     state="$(jq -r '.mesh_visibility.state // "(missing)"' <<<"$local_body")"
     if [[ "$state" == "(missing)" ]]; then
         amber "  warning: this runtime does not emit mesh_visibility yet"
-        amber "  (expected on closedmesh-llm <0.66.18 or when --join-url is unset)"
+        amber "  (expected on senda-llm <0.66.18 or when --join-url is unset)"
     else
         entry="$(jq -r '.mesh_visibility.entry_url' <<<"$local_body")"
         green "  state=$state entry=$entry"
@@ -81,7 +81,7 @@ body=$(jq -nc --arg id "$SYNTH_ID" '
       last_visible_unix: ((now | floor) - 60),
       consecutive_invisible_count: 3,
       last_error: "smoke",
-      entry_url: "https://mesh.closedmesh.com",
+      entry_url: "https://entry.senda.network",
       soft_reconnect_triggered: true,
       hard_reset_triggered: false
     }

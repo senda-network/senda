@@ -151,7 +151,7 @@ export function RemoteInstall({ onInstalled }: { onInstalled?: () => void }) {
               Add a remote machine
             </div>
             <div className="mt-1 text-base font-semibold tracking-tight text-[var(--fg)]">
-              Install ClosedMesh on a server you rent or own
+              Install Senda on a server you rent or own
             </div>
             <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
               Paste an SSH command — we&apos;ll handle the rest.
@@ -197,7 +197,7 @@ export function RemoteInstall({ onInstalled }: { onInstalled?: () => void }) {
             Add a remote machine
           </div>
           <div className="mt-0.5 text-base font-semibold tracking-tight text-[var(--fg)]">
-            Install ClosedMesh on a server you rent or own
+            Install Senda on a server you rent or own
           </div>
         </div>
         <button

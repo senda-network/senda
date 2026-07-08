@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const revalidate = 300;
 
 const REPO =
-  process.env.CLOSEDMESH_DESKTOP_REPO ?? "closedmesh/closedmesh";
+  process.env.SENDA_DESKTOP_REPO ?? "senda-network/senda";
 
 // Desktop app release tags are plain `vX.Y.Z` (per the release policy in
 // .cursor/rules/release-policy.mdc). Older releases used `desktop-v*`; we
@@ -35,7 +35,7 @@ function stripTagPrefix(tag: string): string {
 }
 
 export type DesktopAsset = {
-  /** File name as it appears on the release, e.g. `ClosedMesh_0.1.0_aarch64.dmg`. */
+  /** File name as it appears on the release, e.g. `Senda_0.1.0_aarch64.dmg`. */
   name: string;
   /** Direct download URL (browser_download_url from the GitHub API). */
   url: string;
@@ -114,9 +114,9 @@ async function fetchLatestRelease(): Promise<DesktopRelease | null> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "closedmesh-website",
+    "User-Agent": "senda-website",
   };
-  const token = process.env.GITHUB_TOKEN ?? process.env.CLOSEDMESH_GITHUB_TOKEN;
+  const token = process.env.GITHUB_TOKEN ?? process.env.SENDA_GITHUB_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
 
   // Step 1 — try /releases/latest.

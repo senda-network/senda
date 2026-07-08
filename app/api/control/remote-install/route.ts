@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../_lib";
+import { findSendaBin, isPublic, runSenda } from "../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,12 +13,12 @@ export const dynamic = "force-dynamic";
  *
  * The flow:
  *   1. Generate a one-time invite token from the LOCAL runtime
- *      (closedmesh invite create).
+ *      (senda invite create).
  *   2. SSH to the remote host and pipe public/install.sh in via stdin —
  *      no scp, no second hop. install.sh detects the remote's hardware
  *      (Apple Silicon / NVIDIA / AMD / Vulkan / CPU) and downloads the
- *      matching ClosedMesh release tarball into ~/.local/bin/closedmesh.
- *   3. SSH again and start the runtime with `closedmesh serve --join
+ *      matching Senda release tarball into ~/.local/bin/senda.
+ *   3. SSH again and start the runtime with `senda serve --join
  *      <token>` in the background. The remote becomes a mesh node;
  *      capability-matching takes over from there.
  *
@@ -46,7 +46,7 @@ type Body = {
   identityFile?: string;
   /** Optional: vast.ai-style copy/paste of `ssh -p ... user@host -i ...`. */
   sshCommand?: string;
-  /** Optional: force a backend on the remote (CLOSEDMESH_BACKEND env). */
+  /** Optional: force a backend on the remote (SENDA_BACKEND env). */
   backend?: "cuda" | "rocm" | "vulkan" | "cpu" | "metal";
 };
 
@@ -188,7 +188,7 @@ export async function POST(req: Request) {
     return jsonErr(500, `install.sh not found at ${scriptPath}`);
   }
 
-  const localBin = await findClosedmeshBin();
+  const localBin = await findSendaBin();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -206,7 +206,7 @@ export async function POST(req: Request) {
       if (localBin) {
         send({ kind: "step", name: "invite", ok: true });
         log("Creating invite token from local mesh…");
-        const result = await runClosedmesh(localBin, ["invite", "create"]);
+        const result = await runSenda(localBin, ["invite", "create"]);
         if (result.ok) {
           token =
             result.stdout
@@ -226,7 +226,7 @@ export async function POST(req: Request) {
         }
       } else {
         log(
-          "Local closedmesh binary not found — remote will install but not auto-join. Install locally first to get full mesh-join behaviour.",
+          "Local senda binary not found — remote will install but not auto-join. Install locally first to get full mesh-join behaviour.",
         );
       }
 
@@ -237,7 +237,7 @@ export async function POST(req: Request) {
       );
 
       const installEnv = plan.backend
-        ? `CLOSEDMESH_BACKEND=${plan.backend} `
+        ? `SENDA_BACKEND=${plan.backend} `
         : "";
       const installArgs = buildSshArgs(
         plan,
@@ -268,11 +268,11 @@ export async function POST(req: Request) {
         // Persist past the SSH session. The user wants their vast.ai box
         // to keep serving after they close the laptop lid.
         "nohup",
-        "$HOME/.local/bin/closedmesh",
+        "$HOME/.local/bin/senda",
         "serve",
         joinArg,
         "</dev/null",
-        ">/tmp/closedmesh.log",
+        ">/tmp/senda.log",
         "2>&1",
         "&",
         "echo started",

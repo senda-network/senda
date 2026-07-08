@@ -36,7 +36,7 @@ describe("buildKpiSnapshot", () => {
         ],
       },
       "Qwen3-32B-Q4_K_M",
-      "https://mesh.closedmesh.com/api/status",
+      "https://entry.senda.network/api/status",
       new Date("2026-05-19T12:00:00Z"),
       ["Qwen3-32B-Q4_K_M"],
     );
@@ -64,7 +64,7 @@ describe("buildKpiSnapshot", () => {
         ],
       },
       "Qwen3-32B-Q4_K_M",
-      "https://mesh.closedmesh.com/api/status",
+      "https://entry.senda.network/api/status",
     );
     expect(snap.flagship.contributors).toBe(0);
   });
@@ -97,7 +97,7 @@ describe("meshRuntimeToKpiInput", () => {
     const snap = buildKpiSnapshot(
       input,
       "DeepSeek-R1-Distill-70B-Q4_K_M",
-      "https://mesh.closedmesh.com/api/status",
+      "https://entry.senda.network/api/status",
       new Date(),
       ["DeepSeek-R1-Distill-70B-Q4_K_M"],
     );
@@ -123,14 +123,14 @@ describe("mergeWeekSnapshots", () => {
         ],
       },
       "DeepSeek-R1-Distill-70B-Q4_K_M",
-      "https://mesh.closedmesh.com/api/status",
+      "https://entry.senda.network/api/status",
       new Date("2026-05-23T23:49:00Z"),
       ["DeepSeek-R1-Distill-70B-Q4_K_M"],
     );
     const empty = buildKpiSnapshot(
       { online: false, nodeCount: 0, models: [], nodes: [] },
       "DeepSeek-R1-Distill-70B-Q4_K_M",
-      "https://mesh.closedmesh.com/api/status",
+      "https://entry.senda.network/api/status",
       new Date("2026-05-24T06:00:00Z"),
     );
     const merged = mergeWeekSnapshots(peak, empty);

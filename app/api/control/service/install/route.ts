@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../../_lib";
+import { findSendaBin, isPublic, runSenda } from "../../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,18 +15,18 @@ export async function POST() {
       { status: 403 },
     );
   }
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     return NextResponse.json(
-      { ok: false, message: "closedmesh binary not found." },
+      { ok: false, message: "senda binary not found." },
       { status: 404 },
     );
   }
-  const result = await runClosedmesh(bin, ["service", "install"], 15000);
+  const result = await runSenda(bin, ["service", "install"], 15000);
   return NextResponse.json({
     ok: result.ok,
     message: result.ok
-      ? "ClosedMesh will start automatically when you log in."
+      ? "Senda will start automatically when you log in."
       : (result.stderr || result.stdout || "service install failed"),
   });
 }

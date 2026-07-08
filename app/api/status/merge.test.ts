@@ -55,7 +55,7 @@ function makeReport(overrides: Partial<StoredPeerReport> = {}): StoredPeerReport
       lastVisibleUnix: 1_700_000_000,
       consecutiveInvisibleCount: 3,
       lastError: "not in peers",
-      entryUrl: "https://mesh.closedmesh.com",
+      entryUrl: "https://entry.senda.network",
       softReconnectTriggered: true,
       hardResetTriggered: false,
     },

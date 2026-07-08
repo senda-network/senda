@@ -1,54 +1,54 @@
 #!/usr/bin/env bash
-# ClosedMesh installer — macOS arm64, Linux x86_64/aarch64.
+# Senda installer — macOS arm64, Linux x86_64/aarch64.
 #
-#   curl -fsSL https://closedmesh.com/install | sh
-#   curl -fsSL https://closedmesh.com/install | sh -s -- --service
+#   curl -fsSL https://senda.network/install | sh
+#   curl -fsSL https://senda.network/install | sh -s -- --service
 #
 # What it does:
 #   1. Detects OS, CPU arch, and (on Linux) preferred GPU backend.
-#   2. Downloads the matching closedmesh release tarball from GitHub.
-#   3. Installs the `closedmesh` binary into ~/.local/bin (or $CLOSEDMESH_INSTALL_DIR).
+#   2. Downloads the matching senda release tarball from GitHub.
+#   3. Installs the `senda` binary into ~/.local/bin (or $SENDA_INSTALL_DIR).
 #   4. With --service: installs an OS-native autostart unit:
 #        - macOS: launchd LaunchAgent (~/Library/LaunchAgents)
 #        - Linux: systemd --user unit (~/.config/systemd/user)
 #
 # No Apple Developer account, no Xcode, no compilation. Just a binary download
-# into your home directory. Uninstall with: closedmesh service stop && rm -rf
-# ~/.local/bin/closedmesh.
+# into your home directory. Uninstall with: senda service stop && rm -rf
+# ~/.local/bin/senda.
 #
 # Backend override (Linux):
-#   CLOSEDMESH_BACKEND=cuda|rocm|vulkan|cpu  curl ... | sh
+#   SENDA_BACKEND=cuda|rocm|vulkan|cpu  curl ... | sh
 
 set -euo pipefail
 
-REPO="${CLOSEDMESH_INSTALL_REPO:-${FORGEMESH_INSTALL_REPO:-closedmesh/closedmesh-llm}}"
-INSTALL_DIR="${CLOSEDMESH_INSTALL_DIR:-${FORGEMESH_INSTALL_DIR:-$HOME/.local/bin}}"
-SERVICE_LABEL="dev.closedmesh.closedmesh"
-LINUX_SERVICE_NAME="closedmesh"
-DATA_DIR="$HOME/.closedmesh"
+REPO="${SENDA_INSTALL_REPO:-${FORGEMESH_INSTALL_REPO:-senda-network/senda-llm}}"
+INSTALL_DIR="${SENDA_INSTALL_DIR:-${FORGEMESH_INSTALL_DIR:-$HOME/.local/bin}}"
+SERVICE_LABEL="network.senda.runtime"
+LINUX_SERVICE_NAME="senda"
+DATA_DIR="$HOME/.senda"
 LEGACY_FORGEMESH_DIR="$HOME/.forgemesh"
 LAUNCHD_DIR="$HOME/Library/LaunchAgents"
 LAUNCHD_PLIST="$LAUNCHD_DIR/$SERVICE_LABEL.plist"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 SYSTEMD_UNIT="$SYSTEMD_USER_DIR/$LINUX_SERVICE_NAME.service"
-LOG_DIR_DARWIN="$HOME/Library/Logs/closedmesh"
-LOG_DIR_LINUX="$HOME/.local/state/closedmesh"
+LOG_DIR_DARWIN="$HOME/Library/Logs/senda"
+LOG_DIR_LINUX="$HOME/.local/state/senda"
 INSTALL_SERVICE=0
 START_SERVICE=1
 
 color() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
-info()  { color "0;36" "[closedmesh] $*"; }
-ok()    { color "0;32" "[closedmesh] $*"; }
-warn()  { color "0;33" "[closedmesh] $*"; }
-err()   { color "0;31" "[closedmesh] $*" >&2; }
+info()  { color "0;36" "[senda] $*"; }
+ok()    { color "0;32" "[senda] $*"; }
+warn()  { color "0;33" "[senda] $*"; }
+err()   { color "0;31" "[senda] $*" >&2; }
 
 usage() {
     cat <<EOF
-ClosedMesh installer
+Senda installer
 
 Usage:
-  curl -fsSL https://closedmesh.com/install | sh
-  curl -fsSL https://closedmesh.com/install | sh -s -- [options]
+  curl -fsSL https://senda.network/install | sh
+  curl -fsSL https://senda.network/install | sh -s -- [options]
 
 Options:
   --service              Also install and start an OS-native autostart unit.
@@ -57,9 +57,9 @@ Options:
   -h, --help             Show this help.
 
 Environment:
-  CLOSEDMESH_INSTALL_REPO   GitHub repo to pull releases from (default: closedmesh/closedmesh-llm)
-  CLOSEDMESH_INSTALL_DIR    Where to put the binary (default: \$HOME/.local/bin)
-  CLOSEDMESH_BACKEND        Force a Linux GPU backend (cuda, rocm, vulkan, cpu).
+  SENDA_INSTALL_REPO   GitHub repo to pull releases from (default: senda-network/senda-llm)
+  SENDA_INSTALL_DIR    Where to put the binary (default: \$HOME/.local/bin)
+  SENDA_BACKEND        Force a Linux GPU backend (cuda, rocm, vulkan, cpu).
                             Overrides auto-detection. Useful when probing fails
                             on exotic hardware. Ignored on macOS.
 EOF
@@ -84,7 +84,7 @@ require() {
 
 # detect_target — produce the platform-suffix used in the release asset name.
 #
-# Returns one of (matches the matrix in closedmesh-llm/scripts/release-closedmesh.sh):
+# Returns one of (matches the matrix in senda-llm/scripts/release-senda.sh):
 #   darwin-aarch64
 #   linux-x86_64-{cpu,cuda,rocm,vulkan}
 #   linux-aarch64-{cpu,vulkan}
@@ -103,7 +103,7 @@ detect_target() {
     case "$os" in
         Darwin)
             if [[ "$arch" != "aarch64" ]]; then
-                err "ClosedMesh on macOS requires Apple Silicon (arm64). Detected Intel Mac."
+                err "Senda on macOS requires Apple Silicon (arm64). Detected Intel Mac."
                 err "Build from source: https://github.com/$REPO"
                 exit 1
             fi
@@ -112,7 +112,7 @@ detect_target() {
             ;;
         Linux)
             local backend
-            backend="${CLOSEDMESH_BACKEND:-$(detect_linux_backend)}"
+            backend="${SENDA_BACKEND:-$(detect_linux_backend)}"
             case "$arch/$backend" in
                 x86_64/cuda|x86_64/rocm|x86_64/vulkan|x86_64/cpu)
                     echo "linux-x86_64-$backend"
@@ -131,17 +131,17 @@ detect_target() {
                     ;;
                 *)
                     err "Unsupported Linux target: $arch with backend $backend."
-                    err "Set CLOSEDMESH_BACKEND=cpu|cuda|rocm|vulkan to override."
+                    err "Set SENDA_BACKEND=cpu|cuda|rocm|vulkan to override."
                     err "Or build from source: https://github.com/$REPO"
                     exit 1
                     ;;
             esac
             ;;
         *)
-            err "ClosedMesh ships pre-built binaries for macOS arm64 and Linux only."
+            err "Senda ships pre-built binaries for macOS arm64 and Linux only."
             err "Detected: $os $arch."
             err "On Windows, install via PowerShell:"
-            err "  iwr -useb https://closedmesh.com/install.ps1 | iex"
+            err "  iwr -useb https://senda.network/install.ps1 | iex"
             err "Or build from source: https://github.com/$REPO"
             exit 1
             ;;
@@ -186,7 +186,7 @@ asset_extension_for_target() {
 
 legacy_dir_hint() {
     if [[ -d "$LEGACY_FORGEMESH_DIR" && ! -d "$DATA_DIR" ]]; then
-        warn "Found legacy data at $LEGACY_FORGEMESH_DIR. ClosedMesh will auto-migrate"
+        warn "Found legacy data at $LEGACY_FORGEMESH_DIR. Senda will auto-migrate"
         warn "it to $DATA_DIR on first launch, or you can do it now:"
         warn "  mv $LEGACY_FORGEMESH_DIR $DATA_DIR"
     fi
@@ -196,7 +196,7 @@ download_binary() {
     local target="$1"
     local ext
     ext="$(asset_extension_for_target "$target")"
-    local asset="closedmesh-${target}.${ext}"
+    local asset="senda-${target}.${ext}"
     local url="https://github.com/${REPO}/releases/latest/download/${asset}"
     local tmpdir
     tmpdir="$(mktemp -d)"
@@ -206,7 +206,7 @@ download_binary() {
     if ! curl -fsSL --retry 3 "$url" -o "$tmpdir/$asset"; then
         err "Failed to download $url"
         err "If your hardware doesn't have a release artifact yet, try"
-        err "  CLOSEDMESH_BACKEND=cpu curl -fsSL https://closedmesh.com/install | sh"
+        err "  SENDA_BACKEND=cpu curl -fsSL https://senda.network/install | sh"
         err "or build from source: cd $REPO && cargo build --release"
         exit 1
     fi
@@ -217,15 +217,15 @@ download_binary() {
         zip)    require unzip; unzip -q "$tmpdir/$asset" -d "$tmpdir" ;;
     esac
 
-    if [[ ! -x "$tmpdir/closedmesh" ]]; then
-        err "Extracted tarball did not contain a 'closedmesh' executable."
+    if [[ ! -x "$tmpdir/senda" ]]; then
+        err "Extracted tarball did not contain a 'senda' executable."
         exit 1
     fi
 
     mkdir -p "$INSTALL_DIR"
-    install -m 0755 "$tmpdir/closedmesh" "$INSTALL_DIR/closedmesh"
+    install -m 0755 "$tmpdir/senda" "$INSTALL_DIR/senda"
 
-    # For macOS metal and Linux CPU, release-closedmesh.sh packs the full
+    # For macOS metal and Linux CPU, release-senda.sh packs the full
     # llama.cpp runtime (rpc-server-<flavor>, llama-server-<flavor>,
     # llama-moe-{analyze,split}, and any runtime shared libs) into the same
     # tarball. Copy those out too so the runtime can actually spawn llama.cpp
@@ -233,7 +233,7 @@ download_binary() {
     # ~/.local/bin` the first time they try to serve a model.
     install_bundled_runtime_from "$tmpdir"
 
-    ok "Installed: $INSTALL_DIR/closedmesh"
+    ok "Installed: $INSTALL_DIR/senda"
 }
 
 # install_bundled_runtime_from <dir> — copy any llama.cpp runtime binaries and
@@ -267,10 +267,10 @@ install_bundled_runtime_from() {
 }
 
 # download_llama_runtime_if_needed <target> — on Linux GPU flavors the slim
-# installer tarball ships only the main `closedmesh` binary. Fetch the matching
-# `closedmesh-v<version>-<target>.tar.gz` (produced by package-release.sh) for
+# installer tarball ships only the main `senda` binary. Fetch the matching
+# `senda-v<version>-<target>.tar.gz` (produced by package-release.sh) for
 # the llama.cpp runtime binaries + GPU shared libraries and drop them next to
-# `closedmesh` in $INSTALL_DIR.
+# `senda` in $INSTALL_DIR.
 #
 # No-op on macOS and Linux CPU — those targets ship the runtime in the main
 # tarball already.
@@ -283,14 +283,14 @@ download_llama_runtime_if_needed() {
     esac
 
     local version
-    version="$("$INSTALL_DIR/closedmesh" --version 2>/dev/null | awk '{print $2}')"
+    version="$("$INSTALL_DIR/senda" --version 2>/dev/null | awk '{print $2}')"
     if [[ -z "$version" ]]; then
-        warn "Could not determine closedmesh version — skipping GPU runtime download."
+        warn "Could not determine senda version — skipping GPU runtime download."
         warn "Install it manually from https://github.com/$REPO/releases/latest"
         return 0
     fi
 
-    local asset="closedmesh-v${version}-${target}.tar.gz"
+    local asset="senda-v${version}-${target}.tar.gz"
     local url="https://github.com/${REPO}/releases/download/v${version}/${asset}"
     local tmpdir
     tmpdir="$(mktemp -d)"
@@ -299,7 +299,7 @@ download_llama_runtime_if_needed() {
     info "Downloading llama.cpp GPU runtime (${asset})…"
     if ! curl -fsSL --retry 3 "$url" -o "$tmpdir/$asset"; then
         warn "Failed to download $url"
-        warn "The main closedmesh binary is installed, but the llama.cpp GPU runtime is not."
+        warn "The main senda binary is installed, but the llama.cpp GPU runtime is not."
         warn "Serve mode will fail with 'rpc-server not found' until the runtime is in place."
         warn "You can install it later with:"
         warn "  curl -fsSL $url | tar -xz -C '$INSTALL_DIR' --strip-components=1"
@@ -319,11 +319,11 @@ download_llama_runtime_if_needed() {
 install_from_local_build() {
     # If the caller already has a local build (rare; mostly for the host
     # who shipped the release), allow installing from that path via env.
-    local src="${CLOSEDMESH_LOCAL_BINARY:-${FORGEMESH_LOCAL_BINARY:-}}"
+    local src="${SENDA_LOCAL_BINARY:-${FORGEMESH_LOCAL_BINARY:-}}"
     if [[ -n "$src" && -x "$src" ]]; then
         mkdir -p "$INSTALL_DIR"
-        install -m 0755 "$src" "$INSTALL_DIR/closedmesh"
-        ok "Installed (from local build): $INSTALL_DIR/closedmesh"
+        install -m 0755 "$src" "$INSTALL_DIR/senda"
+        ok "Installed (from local build): $INSTALL_DIR/senda"
         return 0
     fi
     return 1
@@ -347,7 +347,7 @@ cli_supports_join_url() {
 # doesn't speak `--join-url`. Returns empty on any failure; the caller
 # treats that as "skip the --join arg, fall back to Nostr auto-discovery".
 fetch_entry_token() {
-    curl -fsSL --max-time 6 https://mesh.closedmesh.com/api/status 2>/dev/null \
+    curl -fsSL --max-time 6 https://entry.senda.network/api/status 2>/dev/null \
         | sed -n 's/.*"token":"\([^"]*\)".*/\1/p' \
         | head -1
 }
@@ -360,7 +360,7 @@ build_join_args() {
     local bin="$1"
     JOIN_ARGS=()
     if cli_supports_join_url "$bin"; then
-        JOIN_ARGS=( "--join-url" "https://mesh.closedmesh.com/api/status" )
+        JOIN_ARGS=( "--join-url" "https://entry.senda.network/api/status" )
         info "CLI supports --join-url; embedding it in the service unit."
         return
     fi
@@ -378,14 +378,14 @@ build_join_args() {
 write_launchd_plist() {
     mkdir -p "$LAUNCHD_DIR" "$LOG_DIR_DARWIN" "$DATA_DIR"
     # Args, in order:
-    #   serve --auto --publish --mesh-name closedmesh
+    #   serve --auto --publish --mesh-name senda
     #     <--join-url URL> | <--join TOKEN> | (nothing — Nostr fallback)
     #     --headless
     #
     # `--auto` discovers, `--publish` advertises this node on Nostr so
-    # peers + the public entry node behind mesh.closedmesh.com can find
-    # it (without --publish closedmesh.com shows "0 models" even when
-    # joined — see desktop/src/mesh.rs). `--mesh-name closedmesh`
+    # peers + the public entry node behind entry.senda.network can find
+    # it (without --publish senda.network shows "0 models" even when
+    # joined — see desktop/src/mesh.rs). `--mesh-name senda`
     # disambiguates from the unnamed community pool.
     #
     # `--join-url` is the bootstrap pointer to the canonical entry node:
@@ -393,15 +393,15 @@ write_launchd_plist() {
     # current invite token, and treats it as `--join <token>`. So an
     # entry-node restart that rotates its keys doesn't permanently
     # strand existing installs. We only embed `--join-url` when the
-    # installed CLI actually understands it (closedmesh-llm v0.65.0+);
+    # installed CLI actually understands it (senda-llm v0.65.0+);
     # older CLIs would crashloop. For older CLIs we embed a literal
     # `--join <token>` fetched at install-time instead.
     #
     # `--headless` keeps the embedded web console on its loopback port
     # but turns off the TTY UI (launchd has no real terminal).
-    build_join_args "$INSTALL_DIR/closedmesh"
+    build_join_args "$INSTALL_DIR/senda"
     local args_xml=""
-    args_xml+="        <string>${INSTALL_DIR}/closedmesh</string>
+    args_xml+="        <string>${INSTALL_DIR}/senda</string>
 "
     args_xml+="        <string>serve</string>
 "
@@ -411,7 +411,7 @@ write_launchd_plist() {
 "
     args_xml+="        <string>--mesh-name</string>
 "
-    args_xml+="        <string>closedmesh</string>
+    args_xml+="        <string>senda</string>
 "
     local a
     for a in "${JOIN_ARGS[@]}"; do
@@ -419,9 +419,9 @@ write_launchd_plist() {
 "
     done
     # Override the runtime's default Iroh relay map. Without this the
-    # closedmesh-llm v0.65.0-rc2 binary uses a *.michaelneale.mesh-llm.iroh.link
+    # senda-llm v0.65.0-rc2 binary uses a *.michaelneale.mesh-llm.iroh.link
     # default that no longer resolves, the runtime can't tunnel back to the
-    # public entry node behind mesh.closedmesh.com, and closedmesh.com shows
+    # public entry node behind entry.senda.network, and senda.network shows
     # "Mesh online · 0 models" even with a model loaded locally. n0's canary
     # relays are publicly maintained by the iroh team.
     args_xml+="        <string>--relay</string>
@@ -470,21 +470,21 @@ start_launchd_service() {
     local target="gui/$(id -u)"
     launchctl bootout "$target/$SERVICE_LABEL" >/dev/null 2>&1 || true
     if launchctl bootstrap "$target" "$LAUNCHD_PLIST" >/dev/null 2>&1; then
-        ok "Started ClosedMesh service ($SERVICE_LABEL)"
+        ok "Started Senda service ($SERVICE_LABEL)"
     else
-        warn "Could not auto-start the service. Try: closedmesh service start"
+        warn "Could not auto-start the service. Try: senda service start"
     fi
 }
 
 write_systemd_user_unit() {
     if ! command -v systemctl >/dev/null 2>&1; then
         warn "systemctl not found — skipping --service install."
-        warn "Run manually: $INSTALL_DIR/closedmesh serve --auto --mesh-name closedmesh"
+        warn "Run manually: $INSTALL_DIR/senda serve --auto --mesh-name senda"
         return 1
     fi
 
     mkdir -p "$SYSTEMD_USER_DIR" "$LOG_DIR_LINUX" "$DATA_DIR"
-    build_join_args "$INSTALL_DIR/closedmesh"
+    build_join_args "$INSTALL_DIR/senda"
     local exec_join=""
     local a
     for a in "${JOIN_ARGS[@]}"; do
@@ -494,13 +494,13 @@ write_systemd_user_unit() {
     done
     cat >"$SYSTEMD_UNIT" <<UNIT
 [Unit]
-Description=ClosedMesh — peer-to-peer LLM mesh node
+Description=Senda — peer-to-peer LLM mesh node
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${INSTALL_DIR}/closedmesh serve --auto --publish --mesh-name closedmesh${exec_join} --relay https://use1-1.relay.n0.iroh-canary.iroh.link./ --relay https://euw-1.relay.n0.iroh-canary.iroh.link./ --headless
+ExecStart=${INSTALL_DIR}/senda serve --auto --publish --mesh-name senda${exec_join} --relay https://use1-1.relay.n0.iroh-canary.iroh.link./ --relay https://euw-1.relay.n0.iroh-canary.iroh.link./ --headless
 WorkingDirectory=${HOME}
 Restart=on-failure
 RestartSec=5
@@ -517,15 +517,15 @@ UNIT
 start_systemd_service() {
     if ! systemctl --user daemon-reload >/dev/null 2>&1; then
         warn "systemctl --user daemon-reload failed (no user session bus?)."
-        warn "Try logging out + back in, then: systemctl --user enable --now closedmesh"
+        warn "Try logging out + back in, then: systemctl --user enable --now senda"
         return 1
     fi
     if systemctl --user enable --now "$LINUX_SERVICE_NAME" >/dev/null 2>&1; then
-        ok "Started ClosedMesh user service ($LINUX_SERVICE_NAME)"
+        ok "Started Senda user service ($LINUX_SERVICE_NAME)"
         # Linger keeps the service running when the user logs out — opt-in
         # because it requires `loginctl enable-linger` (no sudo on most distros
         # but technically a privileged op).
-        info "To keep ClosedMesh running when you log out:"
+        info "To keep Senda running when you log out:"
         info "  loginctl enable-linger \$USER"
     else
         warn "Could not auto-start the service. Try: systemctl --user enable --now $LINUX_SERVICE_NAME"
@@ -539,7 +539,7 @@ install_service() {
             if (( START_SERVICE )); then
                 start_launchd_service
             else
-                ok "Service installed (not started). Start later: closedmesh service start"
+                ok "Service installed (not started). Start later: senda service start"
             fi
             ;;
         Linux)
@@ -555,13 +555,13 @@ install_service() {
     esac
 }
 
-# Drop a default ~/.closedmesh/config.toml on first install so the runtime
-# has something to load. `closedmesh serve` exits with a "needs at least one
+# Drop a default ~/.senda/config.toml on first install so the runtime
+# has something to load. `senda serve` exits with a "needs at least one
 # startup model" warning if neither config nor --model is supplied; that's
 # the right behavior for the CLI but a bad first-run experience for the
 # desktop app, which can't easily edit launchd args after the fact. The
 # stub here lists the recommended-for-Apple-Silicon model commented out so
-# users can uncomment after `closedmesh download Qwen3-8B-Q4_K_M`.
+# users can uncomment after `senda download Qwen3-8B-Q4_K_M`.
 seed_default_config() {
     mkdir -p "$DATA_DIR"
     local cfg="$DATA_DIR/config.toml"
@@ -570,20 +570,20 @@ seed_default_config() {
         return 0
     fi
     cat >"$cfg" <<'TOML'
-# ClosedMesh node config — written by the installer on first run.
+# Senda node config — written by the installer on first run.
 #
 # At least one [[models]] entry must be uncommented (and the matching
-# model downloaded with `closedmesh download <id>`) before the runtime
+# model downloaded with `senda download <id>`) before the runtime
 # will start serving. Pick whichever fits your machine:
 #
-#   closedmesh gpus                       # what backend / how much VRAM
-#   closedmesh models recommended         # the curated catalog
-#   closedmesh download Qwen3-8B-Q4_K_M   # ~5 GB, fits an M2/M3 Mac
+#   senda gpus                       # what backend / how much VRAM
+#   senda models recommended         # the curated catalog
+#   senda download Qwen3-8B-Q4_K_M   # ~5 GB, fits an M2/M3 Mac
 #
 # Then uncomment the matching block below and restart the service:
 #
-#   closedmesh service stop
-#   closedmesh service start
+#   senda service stop
+#   senda service start
 
 # [[models]]
 # model = "Qwen3-8B-Q4_K_M"
@@ -611,7 +611,7 @@ main() {
     require curl
     require tar
 
-    info "Installing ClosedMesh — private LLM mesh on the compute you already own."
+    info "Installing Senda — private LLM mesh on the compute you already own."
     info "Repo:    https://github.com/$REPO"
     info "Bin dir: $INSTALL_DIR"
 
@@ -625,7 +625,7 @@ main() {
         download_binary "$target"
     fi
 
-    "$INSTALL_DIR/closedmesh" --version >/dev/null 2>&1 || {
+    "$INSTALL_DIR/senda" --version >/dev/null 2>&1 || {
         err "Installed binary did not run cleanly. Aborting."
         exit 1
     }
@@ -642,15 +642,15 @@ main() {
 
     cat <<EOF
 
-  ClosedMesh installed.
+  Senda installed.
 
   Try:
-    closedmesh --version
-    closedmesh serve --auto --mesh-name closedmesh   # foreground (joins the closedmesh public mesh, logs in your terminal)
-$( (( INSTALL_SERVICE )) && echo '    closedmesh service status            # check the autostart service' )
-$( (( INSTALL_SERVICE )) && echo '    closedmesh service stop              # stop the autostart service' )
+    senda --version
+    senda serve --auto --mesh-name senda   # foreground (joins the senda public mesh, logs in your terminal)
+$( (( INSTALL_SERVICE )) && echo '    senda service status            # check the autostart service' )
+$( (( INSTALL_SERVICE )) && echo '    senda service stop              # stop the autostart service' )
 
-  Open the chat at https://closedmesh.com (or http://127.0.0.1:42141 if you ran the local app).
+  Open the chat at https://senda.network (or http://127.0.0.1:42141 if you ran the local app).
 
 EOF
 }

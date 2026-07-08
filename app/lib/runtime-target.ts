@@ -1,14 +1,14 @@
 /**
  * Where the browser should send `/api/*` calls.
  *
- * The chat surface is identical between closedmesh.com and the bundled
+ * The chat surface is identical between senda.network and the bundled
  * controller in the desktop app. In both cases the page calls its own
  * same-origin Next.js routes (`/api/chat`, `/api/status`, etc.). The
  * difference lives entirely on the server side:
  *
- * - On closedmesh.com the Vercel function proxies to the public mesh
- *   entry point (`CLOSEDMESH_RUNTIME_URL`).
- * - In the .app the bundled controller proxies to the local closedmesh-llm
+ * - On senda.network the Vercel function proxies to the public mesh
+ *   entry point (`SENDA_RUNTIME_URL`).
+ * - In the .app the bundled controller proxies to the local senda-llm
  *   runtime on `127.0.0.1:9337`.
  *
  * The browser never reaches into the visitor's machine. There is no
@@ -21,7 +21,7 @@
 // `NEXT_PUBLIC_*` env vars are inlined into the client bundle, so the
 // client-only variant is the right call here — pulling in the server
 // variant would silently always read `undefined` for the legacy
-// `CLOSEDMESH_DEPLOYMENT` / `FORGEMESH_DEPLOYMENT` names.
+// `SENDA_DEPLOYMENT` / `FORGEMESH_DEPLOYMENT` names.
 import { isPublicDeploymentClient } from "./deployment";
 
 const PUBLIC_DEPLOYMENT_BUILD = isPublicDeploymentClient();

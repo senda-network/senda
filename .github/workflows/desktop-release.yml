@@ -1,17 +1,17 @@
-# Build & publish the ClosedMesh desktop bundles (.dmg, .msi, .AppImage, .deb)
+# Build & publish the Senda desktop bundles (.dmg, .msi, .AppImage, .deb)
 # whenever a normal app release tag (`v*`) is pushed.
 #
 # Trigger:
 #     git tag v0.1.0 && git push origin v0.1.0
 #
-# Output: a GitHub Release named "ClosedMesh Desktop v0.1.0" with one asset
+# Output: a GitHub Release named "Senda Desktop v0.1.0" with one asset
 # per platform variant:
 #
-#     ClosedMesh_0.1.0_aarch64.dmg          (Apple Silicon)
-#     ClosedMesh_0.1.0_x64.dmg              (Intel Mac)
-#     ClosedMesh_0.1.0_x64-setup.exe        (Windows NSIS)
-#     ClosedMesh_0.1.0_x64_en-US.msi        (Windows MSI)
-#     ClosedMesh_0.1.0_amd64.deb            (Debian / Ubuntu)
+#     Senda_0.1.0_aarch64.dmg          (Apple Silicon)
+#     Senda_0.1.0_x64.dmg              (Intel Mac)
+#     Senda_0.1.0_x64-setup.exe        (Windows NSIS)
+#     Senda_0.1.0_x64_en-US.msi        (Windows MSI)
+#     Senda_0.1.0_amd64.deb            (Debian / Ubuntu)
 #     latest.json                           (Tauri auto-updater manifest)
 #
 # Desktop app releases are mainline releases. Do not use `desktop-v*` or
@@ -48,7 +48,7 @@ concurrency:
 # PowerShell, which silently dot-sources the .sh file as PowerShell and
 # exits 0 without ever running it — that was the v0.1.2 Windows failure
 # (the Node sidecar never got written, so the Tauri build complained
-# "resource path sidecar\binaries\closedmesh-node-x86_64-pc-windows-msvc.exe doesn't
+# "resource path sidecar\binaries\senda-node-x86_64-pc-windows-msvc.exe doesn't
 # exist"). bash is on PATH on all GitHub-hosted runners (Git for Windows
 # on the Windows ones).
 defaults:
@@ -103,7 +103,7 @@ jobs:
       # project" because of dynamic fs/spawn calls in some control
       # routes, and if a 300+ MB compiled Rust target dir is sitting in
       # the workspace at trace time, all of it gets slurped into
-      # .next/standalone/ → ClosedMesh.app. That's exactly how the v0.1.12
+      # .next/standalone/ → Senda.app. That's exactly how the v0.1.12
       # macOS DMG ballooned from 50 MB to 352 MB. Staging first keeps
       # desktop/target/ off disk until after the Next build is done.
       #
@@ -145,10 +145,10 @@ jobs:
             x86_64-pc-windows-msvc) ext='.exe' ;;
             *)                      ext='' ;;
           esac
-          # 0.1.69+ ships the sidecar as `closedmesh-node-<triple>` so
+          # 0.1.69+ ships the sidecar as `senda-node-<triple>` so
           # the installed image name is unique to us (avoids killing
           # the user's other node.exe processes during install upgrade).
-          path="desktop/sidecar/binaries/closedmesh-node-${target}${ext}"
+          path="desktop/sidecar/binaries/senda-node-${target}${ext}"
           if [[ ! -f "$path" ]]; then
             echo "::error::missing $path after fetch-node step"
             ls -la desktop/sidecar/binaries/ || true
@@ -205,7 +205,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLOSEDMESH_RUNTIME_TOKEN: ${{ secrets.CLOSEDMESH_RUNTIME_TOKEN }}
+          SENDA_RUNTIME_TOKEN: ${{ secrets.SENDA_RUNTIME_TOKEN }}
         with:
           # Cargo workspace lives in desktop/, not the repo root.
           projectPath: desktop
@@ -213,17 +213,17 @@ jobs:
           # workflow_dispatch input); tauri-action creates / appends to a
           # release with this tag name.
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: 'ClosedMesh Desktop ${{ github.event.inputs.tag || github.ref_name }}'
+          releaseName: 'Senda Desktop ${{ github.event.inputs.tag || github.ref_name }}'
           releaseBody: |
-            ## ClosedMesh Desktop ${{ github.event.inputs.tag || github.ref_name }}
+            ## Senda Desktop ${{ github.event.inputs.tag || github.ref_name }}
 
-            Cross-platform desktop shell for ClosedMesh — wraps the chat UI in
+            Cross-platform desktop shell for Senda — wraps the chat UI in
             a native window with a system-tray pill, live node count, and
             one-click Start/Stop for the runtime.
 
             **Pick your platform:**
-            - **macOS (Apple Silicon, M1+):** `ClosedMesh_*_aarch64.dmg`
-            - **Windows 10/11:** `ClosedMesh_*_x64-setup.exe` (recommended) or `.msi`
+            - **macOS (Apple Silicon, M1+):** `Senda_*_aarch64.dmg`
+            - **Windows 10/11:** `Senda_*_x64-setup.exe` (recommended) or `.msi`
             - **Linux (Debian / Ubuntu):** `*_amd64.deb`
 
             (Pre-2021 Intel Macs aren't shipped pre-built; you can still
@@ -231,7 +231,7 @@ jobs:
 
             **First launch on macOS:** double-click → "Done" on the
             "unidentified developer" dialog → System Settings → Privacy
-            & Security → "Open Anyway" next to the ClosedMesh notice.
+            & Security → "Open Anyway" next to the Senda notice.
             (We ad-hoc sign the bundle, so it goes through the normal
             Gatekeeper bypass; we're working on full notarization.)
 
@@ -239,8 +239,8 @@ jobs:
             "Windows protected your PC" — click "More info" → "Run
             anyway".
 
-            The runtime (`closedmesh` CLI) installs separately via the curl /
-            PowerShell one-liner from https://closedmesh.com.
+            The runtime (`senda` CLI) installs separately via the curl /
+            PowerShell one-liner from https://senda.network.
           releaseDraft: false
           prerelease: false
           # Forward platform-specific args (the `--target` flag for macOS

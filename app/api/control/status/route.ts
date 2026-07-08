@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import {
-  findClosedmeshBin,
+  findSendaBin,
   isPublic,
-  runClosedmesh,
+  runSenda,
 } from "../_lib";
 
 export const runtime = "nodejs";
@@ -24,10 +24,10 @@ function parseStatus(out: string): Status["service"] {
   if (!txt) return { state: "unknown", reason: "empty status output" };
   const lower = txt.toLowerCase();
 
-  // `closedmesh service status` writes one of:
-  //   "ClosedMesh service: running (pid 12345)"
-  //   "ClosedMesh service: stopped"
-  //   "ClosedMesh service: unknown — <reason>"
+  // `senda service status` writes one of:
+  //   "Senda service: running (pid 12345)"
+  //   "Senda service: stopped"
+  //   "Senda service: unknown — <reason>"
   if (lower.includes("running")) {
     const m = txt.match(/pid\s+(\d+)/i);
     return { state: "running", pid: m ? Number(m[1]) : null };
@@ -49,7 +49,7 @@ export async function GET() {
     return NextResponse.json(status);
   }
 
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) {
     const status: Status = {
       available: false,
@@ -60,7 +60,7 @@ export async function GET() {
     return NextResponse.json(status);
   }
 
-  const result = await runClosedmesh(bin, ["service", "status"]);
+  const result = await runSenda(bin, ["service", "status"]);
   const service = parseStatus(result.stdout || result.stderr);
 
   const status: Status = {

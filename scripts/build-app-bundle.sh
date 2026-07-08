@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/build-app-bundle.sh — build a tiny ClosedMesh.app launcher.
+# scripts/build-app-bundle.sh — build a tiny Senda.app launcher.
 #
 # The .app is a thin wrapper that opens the local controller in the
 # default browser. The actual server is the launchd controller that
@@ -7,8 +7,8 @@
 # any Mac without Apple Developer account, Xcode, or codesigning.
 #
 # Output:
-#   dist/ClosedMesh.app
-#   dist/ClosedMesh.app.zip   (handy for distribution)
+#   dist/Senda.app
+#   dist/Senda.app.zip   (handy for distribution)
 
 set -euo pipefail
 
@@ -16,10 +16,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 DIST_DIR="$REPO_ROOT/dist"
-APP_PATH="$DIST_DIR/ClosedMesh.app"
-ZIP_PATH="$DIST_DIR/ClosedMesh.app.zip"
-BUNDLE_ID="com.closedmesh.app"
-PORT="${CLOSEDMESH_CONTROLLER_PORT:-42141}"
+APP_PATH="$DIST_DIR/Senda.app"
+ZIP_PATH="$DIST_DIR/Senda.app.zip"
+BUNDLE_ID="network.senda.app"
+PORT="${SENDA_CONTROLLER_PORT:-42141}"
 URL="http://127.0.0.1:${PORT}/control"
 
 mkdir -p "$DIST_DIR"
@@ -30,7 +30,7 @@ if ! command -v osacompile >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "==> osacompile ClosedMesh.app"
+echo "==> osacompile Senda.app"
 
 # The applet:
 #   1. Quietly checks if the controller is up.
@@ -43,8 +43,8 @@ read -r -d '' SCRIPT <<APPLE_SCRIPT || true
 on run
     set portNum to "${PORT}"
     set targetURL to "${URL}"
-    set installerHint to "https://closedmesh.com/install"
-    set installerScript to (POSIX path of (path to home folder)) & ".closedmesh/controller/install-controller.sh"
+    set installerHint to "https://senda.network/install"
+    set installerScript to (POSIX path of (path to home folder)) & ".senda/controller/install-controller.sh"
 
     -- Try to reach the controller.
     set isUp to false
@@ -74,7 +74,7 @@ on run
     if isUp then
         do shell script "open " & quoted form of targetURL
     else
-        display dialog "ClosedMesh isn't running yet on this Mac." & return & return & "Install it with:" & return & "    curl -fsSL " & installerHint & " | sh -s -- --service" & return & return & "Then run scripts/install-controller.sh from the closedmesh repo to bring up the local control panel." buttons {"OK"} default button "OK" with title "ClosedMesh"
+        display dialog "Senda isn't running yet on this Mac." & return & return & "Install it with:" & return & "    curl -fsSL " & installerHint & " | sh -s -- --service" & return & return & "Then run scripts/install-controller.sh from the senda repo to bring up the local control panel." buttons {"OK"} default button "OK" with title "Senda"
     end if
 end run
 APPLE_SCRIPT
@@ -83,10 +83,10 @@ osacompile -o "$APP_PATH" -e "$SCRIPT"
 
 # Patch Info.plist for branding.
 PLIST="$APP_PATH/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName ClosedMesh" "$PLIST" 2>/dev/null || \
-    /usr/libexec/PlistBuddy -c "Add :CFBundleName string ClosedMesh" "$PLIST"
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ClosedMesh" "$PLIST" 2>/dev/null || \
-    /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ClosedMesh" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName Senda" "$PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleName string Senda" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Senda" "$PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Senda" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${BUNDLE_ID}" "$PLIST" 2>/dev/null || \
     /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ${BUNDLE_ID}" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 0.1.0" "$PLIST" 2>/dev/null || \
@@ -94,9 +94,9 @@ PLIST="$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :LSUIElement YES" "$PLIST" 2>/dev/null || \
     /usr/libexec/PlistBuddy -c "Add :LSUIElement bool YES" "$PLIST"
 
-# Optional icon: drop one at branding/closedmesh.icns and we'll use it.
-if [[ -f "$REPO_ROOT/branding/closedmesh.icns" ]]; then
-    cp "$REPO_ROOT/branding/closedmesh.icns" "$APP_PATH/Contents/Resources/applet.icns"
+# Optional icon: drop one at branding/senda.icns and we'll use it.
+if [[ -f "$REPO_ROOT/branding/senda.icns" ]]; then
+    cp "$REPO_ROOT/branding/senda.icns" "$APP_PATH/Contents/Resources/applet.icns"
 fi
 
 echo "==> packaging ${ZIP_PATH}"
@@ -107,7 +107,7 @@ cat <<EOF
   Built: $APP_PATH
   Zip:   $ZIP_PATH
 
-  Drag ClosedMesh.app into /Applications. Double-click it to open the control
+  Drag Senda.app into /Applications. Double-click it to open the control
   panel in your browser.
 
 EOF

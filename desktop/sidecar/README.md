@@ -8,20 +8,20 @@ design):
 sidecar/
 ├── controller/        ← Next.js standalone bundle (server.js + .next/ + public/)
 └── binaries/
-    ├── closedmesh-node-aarch64-apple-darwin
-    ├── closedmesh-node-x86_64-unknown-linux-gnu
-    └── closedmesh-node-x86_64-pc-windows-msvc.exe
+    ├── senda-node-aarch64-apple-darwin
+    ├── senda-node-x86_64-unknown-linux-gnu
+    └── senda-node-x86_64-pc-windows-msvc.exe
 ```
 
-The `closedmesh-` prefix is deliberate: starting in 0.1.69 the
+The `senda-` prefix is deliberate: starting in 0.1.69 the
 bundled Node binary is shipped under a unique image name
-(`closedmesh-node.exe` on Windows, `closedmesh-node` elsewhere) so
+(`senda-node.exe` on Windows, `senda-node` elsewhere) so
 the installer's pre-install kill can terminate just *our* sidecar by
 name without disturbing the user's other Node processes (Node dev
 server, VS Code's extension host, Electron renderers). Tauri's
 `bundle.externalBin` strips the `-<triple>` suffix and copies whatever
 remains to the install dir, so our installed sidecar is named
-`closedmesh-node(.exe)` on every platform.
+`senda-node(.exe)` on every platform.
 
 Both are **generated**, not checked in (see `.gitignore`). They get
 populated at build time by:

@@ -9,7 +9,7 @@ import {
  *
  * The skew this fixes used to be:
  *  - `proxy.ts` ignored `FORGEMESH_DEPLOYMENT`
- *  - `_lib.ts` ignored `NEXT_PUBLIC_CLOSEDMESH_DEPLOYMENT`
+ *  - `_lib.ts` ignored `NEXT_PUBLIC_SENDA_DEPLOYMENT`
  *  - `runtime-target.ts` (browser) couldn't see server-only names at all
  *
  * Pin the canonical sets so a future "let's add another env name"
@@ -24,16 +24,16 @@ describe("isPublicDeploymentClient", () => {
     );
   });
 
-  test("matches NEXT_PUBLIC_CLOSEDMESH_DEPLOYMENT=public", () => {
+  test("matches NEXT_PUBLIC_SENDA_DEPLOYMENT=public", () => {
     expect(
-      isPublicDeploymentClient({ NEXT_PUBLIC_CLOSEDMESH_DEPLOYMENT: "public" }),
+      isPublicDeploymentClient({ NEXT_PUBLIC_SENDA_DEPLOYMENT: "public" }),
     ).toBe(true);
   });
 
   test("ignores server-only names (browser bundles can't see them)", () => {
     expect(
       isPublicDeploymentClient({
-        CLOSEDMESH_DEPLOYMENT: "public",
+        SENDA_DEPLOYMENT: "public",
         FORGEMESH_DEPLOYMENT: "public",
       }),
     ).toBe(false);
@@ -60,8 +60,8 @@ describe("isPublicDeploymentServer", () => {
   test("matches every accepted env name", () => {
     for (const key of [
       "NEXT_PUBLIC_DEPLOYMENT",
-      "NEXT_PUBLIC_CLOSEDMESH_DEPLOYMENT",
-      "CLOSEDMESH_DEPLOYMENT",
+      "NEXT_PUBLIC_SENDA_DEPLOYMENT",
+      "SENDA_DEPLOYMENT",
       "FORGEMESH_DEPLOYMENT",
     ]) {
       expect(isPublicDeploymentServer({ [key]: "public" })).toBe(true);
@@ -69,7 +69,7 @@ describe("isPublicDeploymentServer", () => {
   });
 
   test("is a superset of the client variant", () => {
-    const env = { NEXT_PUBLIC_CLOSEDMESH_DEPLOYMENT: "public" };
+    const env = { NEXT_PUBLIC_SENDA_DEPLOYMENT: "public" };
     expect(isPublicDeploymentClient(env)).toBe(true);
     expect(isPublicDeploymentServer(env)).toBe(true);
   });
@@ -80,7 +80,7 @@ describe("isPublicDeploymentServer", () => {
 
   test("trims trailing newlines on server-only names too", () => {
     expect(
-      isPublicDeploymentServer({ CLOSEDMESH_DEPLOYMENT: "public\n" }),
+      isPublicDeploymentServer({ SENDA_DEPLOYMENT: "public\n" }),
     ).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 /**
- * The ClosedMesh wordmark icon: three peer nodes arranged around a central
+ * The Senda wordmark icon: three peer nodes arranged around a central
  * coordinator. Re-used in the header, the /about hero, the favicon, and the
- * matching closedmesh-llm/docs/closedmesh-logo.svg.
+ * matching senda-llm/docs/senda-logo.svg.
  */
 export function Logo({
   size = 22,

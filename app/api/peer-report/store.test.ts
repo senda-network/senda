@@ -30,7 +30,7 @@ function makeReport(nodeId: string, overrides: Partial<PeerReportInput> = {}): P
       lastVisibleUnix: 1_700_000_000,
       consecutiveInvisibleCount: 0,
       lastError: null,
-      entryUrl: "https://mesh.closedmesh.com",
+      entryUrl: "https://entry.senda.network",
       softReconnectTriggered: false,
       hardResetTriggered: false,
     },

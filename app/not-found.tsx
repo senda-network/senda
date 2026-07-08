@@ -30,7 +30,7 @@ export default function NotFound() {
         </h1>
         <p className="mt-3 text-pretty text-sm text-[var(--fg-muted)]">
           You may have followed a stale link, or this is part of the
-          ClosedMesh control surface that only lives inside the desktop
+          Senda control surface that only lives inside the desktop
           app — not on this public site.
         </p>
         <div className="mt-7 flex justify-center gap-3">

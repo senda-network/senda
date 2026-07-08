@@ -36,7 +36,7 @@ export type MoeShard = {
 
 /**
  * Outcome of one mesh-visibility probe against the configured entry
- * node. Mirrors `closedmesh::mesh::visibility::MeshVisibilityState` in
+ * node. Mirrors `senda::mesh::visibility::MeshVisibilityState` in
  * the runtime. The audit answers the only question the dashboard's
  * green pill actually cares about: **does the entry node currently
  * know we exist?**
@@ -81,7 +81,7 @@ export type MeshVisibility = {
   consecutiveInvisibleCount: number;
   /** Last failure reason; null when state is `visible`. */
   lastError: string | null;
-  /** Entry URL being probed (e.g. `https://mesh.closedmesh.com`). */
+  /** Entry URL being probed (e.g. `https://entry.senda.network`). */
   entryUrl: string;
   /**
    * True if the audit loop has issued at least one soft reconnect
@@ -270,7 +270,7 @@ export type NodeSummary = {
 
 /**
  * Per-model topology classification mirroring
- * `closedmesh-llm/closedmesh/src/api/status.rs::MeshModelPayload.split_kind`.
+ * `senda-llm/senda/src/api/status.rs::MeshModelPayload.split_kind`.
  *
  *   - `cold`        — no live host yet (model in catalog only)
  *   - `solo`        — single peer hosts/serves it

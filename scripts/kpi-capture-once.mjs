@@ -5,9 +5,9 @@
  */
 import { Redis } from "@upstash/redis";
 
-const FLAGSHIP = process.env.CLOSEDMESH_KPI_FLAGSHIP_MODEL?.trim() || "Qwen3-32B-Q4_K_M";
+const FLAGSHIP = process.env.SENDA_KPI_FLAGSHIP_MODEL?.trim() || "Qwen3-32B-Q4_K_M";
 const STATUS_URL =
-  process.env.CLOSEDMESH_KPI_STATUS_URL?.trim() || "https://closedmesh.com/api/status";
+  process.env.SENDA_KPI_STATUS_URL?.trim() || "https://senda.network/api/status";
 
 function isoWeekLabel(d = new Date()) {
   const utc = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));

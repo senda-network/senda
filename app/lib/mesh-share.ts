@@ -16,8 +16,8 @@
  *
  * Storage shape (Upstash Redis):
  *
- *   closedmesh:mesh-share:mesh:<YYYYMMDDTHH>      -> integer counter
- *   closedmesh:mesh-share:fallback:<YYYYMMDDTHH>  -> integer counter
+ *   senda:mesh-share:mesh:<YYYYMMDDTHH>      -> integer counter
+ *   senda:mesh-share:fallback:<YYYYMMDDTHH>  -> integer counter
  *
  * One key per hour per `served_by` value. Each chat request fires
  * one `INCR` on its bucket; the metrics dashboard reads the last N
@@ -35,7 +35,7 @@ import { getRedis } from "./redis";
 
 export type ServedBy = "mesh" | "fallback";
 
-const MESH_SHARE_PREFIX = "closedmesh:mesh-share";
+const MESH_SHARE_PREFIX = "senda:mesh-share";
 const BUCKET_TTL_SEC = 35 * 24 * 3600; // ~5 weeks; rolling window comfortably covers 7 d
 
 function hourBucketLabel(at: Date): string {

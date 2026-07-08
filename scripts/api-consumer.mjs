@@ -6,16 +6,16 @@
  *
  * Two modes:
  *
- *   chat    (default) → POST https://closedmesh.com/api/chat
+ *   chat    (default) → POST https://senda.network/api/chat
  *           The public website surface. No auth. This is the path that
  *           records served_by (mesh vs fallback), mints mesh credits from
  *           completion tokens, and feeds the runtime's catalog samples —
  *           i.e. the one that makes the website dashboards move.
  *
- *   openai  → POST https://mesh.closedmesh.com/v1/chat/completions
+ *   openai  → POST https://entry.senda.network/v1/chat/completions
  *           The raw OpenAI-compatible runtime API (the "real API" a paid
  *           customer would call in Phase 5). Needs the bearer token
- *           (CLOSEDMESH_RUNTIME_TOKEN). Bypasses the website's mesh-share
+ *           (SENDA_RUNTIME_TOKEN). Bypasses the website's mesh-share
  *           / credits bookkeeping — the runtime still records its own
  *           per-model TPS/TTFT catalog, visible on /status.
  *
@@ -25,22 +25,22 @@
  *   node scripts/api-consumer.mjs --interval 5000       # 5s between requests
  *   node scripts/api-consumer.mjs --concurrency 3       # 3 in flight
  *   node scripts/api-consumer.mjs --model Qwen3-8B      # pin a model
- *   node scripts/api-consumer.mjs --mode openai --token $CLOSEDMESH_RUNTIME_TOKEN
+ *   node scripts/api-consumer.mjs --mode openai --token $SENDA_RUNTIME_TOKEN
  *
  * Ctrl-C prints a summary and exits.
  */
 
 const DEFAULTS = {
   mode: "chat",
-  site: "https://closedmesh.com",
-  runtime: "https://mesh.closedmesh.com/v1",
+  site: "https://senda.network",
+  runtime: "https://entry.senda.network/v1",
   interval: 2000,
   concurrency: 1,
   count: 0, // 0 = run until Ctrl-C
   maxTokens: 256,
 };
 
-// Latency-tolerant prompts — the work ClosedMesh actually targets
+// Latency-tolerant prompts — the work Senda actually targets
 // (summarization, classification, extraction, light reasoning). Short
 // inputs, bounded outputs, so each request is a quick real token spend.
 const PROMPTS = [
@@ -66,7 +66,7 @@ const C = {
 };
 
 function parseArgs(argv) {
-  const opts = { ...DEFAULTS, token: process.env.CLOSEDMESH_RUNTIME_TOKEN ?? "", model: null, base: null };
+  const opts = { ...DEFAULTS, token: process.env.SENDA_RUNTIME_TOKEN ?? "", model: null, base: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -94,12 +94,12 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`closedmesh production API consumer
+  console.log(`senda production API consumer
 
   --mode chat|openai     surface to drive (default: chat / the website)
   --base URL             override the base URL
   --model NAME           pin a model (default: let the server pick)
-  --token TOKEN          bearer token for openai mode (or CLOSEDMESH_RUNTIME_TOKEN)
+  --token TOKEN          bearer token for openai mode (or SENDA_RUNTIME_TOKEN)
   --count N              stop after N requests (default: 0 = run until Ctrl-C)
   --interval MS          delay between requests per worker (default: 2000)
   --concurrency N        concurrent workers (default: 1)
@@ -150,8 +150,8 @@ async function runChatRequest(opts, prompt) {
     throw new Error(`HTTP ${res.status} ${detail}`);
   }
 
-  const servedBy = res.headers.get("x-closedmesh-served-by") ?? "?";
-  const slaTps = res.headers.get("x-closedmesh-sla-best-tps");
+  const servedBy = res.headers.get("x-senda-served-by") ?? "?";
+  const slaTps = res.headers.get("x-senda-sla-best-tps");
   let text = "";
   let ttft = null;
   for await (const payload of sseEvents(res)) {
@@ -222,7 +222,7 @@ async function runOpenAIRequest(opts, prompt) {
   const totalMs = performance.now() - start;
   const tokens = usageTokens ?? approxTokens(text);
   return {
-    servedBy: res.headers.get("x-closedmesh-served-by") ?? "runtime",
+    servedBy: res.headers.get("x-senda-served-by") ?? "runtime",
     model: opts.model,
     ttftMs: ttft,
     totalMs,
@@ -292,14 +292,14 @@ async function main() {
       ? `${opts.base ?? opts.site}/api/chat`
       : `${opts.base ?? opts.runtime}/chat/completions`;
 
-  console.log(C.bold(`ClosedMesh API consumer`));
+  console.log(C.bold(`Senda API consumer`));
   console.log(`  mode      : ${C.cyan(opts.mode)}`);
   console.log(`  target    : ${target}`);
   console.log(`  model     : ${opts.model ?? "(server-picked)"}`);
   console.log(`  rate      : ${opts.concurrency} worker(s), ${opts.interval}ms apart`);
   console.log(`  count     : ${opts.count === 0 ? "until Ctrl-C" : opts.count}`);
   if (opts.mode === "openai" && !opts.token) {
-    console.log(C.yellow("  warning   : no token — gated endpoints will 401 (set --token or CLOSEDMESH_RUNTIME_TOKEN)"));
+    console.log(C.yellow("  warning   : no token — gated endpoints will 401 (set --token or SENDA_RUNTIME_TOKEN)"));
   }
   await showMeshStatus(opts);
   if (opts.mode === "chat") await showCredits(opts, "before");

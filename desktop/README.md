@@ -1,29 +1,29 @@
-# ClosedMesh desktop shell
+# Senda desktop shell
 
-Cross-platform native shell for the ClosedMesh chat UI. One Rust codebase,
+Cross-platform native shell for the Senda chat UI. One Rust codebase,
 three platform bundles:
 
 | Platform | Output                              | Size     | Backing webview |
 | -------- | ----------------------------------- | -------- | --------------- |
-| macOS    | `ClosedMesh.app` + `.dmg`           | ~5 MB    | WKWebView       |
-| Windows  | `ClosedMesh.msi` (+ NSIS `.exe`)    | ~6–8 MB  | WebView2 (Edge) |
-| Linux    | `ClosedMesh.AppImage` + `.deb`      | ~10 MB   | WebKitGTK       |
+| macOS    | `Senda.app` + `.dmg`           | ~5 MB    | WKWebView       |
+| Windows  | `Senda.msi` (+ NSIS `.exe`)    | ~6–8 MB  | WebView2 (Edge) |
+| Linux    | `Senda.AppImage` + `.deb`      | ~10 MB   | WebKitGTK       |
 
 Built on [Tauri 2](https://tauri.app). The shell does not bundle the
-runtime; the `closedmesh` CLI is still installed separately via the curl /
+runtime; the `senda` CLI is still installed separately via the curl /
 PowerShell one-liners in the root README. The desktop app gives the user:
 
 - A real Dock / Start Menu / Taskbar icon and ⌘Tab / Alt-Tab target.
 - A system tray pill with live node count, polled from the local admin
   endpoint at `http://127.0.0.1:3131/api/status`.
 - Tray menu actions: **Open Chat**, **Reload**, **Open Admin Console**,
-  **Start / Stop ClosedMesh Service** (shells out to `closedmesh service
+  **Start / Stop Senda Service** (shells out to `senda service
   start|stop`), **Copy Invite Token** (reads the local node's join token
   from `http://127.0.0.1:3131/api/status` and copies it to the system
   clipboard), **Show Logs in File Manager**.
 - A WKWebView / WebView2 / WebKitGTK that loads the bundled local
   controller, falling back to
-  `https://closedmesh.com` otherwise.
+  `https://senda.network` otherwise.
 
 ## Develop
 
@@ -46,7 +46,7 @@ npm run dev            # hot-reload dev build (cargo + tauri)
 ```
 
 `npm run dev` will rebuild on Rust file changes; the WebView itself loads
-the bundled local controller / `closedmesh.com`, so frontend changes are
+the bundled local controller / `senda.network`, so frontend changes are
 picked up by reloading.
 
 ## Build distributable bundles
@@ -61,8 +61,8 @@ Output goes to `target/release/bundle/`:
 
 ```
 target/release/bundle/
-  macos/ClosedMesh.app
-  dmg/ClosedMesh_<version>_<arch>.dmg
+  macos/Senda.app
+  dmg/Senda_<version>_<arch>.dmg
   # Windows builds add: msi/, nsis/
   # Linux builds add: deb/, appimage/
 ```
@@ -93,7 +93,7 @@ desktop/
     main.rs              App entry, window creation, tray builder,
                          menu event dispatch, status polling loop.
     mesh.rs              Talks to localhost:3131/api/status via ureq;
-                         shells out to the closedmesh CLI for service
+                         shells out to the senda CLI for service
                          start/stop/invite. Cross-platform binary
                          discovery (~/.local/bin, /opt/homebrew, $PATH,
                          %LOCALAPPDATA%, etc).
@@ -132,7 +132,7 @@ We removed it after one release because:
   bundle, same native menu bar.
 - Maintaining one cross-platform GUI codebase is easier than three.
 - The Rust toolchain is already required for the runtime
-  (`closedmesh-llm`), so Tauri doesn't add a new language to the project.
+  (`senda-llm`), so Tauri doesn't add a new language to the project.
 
 The Swift implementation is preserved in git history at the commit before
 this README was added; check `git log -- mac-app/` to find it.

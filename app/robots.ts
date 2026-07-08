@@ -18,6 +18,6 @@ export default function robots(): MetadataRoute.Robots {
         "/settings",
       ],
     },
-    sitemap: "https://closedmesh.com/sitemap.xml",
+    sitemap: "https://senda.network/sitemap.xml",
   };
 }

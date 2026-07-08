@@ -38,7 +38,7 @@ export type NodeDisplayState = {
  * Returns the display state for a node.
  *
  * Color rule: **if a node is reachable in the mesh, it is GREEN.** Period.
- * Running ClosedMesh = sharing GPU capacity = green. The runtime's
+ * Running Senda = sharing GPU capacity = green. The runtime's
  * transient `state` ("serving" / "standby" / "loading") describes what
  * the node is doing at this exact millisecond, which is essentially never
  * a useful color signal — a working node spends 99%+ of its time in

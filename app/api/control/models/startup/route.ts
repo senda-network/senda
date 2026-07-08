@@ -9,10 +9,10 @@ import {
 } from "../../_config-toml";
 import {
   extractStartError,
-  findClosedmeshBin,
+  findSendaBin,
   isLaunchctlBootstrapRace,
   isPublic,
-  runClosedmesh,
+  runSenda,
 } from "../../_lib";
 
 export const runtime = "nodejs";
@@ -22,8 +22,8 @@ export const dynamic = "force-dynamic";
  * Step-by-step instrumentation for the "Set as startup" bounce.
  *
  * The flow has historically been opaque: a user clicks the button, the
- * route shells out to `closedmesh service stop`, an internal PowerShell
- * residual-kill, and `closedmesh service start`, and we'd see only the
+ * route shells out to `senda service stop`, an internal PowerShell
+ * residual-kill, and `senda service start`, and we'd see only the
  * final ok/error message in the UI toast. When the desktop app crashed
  * mid-bounce on Windows (initial reports: a stray libuv UV_UNKNOWN
  * spawn failure left in `controller.stderr.log`) we had no way to tell
@@ -76,7 +76,7 @@ function trim(s: string | undefined, n = 400): string {
  * Why "replace" rather than "append": the desktop UI exposes a single
  * "Make this my startup model" button per row, which is what 95% of users
  * want for a single-Mac contributor flow. Power users with multi-model
- * setups can edit ~/.closedmesh/config.toml by hand — this endpoint is a
+ * setups can edit ~/.senda/config.toml by hand — this endpoint is a
  * convenience layer for the common case, not the only path.
  */
 
@@ -285,19 +285,19 @@ export async function DELETE() {
 async function bounceService(
   rid: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   startupLog(rid, "bounce.bin_resolved", { bin });
   if (!bin) {
     return {
       ok: false,
       message:
-        "Saved config, but the closedmesh binary isn't on this machine yet — install it first.",
+        "Saved config, but the senda binary isn't on this machine yet — install it first.",
     };
   }
 
   // `service stop` exits non-zero if the unit was already stopped or
   // never installed, which is fine. We treat both as "ok to start now".
-  const stop = await runClosedmesh(bin, ["service", "stop"], 10_000);
+  const stop = await runSenda(bin, ["service", "stop"], 10_000);
   startupLog(rid, "bounce.stop_result", {
     ok: stop.ok,
     code: stop.code,
@@ -310,33 +310,33 @@ async function bounceService(
   // the model never loaded" because the *new* instance silently failed
   // to launch.
   //
-  //   1. `closedmesh service stop` shells out to `schtasks /End`, which
+  //   1. `senda service stop` shells out to `schtasks /End`, which
   //      returns as soon as the End command is queued — not when the
   //      process tree has actually exited. The Scheduled Task's default
   //      MultipleInstances policy is IgnoreNew, so the next
   //      `schtasks /Run` we issue is a no-op while the old wscript →
-  //      cmd → closedmesh.exe tree is still tearing down. The user
+  //      cmd → senda.exe tree is still tearing down. The user
   //      sees the toast "your model will be available in a few seconds"
   //      but the runtime never re-reads config.toml because it never
   //      restarted.
   //
-  //   2. If the previous run crashed, an orphaned `closedmesh.exe` may
+  //   2. If the previous run crashed, an orphaned `senda.exe` may
   //      be holding admin port 3131 open. The new task action launches,
-  //      its closedmesh.exe fails to bind, exits silently, and the
+  //      its senda.exe fails to bind, exits silently, and the
   //      Scheduled Task's RestartCount=3 / RestartInterval=1m kicks in
   //      — so the user waits a full minute (or never recovers) before
   //      anything happens.
   //
   // We sleep 1.5s to let `schtasks /End`'s tree termination settle,
-  // then force-kill any residual closedmesh.exe whose image path is
+  // then force-kill any residual senda.exe whose image path is
   // exactly $bin. Path-equality (not just image name) protects any
-  // unrelated `closedmesh.exe` the user might have lying around (e.g. a
+  // unrelated `senda.exe` the user might have lying around (e.g. a
   // dev checkout). The kill is best-effort: if PowerShell isn't on
   // PATH we just skip it and rely on the sleep alone.
   if (process.platform === "win32") {
     await new Promise((r) => setTimeout(r, 1500));
-    const ps = `Get-Process -Name closedmesh -ErrorAction SilentlyContinue | Where-Object { $_.Path -and ($_.Path -ieq '${bin.replace(/'/g, "''")}') } | Stop-Process -Force -ErrorAction SilentlyContinue`;
-    const residualKill = await runClosedmesh(
+    const ps = `Get-Process -Name senda -ErrorAction SilentlyContinue | Where-Object { $_.Path -and ($_.Path -ieq '${bin.replace(/'/g, "''")}') } | Stop-Process -Force -ErrorAction SilentlyContinue`;
+    const residualKill = await runSenda(
       "powershell",
       ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
       5_000,
@@ -354,7 +354,7 @@ async function bounceService(
     await new Promise((r) => setTimeout(r, 500));
   }
 
-  let start = await runClosedmesh(bin, ["service", "start"], 15_000);
+  let start = await runSenda(bin, ["service", "start"], 15_000);
   startupLog(rid, "bounce.start_result", {
     attempt: 1,
     ok: start.ok,
@@ -380,7 +380,7 @@ async function bounceService(
     attempt += 1;
     startupLog(rid, "bounce.start_retry_scheduled", { attempt, waitMs: wait });
     await new Promise((r) => setTimeout(r, wait));
-    start = await runClosedmesh(bin, ["service", "start"], 15_000);
+    start = await runSenda(bin, ["service", "start"], 15_000);
     startupLog(rid, "bounce.start_result", {
       attempt,
       ok: start.ok,
@@ -408,7 +408,7 @@ async function bounceService(
   const looksMissing = looksLikeServiceMissing(start.stderr, start.stdout);
   startupLog(rid, "bounce.start_failed", { looksMissing });
   if (looksMissing) {
-    const install = await runClosedmesh(bin, ["service", "install"], 20_000);
+    const install = await runSenda(bin, ["service", "install"], 20_000);
     startupLog(rid, "bounce.install_result", {
       ok: install.ok,
       code: install.code,
@@ -416,7 +416,7 @@ async function bounceService(
       stderr: trim(install.stderr),
     });
     if (install.ok) {
-      const retry = await runClosedmesh(bin, ["service", "start"], 15_000);
+      const retry = await runSenda(bin, ["service", "start"], 15_000);
       startupLog(rid, "bounce.start_after_install_result", {
         ok: retry.ok,
         code: retry.code,

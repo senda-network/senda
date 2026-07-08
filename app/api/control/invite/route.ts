@@ -20,10 +20,10 @@ function trimmedEnv(...keys: string[]): string | undefined {
 }
 
 const ADMIN_URL =
-  trimmedEnv("CLOSEDMESH_ADMIN_URL", "MESH_CONSOLE_URL") ??
+  trimmedEnv("SENDA_ADMIN_URL", "MESH_CONSOLE_URL") ??
   "http://127.0.0.1:3131";
 
-const RUNTIME_TOKEN = trimmedEnv("CLOSEDMESH_RUNTIME_TOKEN") ?? "";
+const RUNTIME_TOKEN = trimmedEnv("SENDA_RUNTIME_TOKEN") ?? "";
 
 const adminHeaders: Record<string, string> = RUNTIME_TOKEN
   ? { Authorization: `Bearer ${RUNTIME_TOKEN}` }
@@ -32,7 +32,7 @@ const adminHeaders: Record<string, string> = RUNTIME_TOKEN
 /**
  * Returns a one-time invite token a teammate can paste on their machine to
  * join this mesh. The runtime mints the token at startup and publishes it on
- * `/api/status` — there is intentionally no `closedmesh invite create` CLI
+ * `/api/status` — there is intentionally no `senda invite create` CLI
  * subcommand, since the token is just an addressable identity for the local
  * node and is regenerated each time the service starts.
  *
@@ -66,7 +66,7 @@ export async function POST() {
     return NextResponse.json({
       ok: false,
       message:
-        "Couldn't reach the local runtime on :3131. Start the ClosedMesh service and try again.",
+        "Couldn't reach the local runtime on :3131. Start the Senda service and try again.",
     });
   }
 

@@ -80,7 +80,7 @@ function NodesTable({
           No machines connected yet
         </div>
         <div className="mx-auto mt-1.5 max-w-md text-sm text-[var(--fg-muted)]">
-          Start ClosedMesh on this Mac from the Dashboard, or add a remote
+          Start Senda on this Mac from the Dashboard, or add a remote
           machine above.
         </div>
       </section>
@@ -131,7 +131,7 @@ function NodeRow({ node }: { node: NodeSummary }) {
         </div>
         <div className="mt-0.5 text-[11px] text-[var(--fg-muted)]">
           {isEntry
-            ? "mesh.closedmesh.com · always-on gateway"
+            ? "entry.senda.network · always-on gateway"
             : `${backend} · ${vram ? `${vram.toFixed(1)} GB memory` : "memory unknown"}`}
           {node.version && (
             <span className="ml-2 font-mono text-[10px] tabular-nums">

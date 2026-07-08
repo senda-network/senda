@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-ADMIN_URL="${1:-${CLOSEDMESH_ADMIN_URL:-http://127.0.0.1:3131}}"
+ADMIN_URL="${1:-${SENDA_ADMIN_URL:-http://127.0.0.1:3131}}"
 
 if ! command -v jq >/dev/null 2>&1; then
     echo "[smoke-capability] this script needs jq (brew install jq / apt install jq)" >&2
@@ -24,7 +24,7 @@ fi
 
 if ! body="$(curl -fsS --max-time 5 "$ADMIN_URL/api/status" 2>/dev/null)"; then
     echo "[smoke-capability] could not reach $ADMIN_URL/api/status" >&2
-    echo "[smoke-capability] is 'closedmesh serve' running on this machine?" >&2
+    echo "[smoke-capability] is 'senda serve' running on this machine?" >&2
     exit 1
 fi
 

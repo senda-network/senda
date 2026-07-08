@@ -30,12 +30,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_FLAGSHIP =
-  process.env.CLOSEDMESH_KPI_FLAGSHIP_MODEL?.trim() ||
+  process.env.SENDA_KPI_FLAGSHIP_MODEL?.trim() ||
   "Qwen3-8B-Q4_K_M";
 
 const DEFAULT_MESH_STATUS_URL =
-  process.env.CLOSEDMESH_KPI_STATUS_URL?.trim() ||
-  "https://mesh.closedmesh.com/api/status";
+  process.env.SENDA_KPI_STATUS_URL?.trim() ||
+  "https://entry.senda.network/api/status";
 
 function trimmedEnv(...keys: string[]): string | undefined {
   for (const key of keys) {

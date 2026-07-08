@@ -9,7 +9,7 @@ import {
 import { PageHeader } from "../../components/PageHeader";
 import { StatusPill } from "../../components/StatusPill";
 
-const SESSION_KEY = "closedmesh:threadId";
+const SESSION_KEY = "senda:threadId";
 
 function newThreadId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

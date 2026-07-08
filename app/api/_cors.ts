@@ -1,24 +1,24 @@
-// Cross-origin policy for the local ClosedMesh controller.
+// Cross-origin policy for the local Senda controller.
 //
-// When a visitor opens https://closedmesh.com (the Vercel-hosted public UI),
+// When a visitor opens https://senda.network (the Vercel-hosted public UI),
 // their browser makes calls back into THIS Next.js process running on their
 // own Mac at http://127.0.0.1:42141. That cross-origin call needs the
 // local controller to set the right CORS headers.
 //
-// Browsers permit https://closedmesh.com → http://127.0.0.1:42141 because
+// Browsers permit https://senda.network → http://127.0.0.1:42141 because
 // loopback hosts are "potentially trustworthy origins" (W3C mixed-content spec).
 //
-// Origins are configured via CLOSEDMESH_PUBLIC_ORIGINS (comma-separated). The
+// Origins are configured via SENDA_PUBLIC_ORIGINS (comma-separated). The
 // default trusts only the hosted site. The same-machine deployment (i.e. the
 // browser opening the local sidecar URL directly) is same-origin and doesn't
 // need this layer at all.
 
-const DEFAULT_ALLOWED = ["https://closedmesh.com"];
+const DEFAULT_ALLOWED = ["https://senda.network"];
 
 function allowedOrigins(): string[] {
   const raw =
-    process.env.CLOSEDMESH_PUBLIC_ORIGINS ??
-    process.env.CLOSEDMESH_PUBLIC_ORIGIN ??
+    process.env.SENDA_PUBLIC_ORIGINS ??
+    process.env.SENDA_PUBLIC_ORIGIN ??
     "";
   const parsed = raw
     .split(",")

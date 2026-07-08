@@ -4,7 +4,7 @@ This is the runbook for validating that the "any-hardware mesh nodes" stack
 (packaging → service → capability gossip → router) works in real life. Run
 this when shipping a new release that touches:
 
-- the `closedmesh-llm` build matrix or release workflow
+- the `senda-llm` build matrix or release workflow
 - `public/install.sh`, `public/install.ps1`, or any service-install path
 - the capability gossip schema, probe, or filter
 - the status API / control panel surfacing
@@ -34,10 +34,10 @@ You will also need:
 
 ## Phase 0 — sanity checks (single machine, ~5 min)
 
-Run on any one machine that already has a built `closedmesh` binary.
+Run on any one machine that already has a built `senda` binary.
 
 ```bash
-# from the closedmesh repo
+# from the senda repo
 ./scripts/smoke-capability.sh
 ```
 
@@ -45,8 +45,8 @@ Expected: prints `backend`, `vendor`, `vram_total_mb`, `compute_class`,
 `peer_count`. Exit code 0.
 
 If `backend` is wrong (e.g. `cpu` on a CUDA box), check
-[`closedmesh-llm`'s build target](../../closedmesh-llm/scripts/release-closedmesh.sh)
-or the `CLOSEDMESH_BACKEND` env override before continuing.
+[`senda-llm`'s build target](../../senda-llm/scripts/release-senda.sh)
+or the `SENDA_BACKEND` env override before continuing.
 
 ## Phase 1 — packaging (~30 min)
 
@@ -54,18 +54,18 @@ For each of A/B/C/D, run the appropriate one-liner:
 
 ```bash
 # A (macOS arm64), B (Linux/CUDA), D (Linux/CPU):
-curl -fsSL https://closedmesh.com/install | sh
+curl -fsSL https://senda.network/install | sh
 ```
 
 ```powershell
 # C (Windows):
-iwr -useb https://closedmesh.com/install.ps1 | iex
+iwr -useb https://senda.network/install.ps1 | iex
 ```
 
 Expected on each machine:
 
 - Installer exits 0.
-- `closedmesh --version` works in a fresh shell.
+- `senda --version` works in a fresh shell.
 - The matched archive in the install log corresponds to the node's actual
   hardware:
   - A → `darwin-aarch64`
@@ -73,26 +73,26 @@ Expected on each machine:
   - C → `windows-x86_64-vulkan` (or `cuda` if it has an NVIDIA GPU)
   - D → `linux-x86_64-cpu`
 
-Negative test on D: set `CLOSEDMESH_BACKEND=cuda` in the install env and
+Negative test on D: set `SENDA_BACKEND=cuda` in the install env and
 re-run. The installer should download the CUDA archive **but** running
-`closedmesh serve` will fail at startup because there's no CUDA runtime.
+`senda serve` will fail at startup because there's no CUDA runtime.
 This proves the override works as documented in `README.md`.
 
 ## Phase 2 — service auto-start (~15 min)
 
 ```bash
 # A, B, D:
-curl -fsSL https://closedmesh.com/install | sh -s -- --service
-closedmesh service status   # ⇒ "running"
+curl -fsSL https://senda.network/install | sh -s -- --service
+senda service status   # ⇒ "running"
 ```
 
 ```powershell
 # C:
-iwr -useb https://closedmesh.com/install.ps1 | iex; closedmesh-install -Service
-closedmesh service status   # ⇒ "running"
+iwr -useb https://senda.network/install.ps1 | iex; senda-install -Service
+senda service status   # ⇒ "running"
 ```
 
-Reboot each machine. After login, run `closedmesh service status` again
+Reboot each machine. After login, run `senda service status` again
 and confirm the runtime came back up on its own. Then on each machine run:
 
 ```bash
@@ -105,14 +105,14 @@ Confirm `backend` matches expectations.
 
 Pick A as the "host" — that's where you'll join from for the chat UI.
 
-1. On A, run `closedmesh serve --private-only` (if not already a service)
+1. On A, run `senda serve --private-only` (if not already a service)
    and grab the invite token from its first-run output (or
-   `closedmesh service logs`).
+   `senda service logs`).
 
 2. On B, C, D, in turn:
 
    ```bash
-   closedmesh serve --join <invite-token>
+   senda serve --join <invite-token>
    ```
 
 3. On A, hit:
@@ -142,7 +142,7 @@ The point of the filter is: a CPU-only node never gets a 70B request.
    D's capability gets checked but D's VRAM is 0, so the router never
    even considers it for pipeline-parallel.
 
-3. Now stop A's runtime (`closedmesh service stop`). The mesh now has
+3. Now stop A's runtime (`senda service stop`). The mesh now has
    only B, C, D, none of which serve `Llama-3-70B`. Send the same chat
    request again from any node's chat UI.
 
@@ -168,12 +168,12 @@ mesh and Just Works.
 1. On the boss's machine, run the appropriate installer one-liner.
 2. Confirm the right archive was selected (CUDA on NVIDIA, ROCm on AMD,
    Vulkan otherwise) — visible in the installer output.
-3. `closedmesh serve --join <invite-token>` from the team mesh.
+3. `senda serve --join <invite-token>` from the team mesh.
 4. On A, refresh `/control` → Nodes. Boss's machine should appear with
    correct backend / vendor / VRAM.
 5. Run a chat that needs the GPU's VRAM (e.g. a model only that machine
    can serve solo). Confirm the request is dispatched there by watching
-   `closedmesh service logs` on the boss's box.
+   `senda service logs` on the boss's box.
 
 If any of the above fails, the most useful diagnostic command is:
 

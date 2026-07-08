@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { findClosedmeshBin, isPublic, runClosedmesh } from "../../_lib";
+import { findSendaBin, isPublic, runSenda } from "../../_lib";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * Reports whether the runtime is registered to start at login.
  *
  * On macOS we look for the launchd plist. On Linux we look for the
- * systemd-user unit. On Windows we shell out to `closedmesh service status`
+ * systemd-user unit. On Windows we shell out to `senda service status`
  * and parse. Falling back to the CLI is fine but the file-based check is
  * faster and works even when the daemon is misbehaving.
  */
@@ -31,7 +31,7 @@ async function detectAutostart(): Promise<boolean> {
       homedir(),
       "Library",
       "LaunchAgents",
-      "com.closedmesh.runtime.plist",
+      "network.senda.runtime.plist",
     );
     if (await fileExists(plist)) return true;
     const legacy = path.join(
@@ -48,14 +48,14 @@ async function detectAutostart(): Promise<boolean> {
       ".config",
       "systemd",
       "user",
-      "closedmesh.service",
+      "senda.service",
     );
     return fileExists(unit);
   }
   // Windows / others: fall back to CLI.
-  const bin = await findClosedmeshBin();
+  const bin = await findSendaBin();
   if (!bin) return false;
-  const r = await runClosedmesh(bin, ["service", "status"]);
+  const r = await runSenda(bin, ["service", "status"]);
   return /installed|enabled|running/i.test(r.stdout);
 }
 

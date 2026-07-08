@@ -4,7 +4,7 @@ import { EarlyAccessBanner } from "./EarlyAccessBanner";
 import { Logo } from "./Logo";
 import { MobileNav, type NavLink } from "./MobileNav";
 
-const GITHUB_URL = "https://github.com/closedmesh/closedmesh-llm";
+const GITHUB_URL = "https://github.com/senda-network/senda-llm";
 
 /**
  * Primary public nav. Ordered as a developer platform reads it: what it is,
@@ -20,7 +20,7 @@ const NAV_LINKS: NavLink[] = [
 ];
 
 /**
- * Shared header for closedmesh.com — homepage chat, /about, /download, /docs
+ * Shared header for senda.network — homepage chat, /about, /download, /docs
  * and every other public page use this so the brand surface is identical
  * across the site.
  *
@@ -58,7 +58,7 @@ export function PublicHeader({
           <Logo />
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-tight text-[var(--fg)]">
-              ClosedMesh
+              Senda
             </div>
             <div className="text-[11px] text-[var(--fg-muted)]">
               Open peer-to-peer LLM mesh.
@@ -83,7 +83,7 @@ export function PublicHeader({
               href={GITHUB_URL}
               target="_blank"
               rel="noreferrer"
-              aria-label="ClosedMesh runtime on GitHub"
+              aria-label="Senda runtime on GitHub"
               className="text-[var(--fg-muted)] transition hover:text-[var(--fg)]"
             >
               <svg

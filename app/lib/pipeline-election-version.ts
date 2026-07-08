@@ -1,4 +1,4 @@
-/** Matches `MIN_PIPELINE_ELECTION_PEER_VERSION` in closedmesh-llm election.rs */
+/** Matches `MIN_PIPELINE_ELECTION_PEER_VERSION` in senda-llm election.rs */
 export const MIN_PIPELINE_ELECTION_PEER_VERSION = "0.66.20";
 
 function parseSemver(v: string): [number, number, number] | null {

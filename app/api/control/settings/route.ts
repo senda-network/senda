@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 /**
  * Controller-side user preferences.
  *
- * These live in `~/.closedmesh/controller-settings.json` and are read by the
+ * These live in `~/.senda/controller-settings.json` and are read by the
  * controller UI itself plus, eventually, the runtime when it boots. Today
  * the runtime ignores everything except `defaultModel` (used by `/api/chat`
  * when the request omits a model). The other fields are surfaced as hints
@@ -42,13 +42,13 @@ export type ControllerSettings = {
 const DEFAULTS: ControllerSettings = {
   defaultModel: null,
   backend: "auto",
-  publicOrigins: ["https://closedmesh.com"],
+  publicOrigins: ["https://senda.network"],
   keepMeshRunningAfterQuit: false,
 };
 
 const SETTINGS_PATH = path.join(
   homedir(),
-  ".closedmesh",
+  ".senda",
   "controller-settings.json",
 );
 

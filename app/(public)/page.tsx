@@ -13,13 +13,13 @@ import {
 } from "../components/marketing";
 
 export const metadata: Metadata = {
-  title: "ClosedMesh — your private LLM, on hardware people own",
+  title: "Senda — your private LLM, on hardware people own",
   description:
     "A peer-to-peer mesh that runs open-weight models end-to-end on the hardware contributors already own — Apple Silicon Macs and GPU boxes — with no third-party AI provider in the middle. Chat in your browser or run a node.",
 };
 
 /**
- * Public homepage at https://closedmesh.com/.
+ * Public homepage at https://senda.network/.
  *
  * Redesigned from a full-viewport chat into a scrollable marketing page
  * that explains the product up front, while keeping the instant-try hook:
@@ -81,10 +81,10 @@ export default function PublicHomePage() {
                 Two roles. One mesh.
               </h2>
               <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-                Anyone can chat — at closedmesh.com or in the desktop app —
+                Anyone can chat — at senda.network or in the desktop app —
                 without running anything themselves. Inference is served by
                 peers who&apos;ve chosen to contribute compute by running the
-                ClosedMesh LLM runtime on their own hardware. Anybody can be
+                Senda LLM runtime on their own hardware. Anybody can be
                 one, both, or neither.
               </p>
             </div>
@@ -95,7 +95,7 @@ export default function PublicHomePage() {
               <NumberedStep
                 n={1}
                 title="Chat"
-                body="Web at closedmesh.com or in the desktop app. Type a message, get a streamed response. No account, no setup, nothing to install."
+                body="Web at senda.network or in the desktop app. Type a message, get a streamed response. No account, no setup, nothing to install."
               />
               <NumberedStep
                 n={2}
@@ -105,7 +105,7 @@ export default function PublicHomePage() {
               <NumberedStep
                 n={3}
                 title="Compute peers"
-                body="Volunteered nodes running ClosedMesh LLM serve each session end-to-end on whichever peer fits the model. Auto-routes around offline ones; can pair two peers via speculative decoding for the mid-tier."
+                body="Volunteered nodes running Senda LLM serve each session end-to-end on whichever peer fits the model. Auto-routes around offline ones; can pair two peers via speculative decoding for the mid-tier."
               />
             </div>
           </div>
@@ -119,7 +119,7 @@ export default function PublicHomePage() {
                 Why a mesh
               </div>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-                Capacity is everywhere. ClosedMesh just uses it.
+                Capacity is everywhere. Senda just uses it.
               </h2>
             </div>
 
@@ -198,7 +198,7 @@ export default function PublicHomePage() {
                 Built for the work you keep in-house.
               </h2>
               <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-                ClosedMesh is private, low-cost inference for the work
+                Senda is private, low-cost inference for the work
                 open-weight models do well. It&apos;s for teams where keeping
                 data in-house and keeping per-token costs flat matter more than
                 shaving a second off every reply.
@@ -243,12 +243,12 @@ export default function PublicHomePage() {
 
             <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
               <FaqItem
-                q="What is ClosedMesh?"
+                q="What is Senda?"
                 a="A peer-to-peer mesh that runs open-weight models end-to-end on hardware contributors already own. Chat with it in your browser; behind the scenes a capability-aware router sends each session to a peer that can serve it. No third-party AI provider sits in the middle."
               />
               <FaqItem
                 q="Do I need to sign up or install anything to chat?"
-                a="No. Open closedmesh.com and start typing — no account, no install. The desktop app is only needed if you want to run a node and contribute compute."
+                a="No. Open senda.network and start typing — no account, no install. The desktop app is only needed if you want to run a node and contribute compute."
               />
               <FaqItem
                 q="Can a peer read my prompts?"

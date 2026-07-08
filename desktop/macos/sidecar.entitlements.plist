@@ -4,7 +4,7 @@
 <dict>
     <!--
         Entitlements for the Node.js sidecar binary that ships inside the
-        ClosedMesh.app bundle (Phase 8b — see ../SIDECAR.md).
+        Senda.app bundle (Phase 8b — see ../SIDECAR.md).
 
         Tauri ad-hoc-signs every binary it bundles with the hardened-runtime
         flag enabled, which strips Node's original entitlements. Without

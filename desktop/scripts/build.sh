@@ -2,9 +2,9 @@
 # desktop/scripts/build.sh — produce platform bundles from the Tauri shell.
 #
 # Outputs (depending on the host OS):
-#   macOS:    src-tauri/target/release/bundle/{macos,dmg}/ClosedMesh.app + .dmg
-#   Windows:  src-tauri/target/release/bundle/{msi,nsis}/ClosedMesh*.{msi,exe}
-#   Linux:    src-tauri/target/release/bundle/{deb,appimage}/ClosedMesh*.{deb,AppImage}
+#   macOS:    src-tauri/target/release/bundle/{macos,dmg}/Senda.app + .dmg
+#   Windows:  src-tauri/target/release/bundle/{msi,nsis}/Senda*.{msi,exe}
+#   Linux:    src-tauri/target/release/bundle/{deb,appimage}/Senda*.{deb,AppImage}
 #
 # (We use the default Cargo target dir, not src-tauri/, but the bundle
 #  layout is identical to a stock Tauri 2 project.)

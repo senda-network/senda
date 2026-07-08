@@ -20,21 +20,21 @@ function trimmedEnv(...keys: string[]): string | undefined {
 }
 
 const RUNTIME_URL =
-  trimmedEnv("CLOSEDMESH_RUNTIME_URL", "MESH_LLM_URL") ??
+  trimmedEnv("SENDA_RUNTIME_URL", "MESH_LLM_URL") ??
   "http://127.0.0.1:9337/v1";
 
 const ADMIN_URL =
-  trimmedEnv("CLOSEDMESH_ADMIN_URL", "MESH_CONSOLE_URL") ??
+  trimmedEnv("SENDA_ADMIN_URL", "MESH_CONSOLE_URL") ??
   "http://127.0.0.1:3131";
 
-const RUNTIME_TOKEN = trimmedEnv("CLOSEDMESH_RUNTIME_TOKEN") ?? "";
+const RUNTIME_TOKEN = trimmedEnv("SENDA_RUNTIME_TOKEN") ?? "";
 
 const runtimeHeaders: Record<string, string> = RUNTIME_TOKEN
   ? { Authorization: `Bearer ${RUNTIME_TOKEN}` }
   : {};
 
 // Public mesh entry node. Used to enrich the local runtime's view with peers
-// it isn't directly P2P-connected to. The desktop app's local closedmesh-llm
+// it isn't directly P2P-connected to. The desktop app's local senda-llm
 // only lists peers it has a live iroh link to (typically just the entry node
 // itself), so a Mesh page that reads only the local runtime shows "1 machine"
 // even when the entry sees three peers connected through it. The entry's
@@ -46,7 +46,7 @@ const runtimeHeaders: Record<string, string> = RUNTIME_TOKEN
 // node (i.e. the website itself, where the local response IS the mesh-wide
 // response). Override via env for staging / non-default entries.
 const MESH_DISCOVERY_BASE =
-  trimmedEnv("CLOSEDMESH_MESH_DISCOVERY_URL") ?? "https://mesh.closedmesh.com";
+  trimmedEnv("SENDA_MESH_DISCOVERY_URL") ?? "https://entry.senda.network";
 
 function sameHost(a: string, b: string): boolean {
   try {
@@ -63,7 +63,7 @@ const ENRICH_FROM_ENTRY = !sameHost(MESH_DISCOVERY_BASE, ADMIN_URL);
  *
  * Without a timeout, `Promise.all([…, fetchEntryStatus, fetchEntryModels])`
  * inside the desktop app blocks the entire `/api/status` response on a
- * round-trip to `mesh.closedmesh.com`. On a healthy connection that's
+ * round-trip to `entry.senda.network`. On a healthy connection that's
  * 100–400 ms (fine), but on a flaky/slow network the OS TCP timeout can
  * push it to multiple seconds — during which the Models page renders
  * with `mesh.nodes = []` and the fit pill stays blank. That's the
@@ -117,7 +117,7 @@ export type NodeCapabilitySummary = {
 
 /**
  * Coarse classification of a node's role inside an active distributed
- * inference. Mirrors `closedmesh-llm/closedmesh/src/api/status.rs`'s
+ * inference. Mirrors `senda-llm/senda/src/api/status.rs`'s
  * `PeerPayload.split_role`. The Mesh page reads this to render role badges
  * so the user understands when their box is contributing layers to a
  * collective serve vs running solo.
@@ -230,7 +230,7 @@ export type NodeSummary = {
   pipelineDegraded: boolean;
   /**
    * Self-audit snapshot from the node's mesh-visibility loop. Mirrors
-   * `closedmesh::mesh::visibility::MeshVisibilitySnapshot`. Present
+   * `senda::mesh::visibility::MeshVisibilitySnapshot`. Present
    * only for the self node today (the only node we have a local
    * runtime for); a future slice will phone-home per-peer audits so
    * other nodes' visibility can be rendered the same way.
@@ -272,7 +272,7 @@ export type MeshVisibility = {
 /**
  * Verification verdict for a peer's owner-signed model advertisement
  * (Phase 3.1, runtime v0.66.78+). Mirrors `ModelAdPayload` in the runtime's
- * `closedmesh/src/api/status.rs`. The entry node verifies each peer's signed
+ * `senda/src/api/status.rs`. The entry node verifies each peer's signed
  * per-model performance claims against the owner's Ed25519 key, node-id
  * binding, and freshness, and exposes the resulting verdict here so the
  * public status page can show whether a peer's advertised metrics are
@@ -294,7 +294,7 @@ export type ModelAd = {
 
 /**
  * Phase 3.2 sample-and-verify verdict for one (peer, model), mirroring
- * `VerifyPayload` in the runtime's `closedmesh/src/api/status.rs`. The entry
+ * `VerifyPayload` in the runtime's `senda/src/api/status.rs`. The entry
  * node re-runs a byte-identical probe against the peer's live model and
  * compares the returned logits to an independently-generated reference — so
  * `match` proves the peer is genuinely running the model it advertises, not
@@ -312,7 +312,7 @@ export type VerifyVerdict = {
 
 /**
  * Phase 3.2 reputation score for one (peer, model), mirroring
- * `ReputationPayload` in the runtime's `closedmesh/src/api/status.rs`. Unlike
+ * `ReputationPayload` in the runtime's `senda/src/api/status.rs`. Unlike
  * {@link VerifyVerdict} (latest probe only, expires after an hour), this is the
  * persistent EWMA accumulator the entry folds every sample-and-verify verdict
  * into — so it survives entry restarts and reflects a peer's track record, not
@@ -459,7 +459,7 @@ type RuntimeGpu = {
 };
 
 /**
- * Mirrors `closedmesh::mesh::visibility::MeshVisibilitySnapshot` in the
+ * Mirrors `senda::mesh::visibility::MeshVisibilitySnapshot` in the
  * runtime — see the doc on the Rust struct for the full audit semantics.
  * Present only when the runtime was started with `--join-url`; absent
  * (and treated as null) on older runtimes that pre-date Slice 1.
@@ -1051,7 +1051,7 @@ function buildNodes(
  * host's `capability.loadedModels`, and broke `scripts/ci-split-test.sh`
  * along with every legitimate split serve in production. See the CI
  * failure on commit 0fa439c8 for the trace and the matching revert in
- * `closedmesh-llm/closedmesh/src/api/mod.rs::pipeline_host_degraded`.
+ * `senda-llm/senda/src/api/mod.rs::pipeline_host_degraded`.
  *
  * This pass also drops models from the top-level `models` catalog when
  * no node is in `state="serving"` for them, so the "N models available"

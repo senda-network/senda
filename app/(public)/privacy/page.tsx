@@ -4,9 +4,9 @@ import { PublicHeader } from "../../components/PublicHeader";
 import { PublicFooter } from "../../components/PublicFooter";
 
 export const metadata: Metadata = {
-  title: "Privacy — ClosedMesh",
+  title: "Privacy — Senda",
   description:
-    "How ClosedMesh handles your data: no accounts, session pseudonymity, prompts go to a peer running an open model, and the honest trade-offs of peer-to-peer inference.",
+    "How Senda handles your data: no accounts, session pseudonymity, prompts go to a peer running an open model, and the honest trade-offs of peer-to-peer inference.",
 };
 
 const UPDATED = "June 29, 2026";
@@ -32,7 +32,7 @@ export default function PrivacyPage() {
             What we do — and don&apos;t — know about you.
           </h1>
           <p className="mt-5 text-pretty text-base leading-relaxed text-[var(--fg-muted)]">
-            ClosedMesh is a peer-to-peer mesh, so privacy here is a real
+            Senda is a peer-to-peer mesh, so privacy here is a real
             trade-off, not a marketing line. This page is the plain-language
             version of how your data is handled. Last updated {UPDATED}.
           </p>
@@ -60,7 +60,7 @@ export default function PrivacyPage() {
                 hosted API, and we don&apos;t pretend otherwise. Every peer
                 runs the same{" "}
                 <a
-                  href="https://github.com/closedmesh/closedmesh-llm"
+                  href="https://github.com/senda-network/senda-llm"
                   target="_blank"
                   rel="noreferrer"
                   className="text-[var(--accent)] hover:underline"
@@ -78,11 +78,11 @@ export default function PrivacyPage() {
 
             <Clause title="When the mesh can't serve a request">
               <p>
-                If no live peer can serve a request, ClosedMesh may fall back
+                If no live peer can serve a request, Senda may fall back
                 to a third-party inference provider to complete it. Those
                 requests are subject to that provider&apos;s terms and privacy
                 policy. The source that served any response is exposed in the{" "}
-                <code className="font-mono">x-closedmesh-served-by</code>{" "}
+                <code className="font-mono">x-senda-served-by</code>{" "}
                 response header (<code className="font-mono">mesh</code> vs{" "}
                 <code className="font-mono">fallback</code>) so it&apos;s never
                 hidden from you.
@@ -147,11 +147,11 @@ export default function PrivacyPage() {
 
             <Clause title="Changes & contact">
               <p>
-                ClosedMesh is under active development, so this policy will
+                Senda is under active development, so this policy will
                 evolve as the product does — we&apos;ll update the date above
                 when it changes. Questions or data requests: open an issue on{" "}
                 <a
-                  href="https://github.com/closedmesh/closedmesh-llm"
+                  href="https://github.com/senda-network/senda-llm"
                   target="_blank"
                   rel="noreferrer"
                   className="text-[var(--accent)] hover:underline"

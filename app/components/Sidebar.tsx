@@ -14,7 +14,7 @@ type NavItem = {
 };
 
 // The sidebar only renders inside the (control) layout, which only ships on
-// the local controller / desktop app. The public site (closedmesh.com) has
+// the local controller / desktop app. The public site (senda.network) has
 // its own marketing shell and never renders this component, so every entry
 // here is unconditionally control-side.
 const NAV: NavItem[] = [
@@ -65,7 +65,7 @@ export function Sidebar() {
         <Logo />
         <div className="leading-tight">
           <div className="text-[13px] font-semibold tracking-tight text-[var(--fg)]">
-            ClosedMesh
+            Senda
           </div>
           <div className="text-[10px] text-[var(--fg-muted)]">
             Private LLM mesh
