@@ -111,7 +111,7 @@ export default async function DownloadPage() {
 
       <ArtBand
         src="/senda-capacity.png"
-        alt="Interconnected leaf-vein cells with glowing nodes — distributed capacity"
+        alt="A glowing green trail winding across topographic contours with waypoint nodes linked into a mesh"
         className="h-44 sm:h-56 lg:h-64"
       />
 

@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 /**
  * The social share card for senda.network (og:image / twitter:image).
  * Composed with next/og so the wordmark + tagline stay crisp at any
- * scale, rendered in the brand's light/green language with the leaf mark.
+ * scale, rendered in the brand's light/green language with the S-path mark.
  *
  * Uses the system sans stack only — no runtime font fetch — so link
  * previews stay reliable on Vercel's edge OG renderer.
@@ -13,8 +13,8 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default function OpengraphImage() {
-  const leaf = `data:image/svg+xml;utf8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 22 C5.5 17 4.8 8.8 12 2 C19.2 8.8 18.5 17 12 22 Z" fill="#1a9d5f"/><path d="M12 21 L12 4.5 M12 15.5 L7.6 12.8 M12 15.5 L16.4 12.8 M12 10.5 L8.7 8.2 M12 10.5 L15.3 8.2" stroke="#eafaf1" stroke-width="1.1" stroke-linecap="round" fill="none" opacity="0.9"/></svg>`,
+  const mark = `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16.2 6.5 C13 4.4 8.4 5.2 8.4 9 C8.4 12.4 15.6 11.6 15.6 15 C15.6 18.8 11 19.6 7.8 17.5" fill="none" stroke="#1a9d5f" stroke-width="1.9" stroke-linecap="round" opacity="0.55"/><circle cx="16.2" cy="6.5" r="2.05" fill="#1a9d5f"/><circle cx="7.8" cy="17.5" r="2.05" fill="#1a9d5f"/><circle cx="12" cy="12" r="1.6" fill="#1a9d5f"/></svg>`,
   )}`;
 
   return new ImageResponse(
@@ -49,7 +49,7 @@ export default function OpengraphImage() {
 
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={leaf} width={52} height={52} alt="" />
+          <img src={mark} width={52} height={52} alt="" />
           <div
             style={{
               fontSize: 26,

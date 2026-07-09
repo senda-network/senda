@@ -1,8 +1,10 @@
 /**
- * The Senda mark: a leaf whose veins branch like paths across a network —
- * "senda" (Sp. path/trail) rendered as the routes a session takes. Green,
- * fresh, nature-leaning. Re-used in the header, the /about hero, the
- * favicon, and the matching senda-llm/docs/senda-logo.svg.
+ * The Senda mark: an "S-path". "Senda" (Sp. path/trail) drawn as a trail that
+ * curves into an S, with waypoint nodes along it — the route a session takes
+ * as it hops across peers in the mesh. Name (S for Senda), product (a path
+ * through peer nodes), and letterform read at once. Re-used in the header, the
+ * /about hero, the favicon (via desktop/icons/source.svg), and the matching
+ * senda-llm/docs/senda-logo*.svg. Keep those in sync on any rebrand.
  */
 export function Logo({
   size = 22,
@@ -22,16 +24,16 @@ export function Logo({
       className={className}
     >
       <path
-        d="M12 22 C5.5 17 4.8 8.8 12 2 C19.2 8.8 18.5 17 12 22 Z"
-        fill="var(--accent)"
-      />
-      <path
-        d="M12 21 L12 4.5 M12 15.5 L7.6 12.8 M12 15.5 L16.4 12.8 M12 10.5 L8.7 8.2 M12 10.5 L15.3 8.2"
-        stroke="var(--bg-elev)"
-        strokeWidth="1.1"
+        d="M16.2 6.5 C13 4.4 8.4 5.2 8.4 9 C8.4 12.4 15.6 11.6 15.6 15 C15.6 18.8 11 19.6 7.8 17.5"
+        stroke="var(--accent)"
+        strokeWidth="1.9"
         strokeLinecap="round"
-        opacity="0.85"
+        opacity="0.55"
+        fill="none"
       />
+      <circle cx="16.2" cy="6.5" r="2.05" fill="var(--accent)" />
+      <circle cx="7.8" cy="17.5" r="2.05" fill="var(--accent)" />
+      <circle cx="12" cy="12" r="1.6" fill="var(--accent)" />
     </svg>
   );
 }

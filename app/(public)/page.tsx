@@ -200,10 +200,10 @@ export default function PublicHomePage() {
           </div>
         </section>
 
-        {/* Artwork — distributed capacity as living tissue */}
+        {/* Artwork — a glowing trail routing through peers over topographic terrain */}
         <ArtBand
           src="/senda-capacity.png"
-          alt="A soft organic field of interconnected leaf-vein cells with scattered glowing points where filaments meet"
+          alt="A glowing green trail winding across topographic contour lines, dotted with luminous waypoint nodes linked into a mesh"
         />
 
         {/* Two-sided progression — chat / contribute / earn */}
