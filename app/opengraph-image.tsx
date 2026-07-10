@@ -14,7 +14,7 @@ export const contentType = "image/png";
 
 export default function OpengraphImage() {
   const mark = `data:image/svg+xml;utf8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16.2 6.5 C13 4.4 8.4 5.2 8.4 9 C8.4 12.4 15.6 11.6 15.6 15 C15.6 18.8 11 19.6 7.8 17.5" fill="none" stroke="#1a9d5f" stroke-width="1.9" stroke-linecap="round" opacity="0.55"/><circle cx="16.2" cy="6.5" r="2.05" fill="#1a9d5f"/><circle cx="7.8" cy="17.5" r="2.05" fill="#1a9d5f"/><circle cx="12" cy="12" r="1.6" fill="#1a9d5f"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.5 21.5 C 3.6 16.8 4.6 7.4 14.4 2.8 C 18.7 8.6 17.1 17.3 10.5 21.5 Z" fill="#1a9d5f"/><path d="M10.5 20.3 C 12.2 15 12 8.5 14 4" fill="none" stroke="#f6faf7" stroke-width="1.05" stroke-linecap="round" opacity="0.9"/><path d="M11.7 16 L15.3 13.8 M12.4 11.5 L16 9.2 M12 13.8 L8.2 12 M12.6 9 L9.2 7.2" fill="none" stroke="#f6faf7" stroke-width="1" stroke-linecap="round" opacity="0.85"/><circle cx="14" cy="3.8" r="0.9" fill="#f6faf7"/><circle cx="16" cy="9.2" r="0.9" fill="#f6faf7"/><circle cx="8.2" cy="12" r="0.9" fill="#f6faf7"/></svg>`,
   )}`;
 
   return new ImageResponse(

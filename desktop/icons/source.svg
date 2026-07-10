@@ -9,11 +9,11 @@
   favicon / apple-touch-icon / PWA PNGs and copies this file to app/icon.svg —
   so this is the single rebrand point for every square Senda mark.
 
-  Design mirrors app/components/Logo.tsx: the "S-path" mark. "Senda" is
-  Spanish for path/trail; the mark is a trail that curves into an S with
-  waypoint nodes along it — the route a session takes as it hops across peers
-  in the mesh. Name (S for Senda), product (a path through peer nodes), and
-  letterform all read at once.
+  Design mirrors app/components/Logo.tsx: a leaf whose midrib and veins branch
+  like routes across a network, with three waypoint nodes at the vein tips.
+  "Senda" is Spanish for path/trail; the leaf is the living trail a session
+  takes as it hops across peers in the mesh, and the three nodes echo the
+  original mesh mark. Leaf + path + mesh all read at once.
 
   Colours match the accent token in app/globals.css. The tile is deep pine
   (trail green, not eco-lime). If you rebrand, change this file, Logo.tsx, and
@@ -34,9 +34,15 @@
   <rect x="0" y="0" width="1024" height="1024" rx="230" ry="230" fill="url(#bg)"/>
   <rect x="0" y="0" width="1024" height="1024" rx="230" ry="230" fill="url(#glow)"/>
 
-  <path d="M680 340 C592 264 428 280 428 400 C428 508 600 500 600 612 C600 732 432 744 352 668"
-        fill="none" stroke="#f4fbf6" stroke-width="52" stroke-linecap="round" stroke-opacity="0.5"/>
-  <circle cx="680" cy="340" r="60" fill="#f4fbf6"/>
-  <circle cx="352" cy="668" r="60" fill="#f4fbf6"/>
-  <circle cx="514" cy="506" r="44" fill="#bff0d4"/>
+  <g transform="translate(512 512) scale(39) translate(-11.15 -12.15)">
+    <path d="M10.5 21.5 C 3.6 16.8 4.6 7.4 14.4 2.8 C 18.7 8.6 17.1 17.3 10.5 21.5 Z"
+          fill="#f4fbf6"/>
+    <path d="M10.5 20.3 C 12.2 15 12 8.5 14 4"
+          fill="none" stroke="#0b5e38" stroke-width="1" stroke-linecap="round" stroke-opacity="0.6"/>
+    <path d="M11.7 16 L15.3 13.8 M12.4 11.5 L16 9.2 M12 13.8 L8.2 12 M12.6 9 L9.2 7.2"
+          fill="none" stroke="#0b5e38" stroke-width="0.95" stroke-linecap="round" stroke-opacity="0.55"/>
+    <circle cx="14" cy="3.8" r="0.95" fill="#bff0d4"/>
+    <circle cx="16" cy="9.2" r="0.95" fill="#bff0d4"/>
+    <circle cx="8.2" cy="12" r="0.95" fill="#bff0d4"/>
+  </g>
 </svg>
