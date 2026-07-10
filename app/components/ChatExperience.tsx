@@ -7,6 +7,8 @@ import { ChatMessage } from "./ChatMessage";
 import { MeshAwareNote } from "./MeshAwareNote";
 import { MeshUnderprovisionedNote } from "./MeshUnderprovisionedNote";
 import { ModelSelector } from "./ModelSelector";
+import { Button } from "./ui/Button";
+import { Callout } from "./ui/Callout";
 import { apiUrl } from "../lib/runtime-target";
 
 const SESSION_KEY = "senda:threadId";
@@ -285,7 +287,7 @@ export function ChatExperience({
         <div className={centered ? "mx-auto max-w-3xl px-4 py-4" : "px-4 py-4"}>
           <form
             onSubmit={submit}
-            className="flex items-end gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-2 focus-within:border-[var(--accent)]/60"
+            className="flex items-end gap-2 rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-2 shadow-[var(--shadow-sm)] transition-colors focus-within:border-[var(--accent)]/60"
           >
             <textarea
               ref={textareaRef}
@@ -299,28 +301,22 @@ export function ChatExperience({
               onKeyDown={onKeyDown}
               placeholder="Ask anything…"
               rows={1}
-              className="max-h-[200px] flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] leading-relaxed text-[var(--fg)] placeholder:text-[var(--fg-muted)] focus:outline-none"
+              className="max-h-[200px] flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] leading-relaxed text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none"
             />
-            <ModelSelector
-              value={selectedModel}
-              onChange={setSelectedModel}
-            />
+            <ModelSelector value={selectedModel} onChange={setSelectedModel} />
             {isStreaming ? (
-              <button
-                type="button"
-                onClick={() => stop()}
-                className="rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-1.5 text-xs font-medium text-[var(--fg)] hover:bg-[var(--border)]"
-              >
+              <Button variant="secondary" size="sm" onClick={() => stop()}>
                 Stop
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 type="submit"
+                variant="primary"
+                size="sm"
                 disabled={!input.trim()}
-                className="rounded-lg bg-[var(--accent)] px-4 py-1.5 text-xs font-semibold text-black shadow-[0_6px_18px_-10px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
               >
                 Send
-              </button>
+              </Button>
             )}
           </form>
           <div className="mt-2 flex items-center justify-center gap-3 text-[11px] text-[var(--fg-muted)]">
@@ -354,19 +350,16 @@ function ChatError({ error }: { error: Error }) {
 
   if (isNoCapableNode) {
     return (
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
-        <div className="font-medium">The mesh is busy right now.</div>
-        <div className="mt-1 text-amber-300/80">
-          No node currently online can serve this model. Try a smaller
-          model or try again in a moment.
-        </div>
-      </div>
+      <Callout tone="warn" title="The mesh is busy right now">
+        No machine currently online can serve this model. Try a smaller model or
+        try again in a moment.
+      </Callout>
     );
   }
 
   return (
-    <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-300">
+    <Callout tone="danger">
       {msg || "Couldn't reach the mesh. Try again in a moment."}
-    </div>
+    </Callout>
   );
 }

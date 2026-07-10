@@ -1,4 +1,4 @@
-import { Sidebar } from "../components/Sidebar";
+import { AppShell } from "../components/AppShell";
 import { DownloadsProvider } from "../lib/downloads-context";
 
 // Don't statically prerender the control surface. The desktop app's
@@ -12,24 +12,18 @@ import { DownloadsProvider } from "../lib/downloads-context";
 export const dynamic = "force-dynamic";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  // The shell is pinned to the viewport — `h-dvh` + `overflow-hidden` on the
-  // outer flex row stops the document body from ever scrolling. The sidebar
-  // then naturally fills the full viewport height (default flex stretch),
-  // and the right pane is the lone scroll container so the page header on
-  // each route stays sticky to its own pane instead of disappearing off the
-  // top of the document with the sidebar in tow.
+  // AppShell is the chat-first control shell: a slim top bar (brand, global
+  // Sharing control, quiet icon rail, Cmd-K palette) over a single bounded
+  // scroll area that renders the active route. It pins itself to the viewport
+  // (`h-dvh` + `overflow-hidden`) so the page is the lone scroll container.
   //
-  // `DownloadsProvider` wraps every control route so that an in-flight
-  // model download stays alive when the user hops between Models, Mesh,
-  // Status, etc. The previous setup kept `downloads` state inside
-  // `models/page.tsx` and lost it on every navigation; see
-  // `app/lib/downloads-context.tsx` for the full rationale.
+  // `DownloadsProvider` wraps every control route so that an in-flight model
+  // download stays alive when the user moves between surfaces. The previous
+  // setup kept `downloads` state inside `models/page.tsx` and lost it on every
+  // navigation; see `app/lib/downloads-context.tsx` for the full rationale.
   return (
-    <div className="flex h-dvh overflow-hidden">
-      <Sidebar />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-        <DownloadsProvider>{children}</DownloadsProvider>
-      </div>
-    </div>
+    <DownloadsProvider>
+      <AppShell>{children}</AppShell>
+    </DownloadsProvider>
   );
 }

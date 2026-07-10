@@ -33,6 +33,11 @@ export const metadata: Metadata = {
   },
 };
 
+// Runs before first paint to set the persisted theme, avoiding a light/dark
+// flash. "system" (or unset) leaves the attribute off so the CSS
+// prefers-color-scheme media query governs. Keep in sync with app/lib/theme.ts.
+const themeScript = `(function(){try{var t=localStorage.getItem("senda:theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -43,6 +48,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <meta name="color-scheme" content="light dark" />
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {children}
       </body>

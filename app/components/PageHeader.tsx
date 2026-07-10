@@ -1,14 +1,12 @@
-import { StatusPill } from "./StatusPill";
-
 /**
- * Sticky page header used across every sidebar-shell route.
+ * Sticky page header used across control routes for title/subtitle. The global
+ * top bar (AppShell) now owns live status and the Sharing control, so this no
+ * longer renders a StatusPill by default — pass `actions` only for page-local
+ * controls.
  *
  * Visual rules (kept consistent so the app feels of-a-piece):
- *   - Subtle orange ambient glow at the top of each page, fading out at
- *     ~120px. Echoes the first-run hero without being loud.
- *   - Title in regular weight + tighter tracking; subtitle is muted.
- *   - Actions slot on the right defaults to <StatusPill /> when nothing
- *     is passed; this is what most pages want.
+ *   - Subtle ambient accent glow at the top of each page, fading out at ~120px.
+ *   - Title in semibold + tight tracking; subtitle is muted.
  *   - Optional `eyebrow` for a small uppercase label above the title.
  */
 export function PageHeader({
@@ -48,7 +46,7 @@ export function PageHeader({
             </div>
           )}
         </div>
-        <div className="shrink-0">{actions ?? <StatusPill />}</div>
+        {actions && <div className="shrink-0">{actions}</div>}
       </div>
     </header>
   );

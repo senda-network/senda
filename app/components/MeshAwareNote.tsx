@@ -1,21 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { useMeshModels } from "../lib/use-mesh-models";
 
 /**
- * Tiny "this answer is going to come from the swarm" line shown above the
- * chat composer when the mesh is currently running a model that's split
- * across multiple contributors. Builds the mental model in the highest
- * traffic surface — most users land in chat first, and this is where the
- * mesh's collective behavior is least visible.
+ * A quiet, dismissible one-liner shown above the chat when a served model is
+ * currently split across several contributors. It builds the "answers come
+ * from the swarm" mental model without shouting — a muted chip, not a banner.
+ * The technical detail (pipeline vs MoE, pooled GB) lives in the title on hover.
  *
- * Renders `null` when:
- *   - the runtime is older than the schema (no `split_kind` data)
- *   - every served model is `solo` or `cold` (nothing notable to mention)
+ * Renders null when the runtime predates the schema, nothing is split, or the
+ * user has dismissed it this session.
  */
 export function MeshAwareNote() {
   const { models, loading, online } = useMeshModels();
-  if (loading || !online) return null;
+  const [dismissed, setDismissed] = useState(false);
+
+  if (loading || !online || dismissed) return null;
 
   const splits = models.filter(
     (m) =>
@@ -24,19 +25,31 @@ export function MeshAwareNote() {
   );
   if (splits.length === 0) return null;
 
-  // Surface up to 2 splits in the message to stay readable.
   const lead = splits[0];
-  const extra = splits.length - 1;
-
-  const noun = lead.splitKind === "pipeline" ? "pipeline-split" : "MoE-sharded";
+  const detail =
+    lead.splitKind === "pipeline"
+      ? `${lead.displayName || lead.name} is running across ${lead.nodeCount} peers pooling ${lead.meshVramGb.toFixed(0)} GB (pipeline split).`
+      : `${lead.displayName || lead.name} is running as ${lead.nodeCount} MoE shards pooling ${lead.meshVramGb.toFixed(0)} GB.`;
 
   return (
-    <div className="rounded-xl border border-sky-400/30 bg-sky-400/5 px-4 py-2.5 text-[12px] text-sky-300/90">
-      <span className="text-sky-200">{lead.displayName || lead.name}</span> is
-      currently {noun} across {lead.nodeCount} contributors pooling{" "}
-      {lead.meshVramGb.toFixed(1)} GB
-      {extra > 0 ? `, plus ${extra} more split ${extra === 1 ? "model" : "models"}` : ""}
-      . Responses come from the swarm, not a single machine.
+    <div className="flex justify-center">
+      <span
+        title={detail}
+        className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-1 text-[11px] text-[var(--fg-muted)]"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--info)]" />
+        Answered by the swarm — {lead.nodeCount} peers pooled
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          aria-label="Dismiss"
+          className="ml-0.5 text-[var(--fg-subtle)] transition-colors hover:text-[var(--fg)]"
+        >
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+            <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
+      </span>
     </div>
   );
 }

@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { useCatalog } from "../../lib/use-catalog";
+import { Button } from "../../components/ui/Button";
+import { Switch } from "../../components/ui/Switch";
+import { ThemeToggle } from "../../components/ui/ThemeToggle";
 
 type Backend = "auto" | "metal" | "cuda" | "rocm" | "vulkan" | "cpu";
 
@@ -129,7 +132,7 @@ export default function SettingsPage() {
   const downloadedCatalog = catalog.filter((m) => downloadedIds.has(m.id));
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-full flex-col">
       <PageHeader
         title="Settings"
         subtitle="How Senda runs on this machine."
@@ -138,12 +141,20 @@ export default function SettingsPage() {
       <main className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-6">
           <Card
+            eyebrow="Appearance"
+            title="Theme"
+            hint="Match your system, or force light or dark. Applies everywhere in Senda."
+          >
+            <ThemeToggle />
+          </Card>
+
+          <Card
             eyebrow="Startup"
             title="Start automatically when I log in"
             hint="Senda will be running in the background, ready to share your machine and answer chat requests."
           >
             <div className="flex items-center justify-between gap-4">
-              <Toggle
+              <Switch
                 checked={autostart ?? false}
                 disabled={autostart === null || autostartBusy}
                 onChange={toggleAutostart}
@@ -159,7 +170,7 @@ export default function SettingsPage() {
               </span>
             </div>
             {autostartError && (
-              <div className="mt-3 text-[11px] text-red-300">
+              <div className="mt-3 text-[11px] text-[var(--danger)]">
                 {autostartError}
               </div>
             )}
@@ -171,7 +182,7 @@ export default function SettingsPage() {
             hint="On: the runtime keeps serving in the background after you close the app — your machine still answers chat requests for the mesh. Off (default): quitting actually leaves the mesh, like CMD+Q implies."
           >
             <div className="flex items-center justify-between gap-4">
-              <Toggle
+              <Switch
                 checked={settings?.keepMeshRunningAfterQuit ?? false}
                 disabled={!settings}
                 onChange={(v) => update("keepMeshRunningAfterQuit", v)}
@@ -186,8 +197,8 @@ export default function SettingsPage() {
 
           <Card
             eyebrow="Chat"
-            title="Default model"
-            hint="What chat asks for if you don't pick one. We'll fall back to whatever is loaded if your default isn't ready."
+            title="Default chat model"
+            hint="What chat asks for when you don't pick one per-conversation. Different from a machine's Startup model (what it loads on boot). Falls back to whatever's loaded if your default isn't ready."
           >
             <select
               value={settings?.defaultModel ?? ""}
@@ -295,13 +306,13 @@ export default function SettingsPage() {
                     ? saveMsg
                     : "Changes apply on save."}
             </span>
-            <button
+            <Button
+              variant="primary"
               onClick={persist}
               disabled={save === "saving" || !settings}
-              className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               {save === "saving" ? "Saving…" : "Save changes"}
-            </button>
+            </Button>
           </div>
         </div>
       </main>
@@ -356,35 +367,3 @@ function Field({
   );
 }
 
-function Toggle({
-  checked,
-  disabled,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={
-        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 " +
-        (checked
-          ? "bg-[var(--accent)] shadow-[0_4px_18px_-6px_rgba(26,157,95,0.8)]"
-          : "bg-[var(--border)]")
-      }
-    >
-      <span
-        className={
-          "inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition " +
-          (checked ? "translate-x-5" : "translate-x-0.5")
-        }
-      />
-    </button>
-  );
-}

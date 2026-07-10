@@ -19,6 +19,7 @@ import { useMeshModels } from "../../lib/use-mesh-models";
 import { nodeDisplayState } from "../../lib/node-display-state";
 import { loadedModelUnderprovisioning } from "../../lib/mesh-fit";
 import { LiveLaunchState } from "../../components/LiveLaunchState";
+import { Button } from "../../components/ui/Button";
 
 type ServiceState =
   | { state: "running"; pid: number | null }
@@ -835,10 +836,10 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-full flex-col">
       <PageHeader
-        title="Dashboard"
-        subtitle="Your machine, the mesh, and the models you're running."
+        title="Machine"
+        subtitle="This machine's health, the runtime, and what it's serving."
       />
 
       <main className="flex-1 overflow-y-auto scrollbar-thin">
@@ -1294,6 +1295,14 @@ function ThisNodeCard({
   const backend = cap ? BACKEND_LABEL[cap.backend] ?? cap.backend : null;
   const vram = cap?.vramGb ?? self?.vramGb ?? 0;
   const loaded = cap?.loadedModels ?? [];
+  // "Memory" is ambiguous on Apple Silicon (unified) vs discrete GPUs (VRAM).
+  // Label it for what it actually is on this machine's backend.
+  const memLabel =
+    cap?.backend === "metal"
+      ? "Unified memory"
+      : cap?.backend === "cpu"
+        ? "System memory"
+        : "GPU memory";
 
   // Look up the live planner snapshot for each loaded model so we can
   // render solo/split/moe/mmap-fallback under the model name. The runtime
@@ -1381,21 +1390,17 @@ function ThisNodeCard({
 
         <div className="flex gap-2">
           {running ? (
-            <button
-              disabled={busy !== null}
-              onClick={onStop}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-4 py-2 text-sm font-medium text-[var(--fg)] transition hover:bg-[var(--border)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
+            <Button variant="secondary" disabled={busy !== null} onClick={onStop}>
               {busy === "stop" ? "Stopping…" : "Stop sharing"}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
+              variant="primary"
               disabled={busy !== null || running}
               onClick={onStart}
-              className="rounded-lg bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {busy === "start" ? "Starting…" : "Start sharing"}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1403,7 +1408,7 @@ function ThisNodeCard({
       <div className="relative mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat label="Hardware" value={backend ?? "—"} accent={!!backend} />
         <Stat
-          label="Memory"
+          label={memLabel}
           value={vram ? `${vram.toFixed(1)} GB` : "—"}
         />
         <Stat
@@ -2763,7 +2768,7 @@ function ShareInviteCard() {
 
 function PublicNoMesh() {
   return (
-    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[var(--bg)] p-8">
+    <div className="relative flex h-full items-center justify-center overflow-hidden bg-[var(--bg)] p-8">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"

@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
+import { Input } from "../../components/ui/Input";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { Switch } from "../../components/ui/Switch";
 
 type LogsResp = {
   ok: boolean;
@@ -18,6 +21,7 @@ export default function LogsPage() {
   });
   const [stream, setStream] = useState<Stream>("stdout");
   const [autoFollow, setAutoFollow] = useState(true);
+  const [query, setQuery] = useState("");
   const paneRef = useRef<HTMLPreElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -50,8 +54,15 @@ export default function LogsPage() {
   const body = cleanLogBody(stream === "stdout" ? logs.stdout : logs.stderr);
   const errorCount = countLines(logs.stderr);
 
+  const { display, matchCount } = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return { display: body, matchCount: null as number | null };
+    const lines = body.split("\n").filter((l) => l.toLowerCase().includes(q));
+    return { display: lines.join("\n"), matchCount: lines.length };
+  }, [body, query]);
+
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-full flex-col">
       <PageHeader
         title="Activity"
         subtitle="What Senda is doing on this machine — handy if something looks off."
@@ -59,82 +70,57 @@ export default function LogsPage() {
 
       <main className="flex flex-1 flex-col overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-elev)] px-6 py-2.5">
-          <div className="flex gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg)] p-1 text-xs">
-            <StreamButton
-              active={stream === "stdout"}
-              onClick={() => setStream("stdout")}
-              badge={null}
-            >
-              Activity
-            </StreamButton>
-            <StreamButton
-              active={stream === "stderr"}
-              onClick={() => setStream("stderr")}
-              badge={errorCount > 0 ? errorCount : null}
-            >
-              Errors
-            </StreamButton>
+          <SegmentedControl<Stream>
+            size="sm"
+            value={stream}
+            onChange={setStream}
+            options={[
+              { value: "stdout", label: "Activity" },
+              {
+                value: "stderr",
+                label:
+                  errorCount > 0 ? `Errors · ${errorCount}` : "Errors",
+              },
+            ]}
+          />
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filter…"
+                className="h-8 w-44 py-1 text-[12px]"
+              />
+              {matchCount !== null && (
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--fg-subtle)]">
+                  {matchCount}
+                </span>
+              )}
+            </div>
+            <label className="flex items-center gap-2 text-[11px] text-[var(--fg-muted)]">
+              <Switch
+                checked={autoFollow}
+                onChange={setAutoFollow}
+                label="Follow latest"
+              />
+              Follow latest
+            </label>
           </div>
-          <label className="flex items-center gap-2 text-[11px] text-[var(--fg-muted)]">
-            <input
-              type="checkbox"
-              checked={autoFollow}
-              onChange={(e) => setAutoFollow(e.target.checked)}
-              className="accent-[var(--accent)]"
-            />
-            Follow latest
-          </label>
         </div>
 
         <pre
           ref={paneRef}
-          className="flex-1 overflow-auto bg-black/60 px-6 py-4 font-mono text-[11px] leading-5 text-[var(--fg-muted)] scrollbar-thin"
+          className="flex-1 overflow-auto bg-[#0a0e0c] px-6 py-4 font-mono text-[11px] leading-5 text-[#9db3a6] scrollbar-thin"
         >
-{body ||
-  (stream === "stdout"
-    ? "Quiet so far. Activity will show up here as the mesh runs."
-    : "No errors. That's good.")}
+{display ||
+  (query.trim()
+    ? "No lines match your filter."
+    : stream === "stdout"
+      ? "Quiet so far. Activity will show up here as the mesh runs."
+      : "No errors. That's good.")}
         </pre>
       </main>
     </div>
-  );
-}
-
-function StreamButton({
-  active,
-  onClick,
-  children,
-  badge,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  badge: number | null;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        "flex items-center gap-1.5 rounded px-3 py-1 transition " +
-        (active
-          ? "bg-[var(--bg-elev-2)] text-[var(--fg)]"
-          : "text-[var(--fg-muted)] hover:text-[var(--fg)]")
-      }
-    >
-      <span>{children}</span>
-      {badge !== null && (
-        <span
-          className={
-            "rounded-full px-1.5 py-0.5 text-[9px] font-medium " +
-            (active
-              ? "bg-red-500/20 text-red-300"
-              : "bg-[var(--border)] text-[var(--fg-muted)]")
-          }
-        >
-          {badge}
-        </span>
-      )}
-    </button>
   );
 }
 

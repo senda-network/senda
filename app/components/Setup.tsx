@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Logo } from "./Logo";
+import { Button } from "./ui/Button";
 
 type LogLine =
   | { kind: "stdout" | "stderr"; text: string }
@@ -198,12 +199,14 @@ function Hero({
       </div>
 
       <div className="mt-10 flex w-full max-w-md flex-col items-center gap-4">
-        <button
+        <Button
+          variant="primary"
+          size="lg"
           onClick={onInstall}
-          className="w-full rounded-xl bg-[var(--accent)] px-6 py-4 text-base font-semibold text-black shadow-[0_10px_30px_-12px_rgba(26,157,95,0.8)] transition hover:brightness-110"
+          className="w-full py-4 text-base"
         >
           Install and join the mesh
-        </button>
+        </Button>
         <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-[var(--fg-muted)]">
           <input
             type="checkbox"
@@ -255,7 +258,7 @@ function Progress({
       : phase === "starting"
         ? "Almost there."
         : phase === "done"
-          ? "Loading your dashboard…"
+          ? "Opening chat…"
           : (error ?? "Try again.");
 
   return (

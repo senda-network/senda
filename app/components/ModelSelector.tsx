@@ -1,17 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 import { useMeshModels } from "../lib/use-mesh-models";
 import type { MeshModel } from "../lib/use-mesh-status";
 import { DEFAULT_DAILY_DRIVER_MODEL, getModelTier } from "../lib/model-tiers";
+import { isPublicDeployment } from "../lib/runtime-target";
+import { Popover } from "./ui/Popover";
+import { cn } from "./ui/cn";
 
 const STORAGE_KEY = "senda:selectedModel";
 
 /**
- * Strip quant suffix and `.gguf` from a runtime model id so the dropdown
- * reads "Qwen3-30B-A3B" instead of "Qwen3-30B-A3B-Q4_K_M.gguf". Keeps
- * the exact id in `<option value>` so the chat request still pins to
- * the precise quant the host is serving.
+ * Strip quant suffix and `.gguf` from a runtime model id so the switcher reads
+ * "Qwen3-30B-A3B" instead of "Qwen3-30B-A3B-Q4_K_M.gguf". The exact id is still
+ * what we pass to the chat request so it pins to the precise quant.
  */
 function pretty(id: string): string {
   return id
@@ -22,19 +25,9 @@ function pretty(id: string): string {
 }
 
 /**
- * Pick a sensible default when the visitor hasn't explicitly chosen yet
- * (or their previous choice has dropped out of the inventory).
- *
- * Phase 4.A invariant — the default is *always* a daily-driver. We never
- * auto-select a capacity-tier model (e.g. DeepSeek-70B, ~1 tok/s
- * through-mesh): a brand-new visitor hitting "Hi there" on a 70B is the
- * exact UX failure the routable-network reframe is built to avoid.
- *
- * Order: a warm daily-driver (prefer the canonical flagship), else any
- * daily-driver in inventory, else `undefined` — which surfaces "auto" in
- * the dropdown and lets the server default produce an honest "no peer is
- * serving this model" error. A visitor who wants a capacity model picks
- * it explicitly from the list (where the capacity tier copy is visible).
+ * Pick a sensible default when nothing is chosen yet. Always a daily-driver —
+ * never auto-select a slow capacity-tier model. See the original rationale
+ * retained from the previous select implementation.
  */
 function pickDefault(models: MeshModel[]): string | undefined {
   if (models.length === 0) return undefined;
@@ -60,13 +53,9 @@ export type ModelSelectorProps = {
 };
 
 /**
- * Bare `<select>` rendered inside the chat composer next to the Send
- * button. The chat API (`app/api/chat/route.ts`) already accepts
- * `body.model`; this is the UI surface that lets the visitor target a
- * specific peer/split by name instead of relying on
- * `pickDefaultModel()`'s "first id from /v1/models" heuristic — which
- * was non-deterministic across mesh changes and routed requests to
- * whichever peer happened to be listed first.
+ * Calm model switcher for the chat composer: a quiet button showing the active
+ * model that opens a popover list, rather than a cramped native `<select>`.
+ * Keeps the default-picking + localStorage persistence from before.
  */
 export function ModelSelector({ value, onChange }: ModelSelectorProps) {
   const { loading, models } = useMeshModels();
@@ -91,23 +80,89 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
     window.localStorage.setItem(STORAGE_KEY, value);
   }, [value]);
 
+  const current = value ? pretty(value) : models.length === 0 ? "No models" : "Auto";
+
   return (
-    <select
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value || undefined)}
-      disabled={models.length === 0}
-      aria-label="Model"
-      className="max-w-[160px] truncate rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-2 py-1.5 text-xs text-[var(--fg)] focus:border-[var(--accent)]/60 focus:outline-none disabled:opacity-50"
-    >
-      {models.length === 0 ? (
-        <option value="">auto</option>
-      ) : (
-        models.map((m) => (
-          <option key={m.name} value={m.name}>
-            {pretty(m.displayName || m.name)}
-          </option>
-        ))
+    <Popover
+      side="top"
+      align="end"
+      width={260}
+      trigger={({ toggle, open }) => (
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={models.length === 0}
+          aria-label="Choose model"
+          className={cn(
+            "flex max-w-[180px] items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elev-2)] px-2.5 py-1.5 text-[12px] text-[var(--fg-muted)] transition-colors",
+            "hover:border-[var(--border-strong)] hover:text-[var(--fg)] disabled:opacity-50",
+            open && "border-[var(--border-strong)] text-[var(--fg)]",
+          )}
+        >
+          <span className="truncate">{current}</span>
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className="shrink-0">
+            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       )}
-    </select>
+    >
+      {({ close }) => (
+        <div className="max-h-[320px] overflow-y-auto scrollbar-thin p-1.5">
+          {models.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[12px] text-[var(--fg-muted)]">
+              No models on the mesh yet.
+            </div>
+          ) : (
+            models.map((m) => {
+              const active = m.name === value;
+              const warm = m.status === "warm" && m.nodeCount > 0;
+              return (
+                <button
+                  key={m.name}
+                  type="button"
+                  onClick={() => {
+                    onChange(m.name);
+                    close();
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2.5 py-2 text-left text-[13px] transition-colors",
+                    active
+                      ? "bg-[var(--accent-soft)] text-[var(--fg)]"
+                      : "text-[var(--fg-muted)] hover:bg-[var(--bg-elev-2)] hover:text-[var(--fg)]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
+                      warm ? "bg-[var(--success)]" : "bg-[var(--fg-subtle)]",
+                    )}
+                    title={warm ? "Serving now" : "Not currently served"}
+                  />
+                  <span className="flex-1 truncate text-[var(--fg)]">
+                    {pretty(m.displayName || m.name)}
+                  </span>
+                  {active && (
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0 text-[var(--accent)]">
+                      <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })
+          )}
+          {!isPublicDeployment() && (
+            <div className="mt-1 border-t border-[var(--border)] px-2.5 pt-2">
+              <Link
+                href="/models"
+                onClick={close}
+                className="text-[12px] text-[var(--accent)] hover:underline"
+              >
+                Manage models →
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+    </Popover>
   );
 }

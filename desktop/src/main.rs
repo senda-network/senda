@@ -339,7 +339,7 @@ fn build_tray_menu_for_handle(
         builder = builder.item(&MenuItem::with_id(
             app,
             MENU_STOP,
-            "Stop Senda Service",
+            "Stop sharing",
             true,
             None::<&str>,
         )?);
@@ -347,7 +347,7 @@ fn build_tray_menu_for_handle(
         builder = builder.item(&MenuItem::with_id(
             app,
             MENU_START,
-            "Start Senda Service",
+            "Start sharing",
             true,
             None::<&str>,
         )?);
@@ -534,15 +534,15 @@ fn pin_huggingface_cache_dir() {
     );
 }
 
-/// Append the control-group entry path (`/dashboard`) to the controller's
-/// base URL. Handles both `http://127.0.0.1:42141` and `http://127.0.0.1:42141/`
-/// inputs without producing a double slash. When the fallback URL is the
-/// public site (https://senda.network), this still produces a valid URL
-/// — middleware on the public site renders a 404 with a link back to /,
-/// which is acceptable degradation when there's no local controller.
+/// Append the control-group entry path (`/chat`, the chat-first home) to the
+/// controller's base URL. Handles both `http://127.0.0.1:42141` and
+/// `http://127.0.0.1:42141/` inputs without producing a double slash. When the
+/// fallback URL is the public site (https://senda.network), this still produces
+/// a valid URL — middleware on the public site renders a 404 with a link back
+/// to /, which is acceptable degradation when there's no local controller.
 fn control_entry_url(base: &str) -> String {
     let trimmed = base.trim_end_matches('/');
-    format!("{trimmed}/dashboard")
+    format!("{trimmed}/chat")
 }
 
 /// Wipe the WKWebView / WebKit2GTK / WebView2 disk cache the first time

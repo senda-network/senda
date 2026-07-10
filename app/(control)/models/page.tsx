@@ -8,6 +8,8 @@ import { useMeshStatus, type MeshModel } from "../../lib/use-mesh-status";
 import { useMeshModels } from "../../lib/use-mesh-models";
 import { modelIdsMatch, normalizeModelId } from "../../lib/model-id";
 import { LiveLaunchState } from "../../components/LiveLaunchState";
+import { Button } from "../../components/ui/Button";
+import { Badge } from "../../components/ui/Badge";
 import {
   useDownloads,
   type DownloadState,
@@ -40,16 +42,6 @@ const FAMILY_LABEL: Record<CatalogModel["family"], string> = {
   gemma: "Gemma",
   deepseek: "DeepSeek",
   glm: "GLM",
-};
-
-const FAMILY_TINT: Record<CatalogModel["family"], string> = {
-  qwen: "border-violet-400/40 bg-violet-400/10 text-violet-300",
-  llama: "border-sky-400/40 bg-sky-400/10 text-sky-300",
-  mistral: "border-rose-400/40 bg-rose-400/10 text-rose-300",
-  phi: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
-  gemma: "border-amber-400/40 bg-amber-400/10 text-amber-300",
-  deepseek: "border-cyan-400/40 bg-cyan-400/10 text-cyan-300",
-  glm: "border-indigo-400/40 bg-indigo-400/10 text-indigo-300",
 };
 
 export default function ModelsPage() {
@@ -277,7 +269,7 @@ export default function ModelsPage() {
     startupById.get(id) ?? startupNormalizedToEntry.get(normalizeModelId(id));
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-full flex-col">
       <PageHeader
         title="Models"
         subtitle="Download a model onto your mesh. Start small — you can always upgrade later."
@@ -286,7 +278,7 @@ export default function ModelsPage() {
       <main className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-6">
           {listError && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-300">
+            <div className="rounded-[var(--radius-lg)] border border-[var(--warn)]/30 bg-[var(--warn-soft)] px-4 py-3 text-xs text-[var(--warn)]">
               {listError}
             </div>
           )}
@@ -337,9 +329,9 @@ export default function ModelsPage() {
                           />
                         </div>
                       </div>
-                      <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                      <Badge tone="success" dot>
                         Loaded
-                      </span>
+                      </Badge>
                     </li>
                   ))}
                   {waiting.map((m) => (
@@ -360,9 +352,9 @@ export default function ModelsPage() {
                           />
                         </div>
                       </div>
-                      <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                      <Badge tone="warn" dot>
                         Waiting
-                      </span>
+                      </Badge>
                     </li>
                   ))}
                 </ul>
@@ -720,36 +712,14 @@ function CatalogRow({
             <span className="font-semibold tracking-tight text-[var(--fg)]">
               {model.name}
             </span>
-            <span
-              className={
-                "rounded-full border px-2 py-0.5 text-[10px] font-medium " +
-                FAMILY_TINT[model.family]
-              }
-            >
-              {FAMILY_LABEL[model.family]}
-            </span>
-            {model.recommended && (
-              <span className="rounded-full border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent)]">
-                Recommended
-              </span>
-            )}
-            {state === "downloaded" && (
-              <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                On your mesh
-              </span>
-            )}
-            {isStartup && (
-              <span
-                className="rounded-full border border-emerald-400/40 bg-emerald-400/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300"
-                title="This model is loaded automatically when the runtime starts."
-              >
-                Startup model
-              </span>
-            )}
+            {/* One clear primary signal: how well it fits the mesh. */}
             <MeshFitBadge fit={fit} />
-            {model.cpuOk && (
-              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-2 py-0.5 text-[10px] font-medium text-[var(--fg-muted)]">
-                CPU-friendly
+            {model.recommended && <Badge tone="accent">Recommended</Badge>}
+            {isStartup && (
+              <span title="Loaded automatically when the runtime starts">
+                <Badge tone="success" dot>
+                  Startup
+                </Badge>
               </span>
             )}
           </div>
@@ -757,38 +727,46 @@ function CatalogRow({
             {model.description}
           </div>
           <MeshFitDetail fit={fit} model={model} />
+          {/* Secondary detail demoted to a quiet meta line. */}
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--fg-muted)]">
+            <span className="text-[var(--fg-subtle)]">
+              {FAMILY_LABEL[model.family]}
+            </span>
+            <span aria-hidden>·</span>
             <span>
-              <span className="text-[var(--fg)]">{model.sizeGb} GB</span> on
-              disk
+              <span className="text-[var(--fg)]">{model.sizeGb} GB</span> on disk
             </span>
             <span aria-hidden>·</span>
             <span>
               needs <span className="text-[var(--fg)]">{model.minVramGb} GB</span>{" "}
               memory
             </span>
+            {model.cpuOk && (
+              <>
+                <span aria-hidden>·</span>
+                <span>runs on CPU</span>
+              </>
+            )}
           </div>
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
           {state === "downloaded" ? (
             <>
-              <button
-                onClick={() => onSetStartup()}
-                disabled={startupBusy || isStartup}
-                className={
-                  "rounded-lg px-4 py-2 text-xs font-semibold transition disabled:cursor-not-allowed " +
-                  (isStartup
-                    ? "border border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-                    : "bg-[var(--accent)] text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] hover:brightness-110 disabled:opacity-40 disabled:shadow-none")
-                }
-              >
-                {isStartup
-                  ? "Startup model"
-                  : startupBusy
-                    ? "Setting…"
-                    : "Set as startup"}
-              </button>
+              {isStartup ? (
+                <Badge tone="success" dot>
+                  Startup model
+                </Badge>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onSetStartup()}
+                  disabled={startupBusy}
+                >
+                  {startupBusy ? "Setting…" : "Set as startup"}
+                </Button>
+              )}
               {onDelete && (
                 <DeleteButton
                   busy={deleteBusy}
@@ -804,17 +782,18 @@ function CatalogRow({
               )}
             </>
           ) : (
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={onDownload}
               disabled={downloading}
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-black shadow-[0_8px_24px_-12px_rgba(26,157,95,0.7)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >
               {downloading
                 ? `Downloading… ${download!.percent.toFixed(0)}%`
                 : downloadFailed
                   ? "Try again"
                   : "Download"}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -986,11 +965,8 @@ function MeshFitBadge({ fit }: { fit: MeshFitState }) {
 
   if (fit.kind === "solo") {
     return (
-      <span
-        className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300"
-        title={`Fits on this Mac alone (${fit.localVramGb.toFixed(1)} GB).`}
-      >
-        Fits on this Mac
+      <span title={`Fits on this Mac alone (${fit.localVramGb.toFixed(1)} GB).`}>
+        <Badge tone="success">Fits on this Mac</Badge>
       </span>
     );
   }
@@ -998,20 +974,18 @@ function MeshFitBadge({ fit }: { fit: MeshFitState }) {
   if (fit.kind === "pooled") {
     return (
       <span
-        className="rounded-full border border-sky-400/40 bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium text-sky-300"
         title={`Pooled across ${fit.contributorCount} contributors (${fit.pooledVramGb.toFixed(1)} GB total, needs ${fit.neededVramGb.toFixed(1)} GB).`}
       >
-        Fits on the mesh
+        <Badge tone="info">Fits on the mesh</Badge>
       </span>
     );
   }
 
   return (
     <span
-      className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-300"
       title={`Mesh has ${fit.pooledVramGb.toFixed(1)} GB so far; needs ${fit.neededVramGb.toFixed(1)} GB to load.`}
     >
-      Needs more contributors
+      <Badge tone="warn">Needs more capacity</Badge>
     </span>
   );
 }
@@ -1028,7 +1002,7 @@ function MeshFitDetail({
 
   if (fit.kind === "solo") {
     return (
-      <div className="mt-1.5 text-[11px] text-emerald-300/90">
+      <div className="mt-1.5 text-[11px] text-[var(--success)]">
         Will run on this Mac alone — {model.minVramGb} GB headroom available.
       </div>
     );
@@ -1037,7 +1011,7 @@ function MeshFitDetail({
   if (fit.kind === "pooled") {
     const contributors = fit.contributorCount;
     return (
-      <div className="mt-1.5 text-[11px] text-sky-300/90">
+      <div className="mt-1.5 text-[11px] text-[var(--info)]">
         Will run pooled across {contributors}{" "}
         {contributors === 1 ? "contributor" : "contributors"} —{" "}
         {fit.pooledVramGb.toFixed(1)} GB combined memory covers the{" "}
@@ -1051,10 +1025,10 @@ function MeshFitDetail({
       ? `${Math.ceil(fit.shortfallGb)} GB`
       : `${fit.shortfallGb.toFixed(1)} GB`;
   return (
-    <div className="mt-1.5 text-[11px] text-amber-300/90">
+    <div className="mt-1.5 text-[11px] text-[var(--warn)]">
       Mesh has {fit.pooledVramGb.toFixed(1)} of {fit.neededVramGb.toFixed(1)} GB
       so far — needs {ask} more to load. Invite a friend or spin up another
-      node to unlock this model.
+      machine to unlock this model.
     </div>
   );
 }

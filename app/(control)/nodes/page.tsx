@@ -26,7 +26,7 @@ export default function NodesPage() {
   const meshModels = useMeshModels();
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-full flex-col">
       <PageHeader
         title="Mesh"
         subtitle="One collective computer made of every contributor."
@@ -37,8 +37,6 @@ export default function NodesPage() {
           {!mesh.loading && mesh.online && (
             <MeshComputer nodes={mesh.nodes} models={meshModels.models} />
           )}
-
-          <RemoteInstall />
 
           <MeshTopology models={meshModels.models} nodes={mesh.nodes} />
 
@@ -51,9 +49,46 @@ export default function NodesPage() {
           {meshModels.models.length > 0 && (
             <ModelsServedSection models={meshModels.models} />
           )}
+
+          <AddMachine />
         </div>
       </main>
     </div>
+  );
+}
+
+/**
+ * Adding a remote machine over SSH is a power-user flow — it shouldn't sit at
+ * the top of the overview. Tuck it into a quiet disclosure so the page reads as
+ * "here's your mesh" first, with "grow it" available on demand.
+ */
+function AddMachine() {
+  return (
+    <details className="group overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--bg-elev)]">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
+        <div>
+          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--fg-muted)]">
+            Advanced
+          </div>
+          <div className="text-sm font-semibold tracking-tight text-[var(--fg)]">
+            Add a machine
+          </div>
+          <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
+            Install the runtime on another computer over SSH and join it to your
+            mesh.
+          </div>
+        </div>
+        <span
+          aria-hidden
+          className="shrink-0 text-[var(--fg-muted)] transition group-open:rotate-45"
+        >
+          +
+        </span>
+      </summary>
+      <div className="border-t border-[var(--border)] px-5 py-4">
+        <RemoteInstall />
+      </div>
+    </details>
   );
 }
 
@@ -80,8 +115,8 @@ function NodesTable({
           No machines connected yet
         </div>
         <div className="mx-auto mt-1.5 max-w-md text-sm text-[var(--fg-muted)]">
-          Start Senda on this Mac from the Dashboard, or add a remote
-          machine above.
+          Start sharing from the top bar to add this machine, or add another one
+          under Advanced below.
         </div>
       </section>
     );
@@ -223,22 +258,22 @@ function SplitRoleDetail({ node }: { node: NodeSummary }) {
 function roleBadgeLabel(role: NonNullable<SplitRole>): string {
   switch (role) {
     case "pipeline_host":
-      return "Pipeline host";
+      return "Hosting a split";
     case "pipeline_worker":
-      return "Layer worker";
+      return "Helping a split";
     case "moe_shard":
-      return "MoE shard";
+      return "Serving a shard";
   }
 }
 
 function roleBadgeClasses(role: NonNullable<SplitRole>): string {
   switch (role) {
     case "pipeline_host":
-      return "border-emerald-400/40 bg-emerald-400/10 text-emerald-300";
+      return "border-[var(--accent)]/30 bg-[var(--accent-soft)] text-[var(--accent)]";
     case "pipeline_worker":
-      return "border-sky-400/40 bg-sky-400/10 text-sky-300";
+      return "border-[var(--info)]/30 bg-[var(--info-soft)] text-[var(--info)]";
     case "moe_shard":
-      return "border-fuchsia-400/40 bg-fuchsia-400/10 text-fuchsia-300";
+      return "border-[var(--info)]/30 bg-[var(--info-soft)] text-[var(--info)]";
   }
 }
 
@@ -330,11 +365,11 @@ function splitKindBadgeClasses(kind: MeshModel["splitKind"]): string {
     case "solo":
       return "border-[var(--border)] bg-[var(--bg-elev-2)] text-[var(--fg-muted)]";
     case "pipeline":
-      return "border-emerald-400/40 bg-emerald-400/10 text-emerald-300";
+      return "border-[var(--accent)]/30 bg-[var(--accent-soft)] text-[var(--accent)]";
     case "moe":
-      return "border-fuchsia-400/40 bg-fuchsia-400/10 text-fuchsia-300";
+      return "border-[var(--info)]/30 bg-[var(--info-soft)] text-[var(--info)]";
     case "multi_host":
-      return "border-sky-400/40 bg-sky-400/10 text-sky-300";
+      return "border-[var(--info)]/30 bg-[var(--info-soft)] text-[var(--info)]";
     case "cold":
       return "border-[var(--border)] bg-[var(--bg-elev-2)] text-[var(--fg-muted)]";
   }

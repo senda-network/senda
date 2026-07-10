@@ -3,30 +3,22 @@
 import Link from "next/link";
 import { loadedModelUnderprovisioning } from "../lib/mesh-fit";
 import { useMeshModels } from "../lib/use-mesh-models";
+import { isPublicDeployment } from "../lib/runtime-target";
+import { Callout } from "./ui/Callout";
 
 /**
- * Warning banner shown above the chat composer when the only loaded
- * model on the mesh is in the cold/mmap-fallback state — i.e.
- * llama-server has accepted it but the host is too small to actually
- * serve it. Without this, the chat surface gives no hint that every
- * Send is going to hang or time out, and the only signal the user gets
- * is the friendlyChatError "temporarily unavailable" line *after* a
- * 300-second timeout.
+ * Shown above the chat when the only loaded model is under-provisioned (the
+ * host is too small to actually serve it, so every Send would hang). This one
+ * stays — it's genuinely actionable — but is now a calm Callout instead of a
+ * loud amber banner. On the public site the "Add a peer" affordance points at
+ * the same idea via the download page; in the app it links to Mesh.
  *
- * Renders null when:
- *   - the runtime hasn't surfaced any models yet
- *   - at least one warm/servable model is available (chat will work)
- *   - the underprovisioning shortfall is below the threshold (transient
- *     post-load, see app/lib/mesh-fit.ts for the rationale)
+ * Renders null when there's a servable model, or the shortfall is transient.
  */
 export function MeshUnderprovisionedNote() {
   const { models, loading, online } = useMeshModels();
   if (loading || !online) return null;
 
-  // If at least one warm model is genuinely servable (not cold), chat
-  // will route there and we don't need to alarm the user. Only when
-  // *every* available model is in the underprovisioned state does this
-  // banner fire — that's the case where every Send genuinely will hang.
   const servable = models.filter(
     (m) => m.status === "warm" && m.splitKind !== "cold",
   );
@@ -40,28 +32,24 @@ export function MeshUnderprovisionedNote() {
 
   const { model, under } = underprovisioned;
   const name = model.displayName || model.name;
+  const href = isPublicDeployment() ? "/download" : "/nodes";
 
   return (
-    <div className="rounded-xl border border-amber-400/40 bg-amber-400/5 px-4 py-3 text-[12px] text-amber-200">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-medium text-amber-200">
-            {name} is awaiting capacity.
-          </div>
-          <div className="mt-1 text-amber-300/85">
-            This model needs about {under.needGb.toFixed(0)} GB of pooled
-            memory to serve. The mesh currently offers{" "}
-            {under.haveGb.toFixed(0)} GB — connect another peer to bring it
-            online.
-          </div>
-        </div>
+    <Callout
+      tone="warn"
+      title={`${name} is awaiting capacity`}
+      action={
         <Link
-          href="/nodes"
-          className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-400/20"
+          href={href}
+          className="whitespace-nowrap text-[12px] font-semibold text-[var(--warn)] hover:underline"
         >
-          Add a peer →
+          Add a machine →
         </Link>
-      </div>
-    </div>
+      }
+    >
+      Needs about {under.needGb.toFixed(0)} GB of pooled memory; the mesh
+      currently offers {under.haveGb.toFixed(0)} GB. Connect another machine to
+      bring it online.
+    </Callout>
   );
 }

@@ -1,24 +1,157 @@
 @import "tailwindcss";
 
+/* -------------------------------------------------------------------------
+   Design tokens. Light is the default (`:root`); dark applies when the OS
+   prefers dark AND the user hasn't forced light, or when `data-theme="dark"`
+   is set explicitly (see app/lib/theme.ts + the no-flash script in layout).
+   Keep this the single source of truth — components consume var(--*), never
+   raw hex, so both themes stay in sync.
+   ------------------------------------------------------------------------- */
 :root {
+  color-scheme: light;
+
+  /* Surfaces */
   --bg: #f6faf7;
   --bg-elev: #ffffff;
   --bg-elev-2: #eef4ef;
   --border: #dce7de;
+  --border-strong: #c6d5c9;
+
+  /* Text */
   --fg: #11201a;
   --fg-muted: #55655c;
+  --fg-subtle: #7c8a82;
+
+  /* Brand */
   --accent: #1a9d5f;
+  --accent-hover: #23b06e;
+  --accent-contrast: #ffffff;
   --accent-soft: rgba(26, 157, 95, 0.12);
+
+  /* Semantic states (base + soft background) */
+  --success: #15884d;
+  --success-soft: rgba(21, 136, 77, 0.12);
+  --warn: #a8700f;
+  --warn-soft: rgba(168, 112, 15, 0.12);
+  --danger: #c0392b;
+  --danger-soft: rgba(192, 57, 43, 0.1);
+  --info: #2b7cd3;
+  --info-soft: rgba(43, 124, 211, 0.1);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(17, 32, 26, 0.06);
+  --shadow-md: 0 4px 14px -6px rgba(17, 32, 26, 0.14);
+  --shadow-lg: 0 18px 40px -18px rgba(17, 32, 26, 0.22);
+  --shadow-accent: 0 6px 18px -10px rgba(26, 157, 95, 0.6);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+
+  /* Type scale */
+  --text-caption: 0.75rem; /* 12 */
+  --text-sm: 0.8125rem; /* 13 */
+  --text-body: 0.9375rem; /* 15 */
+  --text-lg: 1.125rem; /* 18 */
+  --text-title: 1.375rem; /* 22 */
+  --text-display: 2rem; /* 32 */
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0a0e0c;
+  --bg-elev: #121815;
+  --bg-elev-2: #1a221e;
+  --border: #273029;
+  --border-strong: #35413a;
+
+  --fg: #e9f1eb;
+  --fg-muted: #93a69b;
+  --fg-subtle: #6d7f75;
+
+  --accent: #35c07f;
+  --accent-hover: #46d08e;
+  --accent-contrast: #06120c;
+  --accent-soft: rgba(53, 192, 127, 0.16);
+
+  --success: #35c07f;
+  --success-soft: rgba(53, 192, 127, 0.16);
+  --warn: #e0b64d;
+  --warn-soft: rgba(224, 182, 77, 0.16);
+  --danger: #f0736a;
+  --danger-soft: rgba(240, 115, 106, 0.16);
+  --info: #6bb2f5;
+  --info-soft: rgba(107, 178, 245, 0.16);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 16px -6px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 20px 44px -18px rgba(0, 0, 0, 0.65);
+  --shadow-accent: 0 6px 20px -10px rgba(53, 192, 127, 0.45);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #0a0e0c;
+    --bg-elev: #121815;
+    --bg-elev-2: #1a221e;
+    --border: #273029;
+    --border-strong: #35413a;
+
+    --fg: #e9f1eb;
+    --fg-muted: #93a69b;
+    --fg-subtle: #6d7f75;
+
+    --accent: #35c07f;
+    --accent-hover: #46d08e;
+    --accent-contrast: #06120c;
+    --accent-soft: rgba(53, 192, 127, 0.16);
+
+    --success: #35c07f;
+    --success-soft: rgba(53, 192, 127, 0.16);
+    --warn: #e0b64d;
+    --warn-soft: rgba(224, 182, 77, 0.16);
+    --danger: #f0736a;
+    --danger-soft: rgba(240, 115, 106, 0.16);
+    --info: #6bb2f5;
+    --info-soft: rgba(107, 178, 245, 0.16);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 6px 16px -6px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 20px 44px -18px rgba(0, 0, 0, 0.65);
+    --shadow-accent: 0 6px 20px -10px rgba(53, 192, 127, 0.45);
+  }
 }
 
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--fg);
   --color-muted: var(--fg-muted);
+  --color-subtle: var(--fg-subtle);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
   --color-elev-1: var(--bg-elev);
   --color-elev-2: var(--bg-elev-2);
+  --color-success: var(--success);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -31,9 +164,28 @@ body {
     "Segoe UI", Roboto, sans-serif;
 }
 
+/* Theme transitions: surfaces/text ease between light and dark instead of
+   snapping. Kept short and only on color properties. */
+body,
+body * {
+  transition: background-color var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+
 ::selection {
   background: var(--accent-soft);
   color: var(--fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .scrollbar-thin::-webkit-scrollbar {

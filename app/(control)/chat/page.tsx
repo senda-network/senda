@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ChatExperience,
   type ChatEmptyStateApi,
 } from "../../components/ChatExperience";
-import { PageHeader } from "../../components/PageHeader";
-import { StatusPill } from "../../components/StatusPill";
+import { Button } from "../../components/ui/Button";
+import { useSharing } from "../../lib/use-control-status";
 
 const SESSION_KEY = "senda:threadId";
 
@@ -28,29 +28,28 @@ export default function ChatPage() {
     setThreadNonce((n) => n + 1);
   }, []);
 
-  return (
-    // `h-dvh` (not `min-h-dvh`): see HomepageChat / ChatExperience for why.
-    // The messages list inside ChatExperience scrolls within itself, which
-    // requires every ancestor in the flex chain to have a bounded height.
-    <div className="flex h-dvh flex-col">
-      <PageHeader
-        title="Chat"
-        subtitle="Answers come from your mesh. Nothing leaves it."
-        actions={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={startNewChat}
-              className="rounded-md border border-[var(--border)] bg-[var(--bg-elev)] px-2.5 py-1 text-[11px] font-medium text-[var(--fg-muted)] hover:bg-[var(--bg-elev-2)] hover:text-[var(--fg)]"
-              title="Start a new chat (clears the current thread)"
-            >
-              New chat
-            </button>
-            <StatusPill />
-          </div>
-        }
-      />
+  // The global command palette / top bar can request a fresh thread.
+  useEffect(() => {
+    const onNew = () => startNewChat();
+    window.addEventListener("senda:new-chat", onNew);
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        startNewChat();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("senda:new-chat", onNew);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [startNewChat]);
 
+  // `h-full`: the AppShell <main> is the bounded scroll container, and the
+  // messages list inside ChatExperience scrolls within itself — every ancestor
+  // in the flex chain needs a bounded height for that to work.
+  return (
+    <div className="flex h-full flex-col">
       <ChatExperience
         key={threadNonce}
         empty={(api) => <ControlEmptyState onSuggest={api.onSuggest} />}
@@ -64,11 +63,18 @@ function ControlEmptyState({
 }: {
   onSuggest: ChatEmptyStateApi["onSuggest"];
 }) {
+  const sharing = useSharing();
   const suggestions = [
     "Write a polite email canceling tomorrow's meeting.",
     "Explain compound interest to a curious 12-year-old.",
     "Plan a 3-day weekend in Lisbon with one rainy day.",
   ];
+
+  const showStart =
+    !sharing.publicDeployment &&
+    sharing.state !== "running" &&
+    sharing.state !== "loading";
+
   return (
     <div className="relative mx-auto max-w-xl py-16 text-center">
       <div
@@ -76,23 +82,46 @@ function ControlEmptyState({
         className="pointer-events-none absolute inset-x-0 -top-8 h-40"
         style={{
           background:
-            "radial-gradient(60% 100% at 50% 0%, rgba(26,157,95,0.12), transparent 70%)",
+            "radial-gradient(60% 100% at 50% 0%, var(--accent-soft), transparent 70%)",
         }}
       />
       <div className="relative">
-        <div className="text-balance text-3xl font-semibold tracking-tight">
-          Open peer-to-peer LLM.
+        <div className="text-balance text-[28px] font-semibold tracking-tight text-[var(--fg)]">
+          Chat with the mesh.
         </div>
-        <div className="mt-2 text-pretty text-sm text-[var(--fg-muted)]">
-          Served by a peer in the mesh. Your machine helps too.
+        <div className="mt-2 text-pretty text-[14px] text-[var(--fg-muted)]">
+          Your prompt is answered by a machine in the network — including yours,
+          when you&apos;re sharing.
         </div>
+
+        {showStart && (
+          <div className="mx-auto mt-7 flex max-w-md items-center justify-between gap-4 rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-[var(--fg)]">
+                This machine isn&apos;t sharing yet
+              </div>
+              <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
+                Start to serve models locally and add capacity to the mesh.
+              </div>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={sharing.busy !== null}
+              onClick={() => sharing.start()}
+            >
+              {sharing.busy === "start" ? "Starting…" : "Start sharing"}
+            </Button>
+          </div>
+        )}
+
         <ul className="mt-8 space-y-2 text-left">
           {suggestions.map((s) => (
             <li key={s}>
               <button
                 type="button"
                 onClick={() => onSuggest(s)}
-                className="block w-full rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left text-sm text-[var(--fg-muted)] transition hover:border-[var(--accent)]/30 hover:bg-[var(--bg-elev-2)] hover:text-[var(--fg)] focus:outline-none focus-visible:border-[var(--accent)]/60"
+                className="block w-full rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left text-sm text-[var(--fg-muted)] transition hover:border-[var(--accent)]/30 hover:bg-[var(--bg-elev-2)] hover:text-[var(--fg)] focus:outline-none focus-visible:border-[var(--accent)]/60"
               >
                 {s}
               </button>
