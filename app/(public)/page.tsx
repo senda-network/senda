@@ -54,14 +54,26 @@ export default function PublicHomePage() {
             aria-hidden
             className="pointer-events-none absolute inset-x-0 bottom-0 h-[42%] min-h-[11rem] sm:h-[46%] sm:min-h-[13rem]"
           >
-            <Image
-              src="/senda-hero.png"
-              alt=""
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover object-center"
-            />
+            <div className="absolute inset-0 theme-light-only">
+              <Image
+                src="/senda-hero.png"
+                alt=""
+                fill
+                priority
+                sizes="100vw"
+                className="object-cover object-center"
+              />
+            </div>
+            <div className="absolute inset-0 theme-dark-only">
+              <Image
+                src="/senda-hero-dark.png"
+                alt=""
+                fill
+                priority
+                sizes="100vw"
+                className="object-cover object-center"
+              />
+            </div>
             <div
               className="absolute inset-0"
               style={{
@@ -137,6 +149,7 @@ export default function PublicHomePage() {
         {/* Artwork — requests routed between peer clusters through the entry */}
         <ArtBand
           src="/senda-mesh.png"
+          srcDark="/senda-mesh-dark.png"
           alt="Two glowing clusters of connected nodes linked by curved luminous lines passing through a central node"
         />
 
@@ -205,6 +218,7 @@ export default function PublicHomePage() {
         {/* Artwork — a glowing trail routing through peers over topographic terrain */}
         <ArtBand
           src="/senda-capacity.png"
+          srcDark="/senda-capacity-dark.png"
           alt="A glowing green trail winding across topographic contour lines, dotted with luminous waypoint nodes linked into a mesh"
         />
 

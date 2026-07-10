@@ -17,14 +17,21 @@ import Image from "next/image";
  * rebrand past a recolor into a visual language. The top/bottom gradient
  * feathers each image into the page background so it reads as part of the
  * page, not a pasted-in rectangle.
+ *
+ * Pass `srcDark` for a dark-theme twin: both are rendered and CSS reveals the
+ * one matching the resolved theme (see `.theme-light-only`/`.theme-dark-only`
+ * in globals.css). This keeps the component a pure server component with no
+ * hydration flash on system-dark.
  */
 export function ArtBand({
   src,
+  srcDark,
   alt,
   priority = false,
   className,
 }: {
   src: string;
+  srcDark?: string;
   alt: string;
   priority?: boolean;
   className?: string;
@@ -35,14 +42,39 @@ export function ArtBand({
         className ?? "h-56 sm:h-72 lg:h-80"
       }`}
     >
-      <Image
-        src={src}
-        alt={alt}
-        fill
-        priority={priority}
-        sizes="100vw"
-        className="object-cover object-center"
-      />
+      {srcDark ? (
+        <>
+          <div className="absolute inset-0 theme-light-only">
+            <Image
+              src={src}
+              alt={alt}
+              fill
+              priority={priority}
+              sizes="100vw"
+              className="object-cover object-center"
+            />
+          </div>
+          <div className="absolute inset-0 theme-dark-only">
+            <Image
+              src={srcDark}
+              alt={alt}
+              fill
+              priority={priority}
+              sizes="100vw"
+              className="object-cover object-center"
+            />
+          </div>
+        </>
+      ) : (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          priority={priority}
+          sizes="100vw"
+          className="object-cover object-center"
+        />
+      )}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"

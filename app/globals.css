@@ -200,6 +200,29 @@ body * {
   background: transparent;
 }
 
+/* Theme-scoped media assets. Callers render both the light and dark artwork and
+   let CSS reveal the one matching the resolved theme — no client JS, no
+   hydration flash, and it honours an explicit override too. Mirrors the token
+   dark-mode rules above: dark wins when data-theme="dark", or when the OS
+   prefers dark and the user hasn't forced light. */
+.theme-dark-only {
+  display: none;
+}
+:root[data-theme="dark"] .theme-light-only {
+  display: none;
+}
+:root[data-theme="dark"] .theme-dark-only {
+  display: block;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-light-only {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .theme-dark-only {
+    display: block;
+  }
+}
+
 @keyframes pulse-soft {
   0%,
   100% {

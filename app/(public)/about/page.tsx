@@ -71,6 +71,7 @@ export default function AboutPage() {
 
       <ArtBand
         src="/senda-hero.png"
+        srcDark="/senda-hero-dark.png"
         alt="A luminous path winding through a branching leaf-vein network"
         className="h-48 sm:h-64 lg:h-72"
       />

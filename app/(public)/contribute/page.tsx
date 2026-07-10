@@ -82,6 +82,7 @@ export default function ContributePage() {
 
         <ArtBand
           src="/senda-mesh.png"
+          srcDark="/senda-mesh-dark.png"
           alt="Peer clusters linked by curved luminous routing lines"
           className="h-44 sm:h-56 lg:h-64"
         />
