@@ -14,7 +14,7 @@ import type {
 export const metadata: Metadata = {
   title: "Download Senda",
   description:
-    "Download the Senda desktop app — a tiny native shell around your private LLM mesh. Available for macOS, Windows, and Linux.",
+    "Download the Senda desktop app — a tiny native shell around the peer-to-peer LLM mesh. Chat, or run a node. Available for macOS, Windows, and Linux.",
 };
 
 // Re-render on the same cadence as the release API so freshly-published

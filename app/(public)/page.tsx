@@ -15,9 +15,9 @@ import {
 import { AppShowcase } from "../components/AppShowcase";
 
 export const metadata: Metadata = {
-  title: "Senda — your private LLM, on hardware people own",
+  title: "Senda — open-source AI, served by the people",
   description:
-    "A peer-to-peer mesh that runs open-weight models end-to-end on the hardware contributors already own — Apple Silicon Macs and GPU boxes — with no third-party AI provider in the middle. Chat in your browser or run a node.",
+    "A peer-to-peer network for open language models: use models that other people serve, or run the app and serve them yourself on your own machine. No third-party AI provider in between. Chat free in your browser, or run a node.",
 };
 
 /**
@@ -29,11 +29,11 @@ export const metadata: Metadata = {
  * full chat surface the moment a visitor interacts with it. No "open chat"
  * detour, no signup.
  *
- * Two audiences land here and the page serves both: someone who wants a
- * private LLM (hero + chat + "what it's for" + FAQ), and someone with
- * spare hardware who might contribute (the two-sided section + "run a
- * node" CTAs). We deliberately don't lead with anything price-related —
- * the economics may change; the architecture won't.
+ * Two audiences land here and the page serves both: someone who wants
+ * open models without a third-party AI provider (hero + chat + "what it's
+ * for" + FAQ), and someone with spare hardware who might contribute (the
+ * two-sided section + "run a node" CTAs). We deliberately don't lead with
+ * anything price-related — the economics may change; the architecture won't.
  *
  * Long-form technical depth (full hardware matrix, the two-layer
  * architecture writeup, every why-a-mesh property) still lives on /about;
@@ -73,16 +73,18 @@ export default function PublicHomePage() {
 
           <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-6 py-12 text-center sm:py-16">
             <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--accent)]">
-              Peer-to-peer LLM mesh
+              Peer-to-peer LLM network
             </div>
             <h1 className="mt-3 text-balance text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl">
-              Your private LLM.
+              Open-source AI,
               <span className="block text-[var(--fg-muted)]">
-                On hardware people own.
+                served by the people.
               </span>
             </h1>
             <p className="mx-auto mt-4 max-w-md text-pretty text-[15px] text-[var(--fg-muted)]">
-              Open-weight models, end to end. No third-party API.
+              Chat with them free in your browser — or run the app, add your
+              machine, and serve them yourself. No third-party AI provider in
+              between.
             </p>
             <div className="mx-auto mt-7 w-full max-w-2xl">
               <HeroChat />
@@ -127,7 +129,7 @@ export default function PublicHomePage() {
               <NumberedStep
                 n={3}
                 title="Compute peers"
-                body="Volunteered nodes running Senda LLM serve each session end-to-end on whichever peer fits the model. Auto-routes around offline ones; can pair two peers via speculative decoding for the mid-tier."
+                body="Volunteered nodes running Senda LLM serve each session end-to-end on whichever peer fits the model, and the router auto-routes around offline ones. A model too big for any single peer can be split across several — a power-user fallback, not the usual path."
               />
             </div>
           </div>
@@ -174,15 +176,15 @@ export default function PublicHomePage() {
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               <Feature
                 title="No third-party AI provider"
-                body="Prompts go to a peer running an open-weight model on hardware someone in the mesh owns. No OpenAI, Anthropic or Google in the loop — nothing to revoke, no provider terms to read."
+                body="Your prompt goes to a peer running an open-weight model on a contributed machine — not OpenAI, Anthropic or Google. Nothing to revoke, no provider terms to read. The peer serving you does read the prompt to run it; run your own peer if that matters."
               />
               <Feature
-                title="Apple Silicon is the hero"
-                body="On an M3 Max or M4 Max with 64–128 GB of unified memory, a $2.5–4.5k laptop becomes a 30B–70B-capable inference box at speeds same-price Windows GPU setups can't match. CUDA / ROCm / Vulkan boxes join too — each shines at different model sizes."
+                title="Apple Silicon carries a lot of it"
+                body="An M3 Max or M4 Max with 64–128 GB of unified memory can serve 30B–70B-class models at full quality — competitive with, and often ahead of, same-price Windows GPU boxes for large models. CUDA / ROCm / Vulkan machines join too; each fits different model sizes."
               />
               <Feature
-                title="Full-quality replication"
-                body="A model that fits on one peer runs there end-to-end, full quality, zero per-token network overhead. For the mid-tier, two peers pair via speculative decoding — a fast draft proposes, a larger verifier accepts in one batched pass."
+                title="One peer, end to end"
+                body="A model that fits on one peer runs there start to finish — full quality, no per-token network hops. On that peer, speculative decoding can speed decode up (a small draft proposes, a larger verifier checks in batched passes). Splitting a model across peers exists as a fallback for models no single peer can hold."
               />
               <Feature
                 title="Peers are verified"
@@ -194,7 +196,7 @@ export default function PublicHomePage() {
               />
               <Feature
                 title="Run your own peer"
-                body="Don't want to trust anyone else? The runtime other peers run is the runtime you can run yourself. It's fully open source — share compute, rent it, or keep it entirely in-house."
+                body="The peer serving your session reads your prompt. Don't want to trust someone else's box? Run the same open-source runtime yourself — the mesh, on hardware you control. Share it, rent it, or keep it entirely in-house."
               />
             </div>
           </div>
@@ -222,7 +224,7 @@ export default function PublicHomePage() {
               <LaneCard
                 step="Chat"
                 title="Open it and start typing"
-                body="A private LLM in your browser — no signup, nothing to install. Your prompts go to a peer, never a third-party AI provider."
+                body="Open models in your browser — no signup, nothing to install. Your prompt goes to a peer in the mesh, not a third-party AI provider."
                 cta={{ label: "Try the mesh →", href: "#top" }}
               />
               <LaneCard
@@ -252,10 +254,10 @@ export default function PublicHomePage() {
                 Built for the work you keep in-house.
               </h2>
               <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-                Senda is private, low-cost inference for the work
-                open-weight models do well. It&apos;s for teams where keeping
-                data in-house and keeping per-token costs flat matter more than
-                shaving a second off every reply.
+                Senda is low-cost inference on open-weight models, served by the
+                mesh instead of a hosted AI API. It&apos;s for teams where
+                keeping data off third-party providers and keeping per-token
+                costs flat matter more than shaving a second off every reply.
               </p>
             </div>
 
@@ -273,8 +275,8 @@ export default function PublicHomePage() {
               <FitCard
                 title="Why it holds up"
                 items={[
-                  "Private by default — prompts go to a peer, never a third-party AI provider",
-                  "Yours to control — runs on your own hardware and the mesh, not a rented black-box endpoint",
+                  "Off third-party AI — your prompt goes to a peer in the mesh, not OpenAI, Anthropic, or Google",
+                  "Yours to control — run your own peer on hardware you own, not a rented black-box endpoint",
                   "No lock-in — OpenAI-compatible API, fully open-source runtime",
                   "Verified peers — each one proves it runs the model it advertises",
                 ]}
@@ -324,11 +326,11 @@ export default function PublicHomePage() {
         <section>
           <div className="mx-auto max-w-5xl px-6 py-20 text-center">
             <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              Bring a real, private LLM into your work.
+              Use the network, or help run it.
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              Chat with the mesh in your browser, or lend your hardware and grow
-              it for everyone.
+              Chat in your browser, or add your machine and grow the network for
+              everyone.
             </p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
               <Link

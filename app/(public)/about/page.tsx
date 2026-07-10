@@ -148,7 +148,7 @@ export default function AboutPage() {
               points={[
                 "Runs on machines volunteered to the mesh — Apple Silicon Macs, NVIDIA / AMD / Intel GPU boxes, on-prem workstations.",
                 "Replication-first: a model that fits on one peer runs there end-to-end, full quality, zero per-token network overhead.",
-                "Speculative decoding across two peers — small fast draft + larger verifier — for the mid-tier where one peer isn't enough.",
+                "Same-box speculative decoding — a small fast draft, a larger verifier — as an optional decode speedup on a single peer.",
                 "Capability-aware routing: requests only go to peers that can actually serve them.",
                 "Built on an Iroh QUIC overlay with a gossip protocol for capability announcement.",
               ]}
@@ -175,7 +175,7 @@ export default function AboutPage() {
               Cooperation
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-              Four ways peers work together.
+              How a session actually gets served.
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
               In order of how often they&apos;re the right answer. The first is
@@ -190,8 +190,8 @@ export default function AboutPage() {
               body="One peer serves a whole session end-to-end at full quality. A model that fits on one machine runs there, with zero per-token network overhead. This is the common case and the one Senda optimises for."
             />
             <Feature
-              title="Speculative pairs — the mid-tier"
-              body="Two peers cooperate: a small fast draft proposes 4–8 tokens, a larger verifier accepts them in a single batched pass. The WAN hop amortises across the batch, so both peers earn for one session without the network choking decode."
+              title="Speculative decoding — same box"
+              body="On a single peer, a small fast draft proposes tokens and a larger verifier accepts them in batched passes — a decode speedup with no network in the loop. The cross-peer variant (draft and verifier on different machines) was benchmarked and shelved: the WAN round-trip erased the gain."
             />
             <Feature
               title="Inter-model collaboration"
@@ -239,7 +239,7 @@ export default function AboutPage() {
             <NumberedStep
               n={3}
               title="Compute peers"
-              body="Volunteered nodes serve each session end-to-end on whichever peer fits the model. The router auto-routes around offline ones, and can pair two peers via speculative decoding for the mid-tier."
+              body="Volunteered nodes serve each session end-to-end on whichever peer fits the model. The router auto-routes around offline ones. A model too big for any single peer can be split across several — a power-user fallback, not the usual path."
             />
           </div>
         </div>

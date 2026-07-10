@@ -21,15 +21,15 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "Senda",
     url: "https://senda.network",
-    title: "Senda — your private LLM, on hardware people own",
+    title: "Senda — open-source AI, served by the people",
     description:
-      "A peer-to-peer mesh that runs open-weight models end-to-end on hardware contributors already own. No third-party AI provider in the middle. Chat in your browser or run a node.",
+      "A peer-to-peer network for open language models: use models other people serve, or run the app and serve them yourself. No third-party AI provider in between. Chat in your browser or run a node.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Senda — your private LLM, on hardware people own",
+    title: "Senda — open-source AI, served by the people",
     description:
-      "A peer-to-peer mesh that runs open-weight models end-to-end on hardware contributors already own. No third-party AI provider in the middle.",
+      "A peer-to-peer network for open language models: use models other people serve, or run the app and serve them yourself. No third-party AI provider in between.",
   },
 };
 

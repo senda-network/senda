@@ -8,7 +8,7 @@ import { ImageResponse } from "next/og";
  * Uses the system sans stack only — no runtime font fetch — so link
  * previews stay reliable on Vercel's edge OG renderer.
  */
-export const alt = "Senda — your private LLM, on hardware people own";
+export const alt = "Senda — open-source AI, served by the people";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -72,7 +72,7 @@ export default function OpengraphImage() {
               marginBottom: 20,
             }}
           >
-            OPEN PEER-TO-PEER LLM MESH
+PEER-TO-PEER LLM NETWORK
           </div>
           <div
             style={{
@@ -84,7 +84,7 @@ export default function OpengraphImage() {
               whiteSpace: "pre-line",
             }}
           >
-            {"Your private LLM,\non hardware people own."}
+            {"Open-source AI,\nserved by the people."}
           </div>
         </div>
 
