@@ -17,7 +17,7 @@ import { AppShowcase } from "../components/AppShowcase";
 export const metadata: Metadata = {
   title: "Senda — open-source AI, served by the people",
   description:
-    "A peer-to-peer network for open language models: use models that other people serve, or run the app and serve them yourself on your own machine. No third-party AI provider in between. Chat free in your browser, or run a node.",
+    "A peer-to-peer network for open language models: reach the network through an OpenAI-compatible API, or run the Senda app and serve models yourself on your own machine. No third-party AI provider in between.",
 };
 
 /**
@@ -82,9 +82,9 @@ export default function PublicHomePage() {
               </span>
             </h1>
             <p className="mx-auto mt-4 max-w-md text-pretty text-[15px] text-[var(--fg-muted)]">
-              Chat with them free in your browser — or run the app, add your
-              machine, and serve them yourself. No third-party AI provider in
-              between.
+              A network of machines serving open models. Run the app to add
+              yours, or reach the whole network through one OpenAI-compatible
+              API. No third-party AI provider in between.
             </p>
             <div className="mx-auto mt-7 w-full max-w-2xl">
               <HeroChat />
@@ -105,11 +105,10 @@ export default function PublicHomePage() {
                 Two roles. One mesh.
               </h2>
               <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-                Anyone can chat — at senda.network or in the desktop app —
-                without running anything themselves. Inference is served by
-                peers who&apos;ve chosen to contribute compute by running the
-                Senda LLM runtime on their own hardware. Anybody can be
-                one, both, or neither.
+                Anyone can use the network — through an OpenAI-compatible API,
+                or the chat on senda.network — without running anything
+                themselves. The models are served by peers who run the Senda app
+                on their own hardware. Anyone can do one, both, or neither.
               </p>
             </div>
 
@@ -118,8 +117,8 @@ export default function PublicHomePage() {
             <div className="mt-10 grid gap-4 sm:grid-cols-3">
               <NumberedStep
                 n={1}
-                title="Chat"
-                body="Web at senda.network or in the desktop app. Type a message, get a streamed response. No account, no setup, nothing to install."
+                title="Send a request"
+                body="A call to an OpenAI-compatible endpoint — from your code, an agent, or the chat on senda.network. Streamed response, no account, nothing to install."
               />
               <NumberedStep
                 n={2}
@@ -149,12 +148,13 @@ export default function PublicHomePage() {
                 The app
               </div>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-                Chat in the browser. Run a node from the app.
+                Run open models on your own machine.
               </h2>
               <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-                Senda is a small native shell around the same mesh you can try
-                at senda.network — chat, manage models, watch the mesh grow, and
-                join as a contributor when you&apos;re ready.
+                The Senda app puts the network on your hardware: serve models to
+                the mesh, or run them privately just for yourself. Manage models,
+                watch the mesh, and chat with what&apos;s live — one native app
+                for macOS, Windows, and Linux.
               </p>
             </div>
             <AppShowcase />
@@ -222,10 +222,10 @@ export default function PublicHomePage() {
 
             <div className="grid gap-5 lg:grid-cols-3">
               <LaneCard
-                step="Chat"
-                title="Open it and start typing"
-                body="Open models in your browser — no signup, nothing to install. Your prompt goes to a peer in the mesh, not a third-party AI provider."
-                cta={{ label: "Try the mesh →", href: "#top" }}
+                step="Use"
+                title="Build on the network"
+                body="Point any OpenAI-compatible tool, agent, or script at the network — or just chat on senda.network. No signup for chat; your request goes to a peer, not a third-party AI provider."
+                cta={{ label: "Read the docs →", href: "/docs" }}
               />
               <LaneCard
                 step="Contribute"
@@ -300,7 +300,7 @@ export default function PublicHomePage() {
             <div className="divide-y divide-[var(--border)] border-y border-[var(--border)]">
               <FaqItem
                 q="What is Senda?"
-                a="A peer-to-peer mesh that runs open-weight models end-to-end on hardware contributors already own. Chat with it in your browser; behind the scenes a capability-aware router sends each session to a peer that can serve it. No third-party AI provider sits in the middle."
+                a="A peer-to-peer mesh that runs open-weight models end-to-end on hardware contributors already own. Reach it through an OpenAI-compatible API — or the chat on senda.network — and a capability-aware router sends each request to a peer that can serve it. No third-party AI provider sits in the middle."
               />
               <FaqItem
                 q="Do I need to sign up or install anything to chat?"
@@ -329,8 +329,8 @@ export default function PublicHomePage() {
               Use the network, or help run it.
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-[var(--fg-muted)]">
-              Chat in your browser, or add your machine and grow the network for
-              everyone.
+              Build on it through the API, try it in your browser, or add your
+              machine and grow the network for everyone.
             </p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
               <Link

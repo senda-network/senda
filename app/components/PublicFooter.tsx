@@ -14,7 +14,11 @@ export function PublicFooter() {
         <div className="flex items-center gap-2.5">
           <Logo />
           <div className="text-[12px] text-[var(--fg-muted)]">
-            Senda — open peer-to-peer LLM mesh.
+            Senda — an open peer-to-peer network for LLMs.
+            <span className="mt-0.5 block text-[var(--fg-muted)] opacity-70">
+              senda: Spanish for path — the route a request takes to a machine
+              that can run it.
+            </span>
           </div>
         </div>
         <nav className="grid grid-cols-2 gap-x-12 gap-y-2 text-[12px] sm:grid-cols-3">
