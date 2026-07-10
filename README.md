@@ -1,5 +1,6 @@
 # Senda
 
+
 **Open peer-to-peer LLM. Anyone can chat. Anyone with a capable machine
 can run a node and add compute to the mesh.**
 
