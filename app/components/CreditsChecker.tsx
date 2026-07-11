@@ -5,7 +5,6 @@ import { useState } from "react";
 type PeerCredits = {
   peerId: string;
   credits: number;
-  usd: number;
   tokensByModel: Record<string, number>;
 };
 
@@ -91,10 +90,10 @@ export function CreditsChecker() {
                   {state.data.peerId}
                 </span>
                 <span className="font-mono text-lg font-semibold text-[var(--accent)]">
-                  ~$
-                  {state.data.usd < 0.01
-                    ? state.data.usd.toFixed(4)
-                    : state.data.usd.toFixed(2)}
+                  {state.data.credits.toLocaleString()}{" "}
+                  <span className="text-[12px] font-normal text-[var(--fg-muted)]">
+                    credits
+                  </span>
                 </span>
               </div>
               {Object.keys(state.data.tokensByModel).length > 0 && (
@@ -112,7 +111,8 @@ export function CreditsChecker() {
                 </ul>
               )}
               <p className="mt-2 text-[11px] text-[var(--fg-muted)]">
-                Illustrative — not a payout.
+                Credits are tokens served, weighted by model tier — a measure
+                of contribution, not a payout.
               </p>
             </>
           ) : (

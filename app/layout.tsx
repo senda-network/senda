@@ -33,10 +33,15 @@ export const metadata: Metadata = {
   },
 };
 
-// Runs before first paint to set the persisted theme, avoiding a light/dark
-// flash. "system" (or unset) leaves the attribute off so the CSS
-// prefers-color-scheme media query governs. Keep in sync with app/lib/theme.ts.
-const themeScript = `(function(){try{var t=localStorage.getItem("senda:theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;
+// Runs before first paint to set the theme, avoiding a light/dark flash.
+//   1. An explicit stored choice ("light"/"dark") always wins, everywhere.
+//   2. Otherwise the public marketing site defaults to light — visitors get a
+//      consistent light-themed website regardless of their OS setting.
+//   3. Otherwise (the control app: /chat, /dashboard, /models, /nodes, /logs,
+//      /settings) the attribute is left off so the CSS prefers-color-scheme
+//      media query governs and the app follows the OS.
+// Keep in sync with app/lib/theme.ts.
+const themeScript = `(function(){try{var t=localStorage.getItem("senda:theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);return;}var app=/^\\/(chat|dashboard|models|nodes|logs|settings)(\\/|$)/.test(location.pathname);if(!app){document.documentElement.setAttribute("data-theme","light");}}catch(e){}})();`;
 
 export default function RootLayout({
   children,

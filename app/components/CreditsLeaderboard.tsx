@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 type LeaderboardRow = {
   peerId: string;
   credits: number;
-  usd: number;
 };
 
 /**
@@ -93,7 +92,7 @@ export function CreditsLeaderboard() {
               </span>
             </div>
             <span className="shrink-0 font-mono text-[12px] text-[var(--accent)]">
-              ~${row.usd < 0.01 ? row.usd.toFixed(4) : row.usd.toFixed(2)}
+              {row.credits.toLocaleString()} cr
             </span>
           </li>
         ))}

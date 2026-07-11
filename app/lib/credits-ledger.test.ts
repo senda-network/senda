@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   tokensToCredits,
-  creditsToUsdDisplay,
   parseLeaderboardFlat,
   normalizeTokenMap,
 } from "./credits-ledger";
+import { TIER_WEIGHT } from "./model-tiers";
 
 describe("tokensToCredits", () => {
-  it("converts daily-driver tokens using the tier rate", () => {
-    // 1M tokens @ $0.05/M = $0.05 = 50_000 micro-dollars
-    expect(tokensToCredits(1_000_000, "daily_driver")).toBe(50_000);
+  it("weights daily-driver tokens by the tier weight (base unit)", () => {
+    // 1M daily-driver tokens @ weight 1 = 1_000_000 credits.
+    expect(tokensToCredits(1_000_000, "daily_driver")).toBe(1_000_000);
+  });
+
+  it("weights capacity tokens more heavily", () => {
+    expect(tokensToCredits(1_000_000, "capacity")).toBe(
+      1_000_000 * TIER_WEIGHT.capacity,
+    );
   });
 
   it("returns 0 for non-positive tokens", () => {
@@ -17,15 +23,9 @@ describe("tokensToCredits", () => {
     expect(tokensToCredits(-1, "capacity")).toBe(0);
   });
 
-  it("rounds to integer micro-dollars", () => {
-    const credits = tokensToCredits(1000, "daily_driver");
-    expect(credits).toBe(Math.round((1000 / 1_000_000) * 0.05 * 1_000_000));
-  });
-});
-
-describe("creditsToUsdDisplay", () => {
-  it("converts micro-dollars back to USD", () => {
-    expect(creditsToUsdDisplay(50_000)).toBe(0.05);
+  it("rounds to an integer credit count", () => {
+    const credits = tokensToCredits(1001, "experimental");
+    expect(credits).toBe(Math.round(1001 * TIER_WEIGHT.experimental));
   });
 });
 
@@ -33,14 +33,14 @@ describe("parseLeaderboardFlat", () => {
   it("parses Upstash flat [member, score, ...] reply into rows", () => {
     const rows = parseLeaderboardFlat(["peerA", 50_000, "peerB", 10_000]);
     expect(rows).toEqual([
-      { peerId: "peerA", credits: 50_000, usd: 0.05 },
-      { peerId: "peerB", credits: 10_000, usd: 0.01 },
+      { peerId: "peerA", credits: 50_000 },
+      { peerId: "peerB", credits: 10_000 },
     ]);
   });
 
   it("handles stringified scores from the REST client", () => {
     const rows = parseLeaderboardFlat(["peerA", "50000"]);
-    expect(rows[0]).toEqual({ peerId: "peerA", credits: 50_000, usd: 0.05 });
+    expect(rows[0]).toEqual({ peerId: "peerA", credits: 50_000 });
   });
 
   it("returns empty for null/empty/odd-length input", () => {

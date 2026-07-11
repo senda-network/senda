@@ -8,8 +8,8 @@ import { type CatalogModel } from "../../lib/model-catalog";
 import {
   getModelTier,
   SLA_TARGETS_BY_TIER,
-  estimatePeerPayout,
-  PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER,
+  estimateContribution,
+  TIER_WEIGHT,
   TIER_LABELS,
   type ModelTier,
 } from "../../lib/model-tiers";
@@ -963,40 +963,19 @@ export default function DashboardPage() {
 
           {stableSelfNode && <ContributionCard self={stableSelfNode} />}
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <SummaryStat
-              label="Contributors"
-              value={mesh.online ? String(mesh.nodeCount) : "0"}
-              hint={
-                peers.length > 0
-                  ? `${peers.length} teammate${peers.length === 1 ? "" : "s"} sharing capacity`
-                  : "you're the only one — share the app to grow the mesh"
-              }
-              href="/nodes"
-            />
-            <SummaryStat
-              label="Pooled memory"
-              value={totalVram > 0 ? `${totalVram.toFixed(1)} GB` : "—"}
-              hint="combined across every contributor"
-              href="/nodes"
-            />
-            <SummaryStat
-              label="Models loaded"
-              value={String(mesh.models.length)}
-              hint={
-                mesh.models[0] ? mesh.models[0] : "no models loaded yet"
-              }
-              href="/models"
-            />
-          </div>
+          {toast && (
+            <div className="whitespace-pre-line rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-xs text-[var(--fg-muted)]">
+              {toast}
+            </div>
+          )}
 
-          <QuickActions
-            running={running}
-            busy={busy}
-            toast={toast}
+          <MeshGlanceRow
+            online={mesh.online}
+            contributors={mesh.nodeCount}
+            teammates={peers.length}
+            pooledVramGb={totalVram}
+            modelsLoaded={mesh.models.length}
           />
-
-          {peers.length > 0 && <PeersPreview peers={peers} />}
         </div>
       </main>
     </div>
@@ -1672,31 +1651,53 @@ function RuntimeUpgradeToast({
   );
 }
 
-function SummaryStat({
-  label,
-  value,
-  hint,
-  href,
+/**
+ * Slim one-line pointer to the Mesh page. The Machine page is about *this*
+ * machine; the collective (contributor count, pooled memory, peer list,
+ * topology) lives on /nodes and is owned there. This row is a lightweight
+ * hand-off, not a second copy of that view.
+ */
+function MeshGlanceRow({
+  online,
+  contributors,
+  teammates,
+  pooledVramGb,
+  modelsLoaded,
 }: {
-  label: string;
-  value: string;
-  hint: string;
-  href: string;
+  online: boolean;
+  contributors: number;
+  teammates: number;
+  pooledVramGb: number;
+  modelsLoaded: number;
 }) {
+  const parts = online
+    ? [
+        `${contributors} contributor${contributors === 1 ? "" : "s"}`,
+        pooledVramGb > 0 ? `${pooledVramGb.toFixed(1)} GB pooled` : null,
+        `${modelsLoaded} model${modelsLoaded === 1 ? "" : "s"} loaded`,
+      ].filter(Boolean)
+    : [];
+
   return (
     <Link
-      href={href}
-      className="group rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-4 transition hover:border-[var(--accent)]/40 hover:bg-[var(--bg-elev-2)]"
+      href="/nodes"
+      className="group flex items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] px-5 py-4 transition hover:border-[var(--accent)]/40 hover:bg-[var(--bg-elev-2)]"
     >
-      <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
-        {label}
+      <div className="min-w-0">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
+          The mesh
+        </div>
+        <div className="mt-0.5 truncate text-[13px] text-[var(--fg)]">
+          {online
+            ? parts.join(" · ")
+            : teammates > 0
+              ? "Connecting to the mesh…"
+              : "You're not connected to the mesh yet — start sharing to join."}
+        </div>
       </div>
-      <div className="mt-1 text-2xl font-semibold tracking-tight text-[var(--fg)]">
-        {value}
-      </div>
-      <div className="mt-1 truncate text-[11px] text-[var(--fg-muted)] group-hover:text-[var(--fg)]">
-        {hint}
-      </div>
+      <span className="shrink-0 text-[12px] font-medium text-[var(--accent)] transition group-hover:translate-x-0.5">
+        View mesh →
+      </span>
     </Link>
   );
 }
@@ -2223,40 +2224,6 @@ function ModelReadyCard({
   );
 }
 
-function QuickActions({
-  running,
-  busy,
-  toast,
-}: {
-  running: boolean;
-  busy:
-    | "start"
-    | "stop"
-    | "repair"
-    | "quickstart"
-    | "update"
-    | null;
-  toast: string | null;
-}) {
-  return (
-    <section className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-5">
-      <div className="mb-3 text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
-        What now?
-      </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <ActionLink href="/chat">Open chat</ActionLink>
-        <ActionLink href="/models">Browse models</ActionLink>
-        <ActionLink href="/nodes">Add a remote machine</ActionLink>
-      </div>
-      {toast && (
-        <div className="mt-3 whitespace-pre-line rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2 text-xs text-[var(--fg-muted)]">
-          {toast}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function ActionButton({
   onClick,
   disabled,
@@ -2277,68 +2244,6 @@ function ActionButton({
     >
       {children}
     </button>
-  );
-}
-
-function ActionLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2.5 text-center text-xs font-medium text-[var(--fg)] transition hover:border-[var(--accent)]/40 hover:bg-[var(--bg-elev)]"
-    >
-      {children}
-    </Link>
-  );
-}
-
-function PeersPreview({ peers }: { peers: NodeSummary[] }) {
-  return (
-    <section className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--fg-muted)]">
-          Sharing with
-        </div>
-        <Link
-          href="/nodes"
-          className="text-[11px] text-[var(--fg-muted)] hover:text-[var(--fg)]"
-        >
-          View all →
-        </Link>
-      </div>
-      <ul className="divide-y divide-[var(--border)]">
-        {peers.slice(0, 4).map((p) => (
-          <li key={p.id} className="flex items-center justify-between py-2.5">
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm text-[var(--fg)]">
-                {p.hostname ?? p.id.slice(0, 12)}
-              </div>
-              <div className="text-[11px] text-[var(--fg-muted)]">
-                {(BACKEND_LABEL[p.capability.backend] ?? p.capability.backend) +
-                  " · " +
-                  (p.capability.vramGb || p.vramGb).toFixed(1) +
-                  " GB"}
-              </div>
-            </div>
-            <span
-              className={
-                "rounded-full border px-2 py-0.5 text-[10px] font-medium " +
-                (p.state === "serving"
-                  ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-                  : "border-zinc-400/40 bg-zinc-400/10 text-zinc-300")
-              }
-            >
-              {p.state === "serving" ? "Serving" : p.role}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -2481,27 +2386,16 @@ function formatTokenCount(n: number): string {
 }
 
 /**
- * Format an illustrative dollar estimate. Sub-cent amounts render as
- * "<$0.01" rather than rounding to "$0.00" — a contributor who served a
- * few hundred tokens did produce *some* value, and showing "$0.00" reads
- * as "you earned nothing" which is both discouraging and inaccurate.
- */
-function formatEstimateUsd(n: number): string {
-  if (n > 0 && n < 0.01) return "<$0.01";
-  return `$${n.toFixed(2)}`;
-}
-
-/**
- * Earnings *preview* for the local machine.
+ * Contribution card for the local machine.
  *
- * Honesty contract (this is the whole point of the card): Senda has
- * no payments, no ledger, and no payout today. This renders the runtime's
- * disk-persisted rolling-7-day served-token tally
- * (`self.servingTokens7dByModel`) multiplied by an explicitly-illustrative
- * placeholder rate card. Every figure is labelled an estimate, and the
- * preview rates are shown inline so nothing is hidden. The intent is to
- * make the install-and-share loop tangible — "this is what your machine
- * served, and roughly what that will be worth" — not to imply money owed.
+ * Honesty contract (this is the whole point of the card): Senda values
+ * contribution in the one thing it can actually measure — completion tokens
+ * served — never in dollars. It renders the runtime's disk-persisted
+ * rolling-7-day served-token tally (`self.servingTokens7dByModel`) as the
+ * hero number, and a tier-weighted "credits" figure (see {@link TIER_WEIGHT})
+ * so a scarce capacity serve is credited more than an abundant daily-driver
+ * serve. Credits are not a currency, a coin, or a price — just a unit to
+ * track contribution until the network ships its own.
  *
  * Self-node only (gated by the caller to the desktop app, since the field
  * is local-only and never gossiped). Shows a motivating empty state when
@@ -2514,7 +2408,7 @@ function EarningsPreviewCard({
   self: NodeSummary;
   running: boolean;
 }) {
-  const estimate = estimatePeerPayout(self.servingTokens7dByModel);
+  const estimate = estimateContribution(self.servingTokens7dByModel);
   const hasData = estimate.totalTokens > 0;
 
   return (
@@ -2529,28 +2423,38 @@ function EarningsPreviewCard({
       />
       <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--accent)]">
-              Estimated earnings
-            </span>
-            <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev-2)] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--fg-muted)]">
-              Preview
-            </span>
-          </div>
+          <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--accent)]">
+            Your contribution
+          </span>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-3xl font-semibold tracking-tight text-[var(--fg)]">
-              {hasData ? `~${formatEstimateUsd(estimate.totalUsd)}` : "—"}
+            <span className="text-3xl font-semibold tracking-tight tabular-nums text-[var(--fg)]">
+              {hasData ? formatTokenCount(estimate.totalTokens) : "—"}
+            </span>
+            <span className="text-[13px] font-medium text-[var(--fg)]">
+              tokens served
             </span>
             <span className="text-[12px] text-[var(--fg-muted)]">
-              last 7 days
+              · last 7 days
             </span>
           </div>
           <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
-            {hasData
-              ? `${formatTokenCount(estimate.totalTokens)} tokens served across ${estimate.perModel.length} model${estimate.perModel.length === 1 ? "" : "s"}.`
-              : running
-                ? "Nothing served yet this week. When your machine answers mesh requests, an estimate shows up here."
-                : "Start sharing to serve mesh requests — your weekly estimate will appear here."}
+            {hasData ? (
+              <>
+                Worth{" "}
+                <span
+                  className="font-medium text-[var(--accent)]"
+                  title="Credits weight each served token by model tier — capacity counts 5×, daily-driver 1×."
+                >
+                  {formatTokenCount(estimate.totalCredits)} credits
+                </span>{" "}
+                across {estimate.perModel.length} model
+                {estimate.perModel.length === 1 ? "" : "s"}.
+              </>
+            ) : running ? (
+              "Nothing served yet this week. When your machine answers mesh requests, your token tally shows up here."
+            ) : (
+              "Start sharing to serve mesh requests — your weekly token tally will appear here."
+            )}
           </div>
         </div>
       </div>
@@ -2567,7 +2471,7 @@ function EarningsPreviewCard({
                   {row.model}
                 </span>
                 <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-[var(--fg-muted)]">
-                  {TIER_LABELS[row.tier]}
+                  {TIER_LABELS[row.tier]} · ×{TIER_WEIGHT[row.tier]}
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-3 text-[12px]">
@@ -2575,7 +2479,7 @@ function EarningsPreviewCard({
                   {formatTokenCount(row.tokens)} tok
                 </span>
                 <span className="font-mono font-medium text-[var(--fg)]">
-                  ~{formatEstimateUsd(row.usd)}
+                  {formatTokenCount(row.credits)} cr
                 </span>
               </div>
             </li>
@@ -2583,27 +2487,15 @@ function EarningsPreviewCard({
         </ul>
       )}
 
-      <div className="relative mt-4 rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2.5">
+      <div className="relative mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)]/60 px-3 py-2.5">
         <div className="text-[11px] leading-relaxed text-[var(--fg-muted)]">
-          <span className="font-semibold text-amber-300">
-            Illustrative estimate — not a payout.
+          <span className="font-semibold text-[var(--fg)]">
+            Measured in tokens, not dollars.
           </span>{" "}
-          Senda has no payments or credit ledger yet. These are
-          placeholder rates showing how your contribution will map to value
-          once the economy ships — not money owed.
-        </div>
-        <div className="mt-1.5 text-[10px] text-[var(--fg-muted)]">
-          Preview rates ·{" "}
-          <span className="font-mono">
-            {TIER_LABELS.daily_driver} $
-            {PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER.daily_driver.toFixed(2)}
-          </span>
-          {" · "}
-          <span className="font-mono">
-            {TIER_LABELS.capacity} $
-            {PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER.capacity.toFixed(2)}
-          </span>{" "}
-          per million tokens served.
+          A credit is one served token, weighted by how hard its model is to
+          serve ({TIER_LABELS.capacity} ×{TIER_WEIGHT.capacity},{" "}
+          {TIER_LABELS.daily_driver} ×{TIER_WEIGHT.daily_driver}). It tracks
+          your contribution — not a currency, a coin, or a payout.
         </div>
       </div>
     </section>

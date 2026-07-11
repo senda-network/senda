@@ -170,76 +170,79 @@ export const TIER_DESCRIPTIONS: Record<ModelTier, string> = {
 };
 
 /**
- * Illustrative peer-payout rate card, in USD per million completion
- * tokens served, keyed by tier.
+ * Contribution weight per tier — how much one served token of a model in
+ * this tier counts toward a contributor's credit total.
  *
- * **These are placeholders, not prices.** Senda has no payment rail,
- * no credit ledger, and no treasury today (see `internal/STRATEGY.md`
- * Phase 5). They exist only to turn the desktop earnings *preview* — "what
- * your machine served this week" — into a tangible number so a contributor
- * can see how serving maps to value before the real economy ships. Phase 5
- * replaces these with a real `(model, tier)` rate card; until then every
- * surface that renders a dollar figure from these MUST label it as an
- * estimate, not earnings owed.
+ * **This is a measure of work, not a price.** Senda deliberately does NOT
+ * value contribution in dollars: there is no payment rail, no treasury, and
+ * no price for a token today (see `internal/STRATEGY.md` Phase 5). Instead we
+ * count the one thing we can actually measure — completion tokens served —
+ * and weight them by how hard the model is to serve, so a scarce capacity
+ * serve is credited more than an abundant daily-driver serve.
  *
- * Shape rationale: capacity-tier models are scarcer and more expensive to
- * serve, so they carry a higher illustrative rate than the abundant
- * daily-driver tier; experimental is nominal. All well below any plausible
- * customer rate-card price so the eventual `rate_card > peer_payout`
- * margin invariant holds.
+ * The weights are the ratios the old illustrative USD rate card already
+ * encoded (0.05 : 0.25 : 0.02 → 1 : 5 : 0.4), normalized so a daily-driver
+ * token is the base unit. Keeping the ratio means the relative economics are
+ * unchanged; we've simply stopped pretending to know the dollar value.
+ *
+ * A "credit" is therefore just a tier-weighted token. Not a currency, not a
+ * coin — a unit to track contribution until the network ships its own.
  */
-export const PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER: Record<ModelTier, number> = {
-  daily_driver: 0.05,
-  capacity: 0.25,
-  experimental: 0.02,
+export const TIER_WEIGHT: Record<ModelTier, number> = {
+  daily_driver: 1,
+  capacity: 5,
+  experimental: 0.4,
 };
 
-/** One contributor model's slice of the weekly earnings estimate. */
-export type EarningsByModel = {
+/** One contributor model's slice of the weekly contribution. */
+export type ContributionByModel = {
   model: string;
   tier: ModelTier;
   tokens: number;
-  usd: number;
+  /** Tier-weighted tokens: `tokens * TIER_WEIGHT[tier]`. */
+  credits: number;
 };
 
-/** Result of {@link estimatePeerPayout}. */
-export type EarningsEstimate = {
+/** Result of {@link estimateContribution}. */
+export type ContributionEstimate = {
   totalTokens: number;
-  totalUsd: number;
-  /** Per-model rows, sorted by USD descending (then tokens, then name). */
-  perModel: EarningsByModel[];
+  totalCredits: number;
+  /** Per-model rows, sorted by credits descending (then tokens, then name). */
+  perModel: ContributionByModel[];
 };
 
 /**
  * Turn a per-model served-token map (the runtime's
- * `serving_tokens_7d_by_model`) into an illustrative earnings estimate
- * using {@link PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER}. Pure + deterministic
- * so it's unit-testable and identical wherever it's rendered.
+ * `serving_tokens_7d_by_model`) into a contribution estimate using
+ * {@link TIER_WEIGHT}. Pure + deterministic so it's unit-testable and
+ * identical wherever it's rendered.
  *
- * Models with zero tokens are dropped. The dollar figure is intentionally
- * NOT rounded here — formatting is the caller's job — so the sum of the
- * per-model rows always equals `totalUsd` exactly.
+ * Models with zero tokens are dropped. Credits are intentionally NOT rounded
+ * here — formatting is the caller's job — so the sum of the per-model rows
+ * always equals `totalCredits` exactly.
  */
-export function estimatePeerPayout(
+export function estimateContribution(
   tokensByModel: Record<string, number> | undefined | null,
-): EarningsEstimate {
-  const perModel: EarningsByModel[] = [];
+): ContributionEstimate {
+  const perModel: ContributionByModel[] = [];
   let totalTokens = 0;
-  let totalUsd = 0;
+  let totalCredits = 0;
   for (const [model, tokensRaw] of Object.entries(tokensByModel ?? {})) {
     const tokens = Number.isFinite(tokensRaw) ? Math.max(0, tokensRaw) : 0;
     if (tokens <= 0) continue;
     const tier = getModelTier(model);
-    const usd = (tokens / 1_000_000) * PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER[tier];
-    perModel.push({ model, tier, tokens, usd });
+    const credits = tokens * TIER_WEIGHT[tier];
+    perModel.push({ model, tier, tokens, credits });
     totalTokens += tokens;
-    totalUsd += usd;
+    totalCredits += credits;
   }
   perModel.sort(
     (a, b) =>
-      b.usd - a.usd || b.tokens - a.tokens || a.model.localeCompare(b.model),
+      b.credits - a.credits ||
+      b.tokens - a.tokens ||
+      a.model.localeCompare(b.model),
   );
-  return { totalTokens, totalUsd, perModel };
+  return { totalTokens, totalCredits, perModel };
 }
 
 /**

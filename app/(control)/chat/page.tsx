@@ -114,9 +114,10 @@ function ControlEmptyState({
 }
 
 /**
- * The always-present orientation card on the chat home. Whatever the machine's
- * state, this answers "am I sharing, and what can I do about it?" — so the first
- * thing a new user sees is both the chat and a clear path to join the mesh.
+ * First-run onboarding nudge on the chat home: when this machine isn't sharing
+ * yet, offer a one-tap path to join the mesh. Once it's sharing, this returns
+ * null — the global top bar already owns the live sharing status, so repeating
+ * it here would just be noise.
  */
 function SharingHomeCard() {
   const sharing = useSharing();
@@ -125,32 +126,9 @@ function SharingHomeCard() {
   // irrelevant there.
   if (sharing.publicDeployment) return null;
 
-  if (sharing.state === "running") {
-    return (
-      <div className="mx-auto mt-7 flex max-w-md items-center justify-between gap-4 rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--success)] pulse-soft" />
-          <div className="min-w-0">
-            <div className="text-[13px] font-medium text-[var(--fg)]">
-              This machine is sharing
-              {sharing.peerCount > 1
-                ? ` · ${sharing.peerCount} machines online`
-                : ""}
-            </div>
-            <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
-              It&apos;s serving models to the mesh right now.
-            </div>
-          </div>
-        </div>
-        <Link
-          href="/dashboard"
-          className="shrink-0 text-[12px] text-[var(--accent)] hover:underline"
-        >
-          Machine →
-        </Link>
-      </div>
-    );
-  }
+  // Already sharing? The top bar's Sharing control shows that live — don't
+  // duplicate it on the chat canvas.
+  if (sharing.state === "running") return null;
 
   const transitioning =
     sharing.state === "loading" ||

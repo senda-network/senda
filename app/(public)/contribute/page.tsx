@@ -6,10 +6,7 @@ import { ArtBand } from "../../components/marketing";
 import { MeshLiveStats } from "../../components/MeshLiveStats";
 import { CreditsLeaderboard } from "../../components/CreditsLeaderboard";
 import { CreditsChecker } from "../../components/CreditsChecker";
-import {
-  PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER,
-  TIER_LABELS,
-} from "../../lib/model-tiers";
+import { TIER_WEIGHT, TIER_LABELS } from "../../lib/model-tiers";
 
 export const metadata: Metadata = {
   title: "Run a node — Senda",
@@ -25,14 +22,12 @@ export const metadata: Metadata = {
  * honest about not being cash yet.
  */
 export default function ContributePage() {
-  const dailyRate = PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER.daily_driver;
-  const capacityRate = PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER.capacity;
+  const dailyWeight = TIER_WEIGHT.daily_driver;
+  const capacityWeight = TIER_WEIGHT.capacity;
   const exampleDailyTokens = 5_000_000;
   const exampleCapacityTokens = 500_000;
-  const exampleDailyUsd =
-    (exampleDailyTokens / 1_000_000) * dailyRate;
-  const exampleCapacityUsd =
-    (exampleCapacityTokens / 1_000_000) * capacityRate;
+  const exampleDailyCredits = exampleDailyTokens * dailyWeight;
+  const exampleCapacityCredits = exampleCapacityTokens * capacityWeight;
 
   return (
     <div className="min-h-dvh bg-[var(--bg)] text-[var(--fg)]">
@@ -97,36 +92,37 @@ export default function ContributePage() {
             </h2>
             <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
               The runtime counts completion tokens your machine serves to mesh
-              requests over a rolling 7-day window. The desktop dashboard
-              multiplies that tally by illustrative per-tier rates to show what
-              your contribution <em>will</em> be worth — not money owed today.
+              requests over a rolling 7-day window, then weights each token by
+              how hard its model is to serve. That weighted count is your
+              credits — measured in tokens, not dollars. We don&apos;t price a
+              token in cash, so we don&apos;t pretend to.
             </p>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <RateCard
                 tier={TIER_LABELS.daily_driver}
-                rate={dailyRate}
+                weight={dailyWeight}
                 exampleTokens={exampleDailyTokens}
-                exampleUsd={exampleDailyUsd}
+                exampleCredits={exampleDailyCredits}
                 blurb="8B–14B class models at chat-viable latency. Highest volume, most contributors."
               />
               <RateCard
                 tier={TIER_LABELS.capacity}
-                rate={capacityRate}
+                weight={capacityWeight}
                 exampleTokens={exampleCapacityTokens}
-                exampleUsd={exampleCapacityUsd}
-                blurb="32B–70B models that fit on beefy solo peers or pooled splits. Scarcer capacity, higher illustrative rate."
+                exampleCredits={exampleCapacityCredits}
+                blurb="32B–70B models that fit on beefy solo peers or pooled splits. Scarcer capacity, so each served token is weighted heavier."
               />
             </div>
 
-            <div className="mt-6 rounded-lg border border-amber-400/30 bg-amber-400/5 px-4 py-3 text-[13px] leading-relaxed text-[var(--fg-muted)]">
-              <span className="font-semibold text-amber-200">
-                Illustrative only — not a payout.
+            <div className="mt-6 rounded-lg border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-[13px] leading-relaxed text-[var(--fg-muted)]">
+              <span className="font-semibold text-[var(--fg)]">
+                Credits are a measure of contribution — not a payout.
               </span>{" "}
-              Credits accrue on the public ledger when your peer serves mesh
-              chat traffic. Redemption is manual for the first cohort until
-              automated payouts ship. Early-node multipliers for the first ~100
-              peers are planned.
+              They accrue on the public ledger when your peer serves mesh chat
+              traffic, tracked in tokens until the network defines its own
+              reward unit. Early-node multipliers for the first ~100 peers are
+              planned.
             </div>
 
             <div className="mt-8 grid gap-4 lg:grid-cols-2">
@@ -245,7 +241,7 @@ export default function ContributePage() {
               <Step
                 n={3}
                 title="Watch credits accrue"
-                body="Serve mesh chat or API traffic. The dashboard's earnings preview updates from real completion-token counts. Check /status to see yourself on the public catalog."
+                body="Serve mesh chat or API traffic. The dashboard's contribution card updates from real completion-token counts. Check /status to see yourself on the public catalog."
               />
             </ol>
             <p className="mt-8 text-[14px] text-[var(--fg-muted)]">
@@ -276,15 +272,15 @@ export default function ContributePage() {
 
 function RateCard({
   tier,
-  rate,
+  weight,
   exampleTokens,
-  exampleUsd,
+  exampleCredits,
   blurb,
 }: {
   tier: string;
-  rate: number;
+  weight: number;
   exampleTokens: number;
-  exampleUsd: number;
+  exampleCredits: number;
   blurb: string;
 }) {
   const tokensM = (exampleTokens / 1_000_000).toFixed(1);
@@ -294,10 +290,10 @@ function RateCard({
         {tier}
       </div>
       <div className="mt-2 font-mono text-2xl font-semibold text-[var(--fg)]">
-        ${rate.toFixed(2)}
+        ×{weight}
         <span className="text-[14px] font-normal text-[var(--fg-muted)]">
           {" "}
-          / million tokens
+          credits / token served
         </span>
       </div>
       <p className="mt-2 text-[13px] leading-relaxed text-[var(--fg-muted)]">
@@ -306,7 +302,7 @@ function RateCard({
       <p className="mt-3 border-t border-[var(--border)] pt-3 text-[12px] text-[var(--fg-muted)]">
         Example: {tokensM}M tokens served →{" "}
         <span className="font-medium text-[var(--fg)]">
-          ~${exampleUsd.toFixed(2)} illustrative
+          {exampleCredits.toLocaleString()} credits
         </span>
       </p>
     </div>

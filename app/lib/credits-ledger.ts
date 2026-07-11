@@ -2,8 +2,9 @@
  * Early-access credits ledger — mesh completion tokens → credit balance.
  *
  * Records attributable mesh serves from `/api/chat` into Upstash Redis.
- * Credits are illustrative USD micro-units (1 credit = $0.000001) derived
- * from {@link PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER}; not cash, not on-chain.
+ * A credit is a tier-weighted token (see {@link TIER_WEIGHT}): the tokens a
+ * peer served, scaled by how hard the model is to serve. Not cash, not
+ * on-chain, not a currency — a measure of contribution.
  *
  * Attribution uses `SlaEvaluation.creditPeerId` until the runtime echoes
  * the serving host on the response path.
@@ -11,7 +12,7 @@
 
 import {
   getModelTier,
-  PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER,
+  TIER_WEIGHT,
   type ModelTier,
 } from "./model-tiers";
 import { getRedis } from "./redis";
@@ -21,16 +22,10 @@ const TOKENS_PREFIX = "senda:credits:tokens";
 const LEADERBOARD_KEY = "senda:credits:leaderboard";
 const LEDGER_TTL_SEC = 120 * 24 * 3600; // ~120 days
 
-/** 1 credit = one micro-dollar ($0.000001). */
+/** 1 credit = one tier-weighted token served (`tokens * TIER_WEIGHT[tier]`). */
 export function tokensToCredits(tokens: number, tier: ModelTier): number {
   if (!Number.isFinite(tokens) || tokens <= 0) return 0;
-  const rate = PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER[tier];
-  const usd = (tokens / 1_000_000) * rate;
-  return Math.round(usd * 1_000_000);
-}
-
-export function creditsToUsdDisplay(credits: number): number {
-  return credits / 1_000_000;
+  return Math.round(tokens * TIER_WEIGHT[tier]);
 }
 
 export type CreditRecordInput = {
@@ -76,7 +71,6 @@ export async function recordMeshCredits(
 export type CreditLeaderboardRow = {
   peerId: string;
   credits: number;
-  usd: number;
 };
 
 /**
@@ -93,7 +87,7 @@ export function parseLeaderboardFlat(
     const peerId = String(flat[i]);
     const credits = Number(flat[i + 1]);
     if (!peerId || Number.isNaN(credits)) continue;
-    out.push({ peerId, credits, usd: creditsToUsdDisplay(credits) });
+    out.push({ peerId, credits });
   }
   return out;
 }
@@ -122,7 +116,6 @@ export async function getCreditsLeaderboard(
 export type PeerCredits = {
   peerId: string;
   credits: number;
-  usd: number;
   tokensByModel: Record<string, number>;
 };
 
@@ -163,7 +156,6 @@ export async function getPeerCredits(
     return {
       peerId: id,
       credits,
-      usd: creditsToUsdDisplay(credits),
       tokensByModel: normalizeTokenMap(tokensRaw),
     };
   } catch {

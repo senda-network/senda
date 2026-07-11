@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_DAILY_DRIVER_MODEL,
-  estimatePeerPayout,
+  estimateContribution,
   getModelTier,
-  PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER,
+  TIER_WEIGHT,
   pickDefaultModelByTier,
   tierRank,
 } from "./model-tiers";
@@ -114,7 +114,7 @@ describe("pickDefaultModelByTier", () => {
   });
 });
 
-describe("estimatePeerPayout", () => {
+describe("estimateContribution", () => {
   it("returns an empty estimate for missing / empty / all-zero input", () => {
     const inputs: Array<Record<string, number> | null | undefined> = [
       undefined,
@@ -123,56 +123,58 @@ describe("estimatePeerPayout", () => {
       { "Qwen3-8B-Q4_K_M": 0 },
     ];
     for (const input of inputs) {
-      const e = estimatePeerPayout(input);
+      const e = estimateContribution(input);
       expect(e.totalTokens).toBe(0);
-      expect(e.totalUsd).toBe(0);
+      expect(e.totalCredits).toBe(0);
       expect(e.perModel).toEqual([]);
     }
   });
 
-  it("multiplies tokens by the tier rate (per million tokens)", () => {
-    // 2M daily-driver tokens at $0.05/Mtok = $0.10.
-    const e = estimatePeerPayout({ "Qwen3-8B-Q4_K_M": 2_000_000 });
+  it("weights tokens by the tier weight (daily-driver is the base unit)", () => {
+    // 2M daily-driver tokens at weight 1 = 2M credits.
+    const e = estimateContribution({ "Qwen3-8B-Q4_K_M": 2_000_000 });
     expect(e.totalTokens).toBe(2_000_000);
     expect(e.perModel).toHaveLength(1);
     expect(e.perModel[0].tier).toBe("daily_driver");
-    expect(e.totalUsd).toBeCloseTo(
-      2 * PEER_PAYOUT_USD_PER_MTOKEN_BY_TIER.daily_driver,
+    expect(e.totalCredits).toBeCloseTo(
+      2_000_000 * TIER_WEIGHT.daily_driver,
       10,
     );
   });
 
-  it("uses the higher capacity rate for capacity-tier models", () => {
-    const daily = estimatePeerPayout({ "Qwen3-8B-Q4_K_M": 1_000_000 }).totalUsd;
-    const cap = estimatePeerPayout({
+  it("credits capacity-tier tokens more heavily than daily-driver tokens", () => {
+    const daily = estimateContribution({
+      "Qwen3-8B-Q4_K_M": 1_000_000,
+    }).totalCredits;
+    const cap = estimateContribution({
       "Llama-3.3-70B-Instruct-Q4_K_M": 1_000_000,
-    }).totalUsd;
+    }).totalCredits;
     expect(cap).toBeGreaterThan(daily);
   });
 
-  it("sums across models and the per-model rows total exactly to totalUsd", () => {
-    const e = estimatePeerPayout({
+  it("sums across models and the per-model rows total exactly to totalCredits", () => {
+    const e = estimateContribution({
       "Qwen3-8B-Q4_K_M": 3_000_000,
       "Llama-3.3-70B-Instruct-Q4_K_M": 1_000_000,
     });
     expect(e.totalTokens).toBe(4_000_000);
-    const summed = e.perModel.reduce((acc, r) => acc + r.usd, 0);
-    expect(summed).toBeCloseTo(e.totalUsd, 10);
+    const summed = e.perModel.reduce((acc, r) => acc + r.credits, 0);
+    expect(summed).toBeCloseTo(e.totalCredits, 10);
   });
 
-  it("sorts per-model rows by USD descending", () => {
-    const e = estimatePeerPayout({
-      // More daily-driver tokens, but capacity earns more per token —
-      // capacity should still rank by its USD contribution.
-      "Qwen3-8B-Q4_K_M": 10_000_000, // 10 * 0.05 = $0.50
-      "Llama-3.3-70B-Instruct-Q4_K_M": 5_000_000, // 5 * 0.25 = $1.25
+  it("sorts per-model rows by credits descending", () => {
+    const e = estimateContribution({
+      // More daily-driver tokens, but capacity is weighted heavier —
+      // capacity should still rank by its credit contribution.
+      "Qwen3-8B-Q4_K_M": 10_000_000, // 10M * 1 = 10M credits
+      "Llama-3.3-70B-Instruct-Q4_K_M": 5_000_000, // 5M * 5 = 25M credits
     });
     expect(e.perModel[0].model).toBe("Llama-3.3-70B-Instruct-Q4_K_M");
-    expect(e.perModel[0].usd).toBeGreaterThan(e.perModel[1].usd);
+    expect(e.perModel[0].credits).toBeGreaterThan(e.perModel[1].credits);
   });
 
   it("drops zero-token models but keeps non-zero ones", () => {
-    const e = estimatePeerPayout({
+    const e = estimateContribution({
       "Qwen3-8B-Q4_K_M": 0,
       "Llama-3.1-8B-Instruct-Q4_K_M": 500_000,
     });
@@ -181,7 +183,7 @@ describe("estimatePeerPayout", () => {
   });
 
   it("ignores negative / non-finite token counts defensively", () => {
-    const e = estimatePeerPayout({
+    const e = estimateContribution({
       "Qwen3-8B-Q4_K_M": -100,
       "Llama-3.1-8B-Instruct-Q4_K_M": Number.NaN,
     });
