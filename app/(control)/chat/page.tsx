@@ -63,17 +63,11 @@ function ControlEmptyState({
 }: {
   onSuggest: ChatEmptyStateApi["onSuggest"];
 }) {
-  const sharing = useSharing();
   const suggestions = [
     "Write a polite email canceling tomorrow's meeting.",
     "Explain compound interest to a curious 12-year-old.",
     "Plan a 3-day weekend in Lisbon with one rainy day.",
   ];
-
-  const showStart =
-    !sharing.publicDeployment &&
-    sharing.state !== "running" &&
-    sharing.state !== "loading";
 
   return (
     <div className="relative mx-auto max-w-xl py-16 text-center">
@@ -87,33 +81,14 @@ function ControlEmptyState({
       />
       <div className="relative">
         <div className="text-balance text-[28px] font-semibold tracking-tight text-[var(--fg)]">
-          Chat with the mesh.
+          Chat with the mesh
         </div>
         <div className="mt-2 text-pretty text-[14px] text-[var(--fg-muted)]">
-          Your prompt is answered by a machine in the network — including yours,
-          when you&apos;re sharing.
+          Type below and your prompt is answered by a machine in the network —
+          this one included, when it&apos;s sharing.
         </div>
 
-        {showStart && (
-          <div className="mx-auto mt-7 flex max-w-md items-center justify-between gap-4 rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left">
-            <div className="min-w-0">
-              <div className="text-[13px] font-medium text-[var(--fg)]">
-                This machine isn&apos;t sharing yet
-              </div>
-              <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
-                Start to serve models locally and add capacity to the mesh.
-              </div>
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={sharing.busy !== null}
-              onClick={() => sharing.start()}
-            >
-              {sharing.busy === "start" ? "Starting…" : "Start sharing"}
-            </Button>
-          </div>
-        )}
+        <SharingHomeCard />
 
         <ul className="mt-8 space-y-2 text-left">
           {suggestions.map((s) => (
@@ -134,6 +109,82 @@ function ControlEmptyState({
           </Link>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The always-present orientation card on the chat home. Whatever the machine's
+ * state, this answers "am I sharing, and what can I do about it?" — so the first
+ * thing a new user sees is both the chat and a clear path to join the mesh.
+ */
+function SharingHomeCard() {
+  const sharing = useSharing();
+
+  // The hosted/public deployment has no machine to share, so the whole card is
+  // irrelevant there.
+  if (sharing.publicDeployment) return null;
+
+  if (sharing.state === "running") {
+    return (
+      <div className="mx-auto mt-7 flex max-w-md items-center justify-between gap-4 rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--success)] pulse-soft" />
+          <div className="min-w-0">
+            <div className="text-[13px] font-medium text-[var(--fg)]">
+              This machine is sharing
+              {sharing.peerCount > 1
+                ? ` · ${sharing.peerCount} machines online`
+                : ""}
+            </div>
+            <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
+              It&apos;s serving models to the mesh right now.
+            </div>
+          </div>
+        </div>
+        <Link
+          href="/dashboard"
+          className="shrink-0 text-[12px] text-[var(--accent)] hover:underline"
+        >
+          Machine →
+        </Link>
+      </div>
+    );
+  }
+
+  const transitioning =
+    sharing.state === "loading" ||
+    sharing.state === "starting" ||
+    sharing.state === "stopping";
+
+  const label =
+    sharing.state === "starting"
+      ? "Starting…"
+      : sharing.state === "stopping"
+        ? "Stopping…"
+        : sharing.state === "loading"
+          ? "Checking…"
+          : "Start sharing";
+
+  return (
+    <div className="mx-auto mt-7 flex max-w-md items-center justify-between gap-4 rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left">
+      <div className="min-w-0">
+        <div className="text-[13px] font-medium text-[var(--fg)]">
+          This machine isn&apos;t sharing yet
+        </div>
+        <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
+          Start to join the mesh — serve models to the network and run them
+          privately on your own hardware.
+        </div>
+      </div>
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={sharing.busy !== null || transitioning}
+        onClick={() => sharing.start()}
+      >
+        {label}
+      </Button>
     </div>
   );
 }

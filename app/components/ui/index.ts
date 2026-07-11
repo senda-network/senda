@@ -11,6 +11,4 @@ export { Panel } from "./Panel";
 export { Tooltip } from "./Tooltip";
 export { SegmentedControl } from "./SegmentedControl";
 export { Stat } from "./Stat";
-export { CommandPalette } from "./CommandPalette";
-export type { CommandItem, CommandGroup } from "./CommandPalette";
 export { ThemeToggle } from "./ThemeToggle";

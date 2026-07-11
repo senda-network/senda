@@ -140,7 +140,7 @@ export default function PublicHomePage() {
               <NumberedStep
                 n={3}
                 title="Compute peers"
-                body="Volunteered nodes running Senda LLM serve each session end-to-end on whichever peer fits the model, and the router auto-routes around offline ones. A model too big for any single peer can be split across several — a power-user fallback, not the usual path."
+                body="Volunteered nodes running Senda LLM serve each session end-to-end on whichever peer fits the model, and the router auto-routes around offline ones. A model too big for any single peer can be split across several."
               />
             </div>
           </div>
@@ -189,7 +189,7 @@ export default function PublicHomePage() {
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               <Feature
                 title="No third-party AI provider"
-                body="Your prompt goes to a peer running an open-weight model on a contributed machine — not OpenAI, Anthropic or Google. Nothing to revoke, no provider terms to read. The peer serving you does read the prompt to run it; run your own peer if that matters."
+                body="Your prompt goes to a peer running an open-weight model on a contributed machine — not OpenAI, Anthropic, or Google. Nothing to revoke, no provider terms to read."
               />
               <Feature
                 title="Apple Silicon carries a lot of it"
@@ -197,7 +197,7 @@ export default function PublicHomePage() {
               />
               <Feature
                 title="One peer, end to end"
-                body="A model that fits on one peer runs there start to finish — full quality, no per-token network hops. On that peer, speculative decoding can speed decode up (a small draft proposes, a larger verifier checks in batched passes). Splitting a model across peers exists as a fallback for models no single peer can hold."
+                body="A model that fits on one peer runs there start to finish — full quality, no per-token network hops. Splitting a model across peers exists as a fallback for models no single peer can hold."
               />
               <Feature
                 title="Peers are verified"
