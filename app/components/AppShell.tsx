@@ -45,7 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--bg)]">
-      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-elev)]/85 px-3 backdrop-blur">
+      <header className="relative z-20 flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-elev)]/85 px-3 backdrop-blur">
         <div className="flex min-w-0 items-center gap-1">
           <Link
             href="/chat"

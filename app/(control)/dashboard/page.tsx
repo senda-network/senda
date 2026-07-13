@@ -2388,18 +2388,11 @@ function formatTokenCount(n: number): string {
 /**
  * Contribution card for the local machine.
  *
- * Honesty contract (this is the whole point of the card): Senda values
- * contribution in the one thing it can actually measure — completion tokens
- * served — never in dollars. It renders the runtime's disk-persisted
- * rolling-7-day served-token tally (`self.servingTokens7dByModel`) as the
- * hero number, and a tier-weighted "credits" figure (see {@link TIER_WEIGHT})
- * so a scarce capacity serve is credited more than an abundant daily-driver
- * serve. Credits are not a currency, a coin, or a price — just a unit to
- * track contribution until the network ships its own.
- *
- * Self-node only (gated by the caller to the desktop app, since the field
- * is local-only and never gossiped). Shows a motivating empty state when
- * the machine hasn't served anything in the window yet.
+ * Renders the runtime's disk-persisted rolling-7-day served-token tally
+ * (`self.servingTokens7dByModel`) with a per-model breakdown. Self-node
+ * only (gated by the caller to the desktop app, since the field is
+ * local-only and never gossiped). Shows a motivating empty state when the
+ * machine hasn't served anything in the window yet.
  */
 function EarningsPreviewCard({
   self,
@@ -2440,14 +2433,7 @@ function EarningsPreviewCard({
           <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
             {hasData ? (
               <>
-                Worth{" "}
-                <span
-                  className="font-medium text-[var(--accent)]"
-                  title="Credits weight each served token by model tier — capacity counts 5×, daily-driver 1×."
-                >
-                  {formatTokenCount(estimate.totalCredits)} credits
-                </span>{" "}
-                across {estimate.perModel.length} model
+                Across {estimate.perModel.length} model
                 {estimate.perModel.length === 1 ? "" : "s"}.
               </>
             ) : running ? (
@@ -2474,30 +2460,14 @@ function EarningsPreviewCard({
                   {TIER_LABELS[row.tier]} · ×{TIER_WEIGHT[row.tier]}
                 </span>
               </div>
-              <div className="flex shrink-0 items-center gap-3 text-[12px]">
-                <span className="font-mono text-[var(--fg-muted)]">
-                  {formatTokenCount(row.tokens)} tok
-                </span>
-                <span className="font-mono font-medium text-[var(--fg)]">
-                  {formatTokenCount(row.credits)} cr
-                </span>
-              </div>
+              <span className="shrink-0 font-mono text-[12px] font-medium text-[var(--fg)]">
+                {formatTokenCount(row.tokens)} tok
+              </span>
             </li>
           ))}
         </ul>
       )}
 
-      <div className="relative mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)]/60 px-3 py-2.5">
-        <div className="text-[11px] leading-relaxed text-[var(--fg-muted)]">
-          <span className="font-semibold text-[var(--fg)]">
-            Measured in tokens, not dollars.
-          </span>{" "}
-          A credit is one served token, weighted by how hard its model is to
-          serve ({TIER_LABELS.capacity} ×{TIER_WEIGHT.capacity},{" "}
-          {TIER_LABELS.daily_driver} ×{TIER_WEIGHT.daily_driver}). It tracks
-          your contribution — not a currency, a coin, or a payout.
-        </div>
-      </div>
     </section>
   );
 }
