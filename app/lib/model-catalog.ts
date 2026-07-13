@@ -45,6 +45,9 @@ export type CatalogModel = {
 };
 
 export const MODEL_CATALOG: CatalogModel[] = [
+  // ── Light / daily-driver ─────────────────────────────────────────────
+  // Solo-servable on a single contributor at chat-viable latency. Qwen3-8B
+  // is the reference default (see DEFAULT_DAILY_DRIVER_MODEL in model-tiers).
   {
     id: "Qwen3-0.6B-Q4_K_M",
     name: "Qwen 3 · 0.6B",
@@ -72,45 +75,22 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 5,
     minVramGb: 8,
     description:
-      "Senda's reference demo model. Strong reasoning and code, runs comfortably on a 16GB Mac or a mid-range GPU.",
+      "Senda's default. Best all-round open model at this size — strong reasoning, code and multilingual, with a thinking mode. Runs comfortably on a 16 GB Mac or an 8 GB GPU. If you only pull one model, pull this.",
     recommended: true,
   },
   {
-    id: "Llama-3.1-8B-Instruct-Q4_K_M",
-    name: "Llama 3.1 · 8B Instruct",
-    family: "llama",
-    sizeGb: 5,
-    minVramGb: 8,
-    description:
-      "Meta's instruction-tuned 8B. Wide tool ecosystem, great default for chat.",
-  },
-  {
-    id: "Qwen2.5-Coder-7B-Instruct-Q4_K_M",
-    name: "Qwen 2.5 Coder · 7B Instruct",
-    family: "qwen",
-    sizeGb: 4.7,
-    minVramGb: 8,
-    description:
-      "Coding-specialized 7B. Pair it with the OpenAI-compatible endpoint to use Senda as a local backend for editors and agents.",
-  },
-  {
-    id: "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M",
-    name: "DeepSeek R1 Distill · Qwen 14B",
-    family: "deepseek",
-    sizeGb: 9,
-    minVramGb: 12,
-    description:
-      "Reasoning model distilled from DeepSeek-R1 onto a Qwen 14B base. Thinks step-by-step before answering — trades latency for stronger math and code.",
-  },
-  {
-    id: "Gemma-3-27B-it-Q4_K_M",
-    name: "Gemma 3 · 27B",
+    id: "Gemma-3-12B-it-Q4_K_M",
+    name: "Gemma 3 · 12B",
     family: "gemma",
-    sizeGb: 17,
-    minVramGb: 20,
+    sizeGb: 7.3,
+    minVramGb: 10,
     description:
-      "Google Gemma 3 27B — strong all-around reasoning. Fits on a 24 GB GPU or a 28 GB+ Mac, or pools across two mid-range contributors (e.g. an 18 GB Mac + an 8 GB GPU at the bare minimum).",
+      "Google Gemma 3 12B — punches above its size on reasoning and writing, with a 128K context window. The natural step up from the 8B when you have a 12 GB GPU or a 16 GB+ Mac to spare.",
   },
+  // ── Fast expert-sharded MoE ──────────────────────────────────────────
+  // ~30B total but only ~3B active per token, so they decode fast (native
+  // 60–200+ tok/s) and Senda splits them by expert with zero per-token
+  // cross-node traffic — the sweet spot for pooling across two contributors.
   {
     id: "Qwen3-30B-A3B-Q4_K_M",
     name: "Qwen 3 · 30B A3B (MoE)",
@@ -118,16 +98,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 17.3,
     minVramGb: 20,
     description:
-      "Mixture-of-experts: 30B total, ~3B active per token, 128 experts top-8. Senda splits by expert with zero per-token cross-node traffic — pools well across two contributors as long as each can hold the shared trunk (~6 GB) plus its expert shard.",
-  },
-  {
-    id: "GLM-4.7-Flash-Q4_K_M",
-    name: "GLM 4.7 · Flash (MoE)",
-    family: "glm",
-    sizeGb: 18,
-    minVramGb: 20,
-    description:
-      "Mixture-of-experts: 30B total, ~3B active per token, 64 experts top-4. The smallest min-experts-per-node of any MoE in the catalog, so it pools well across asymmetric nodes — an 18 GB Mac + an 8 GB laptop GPU is enough. Fast inference, tool calling.",
+      "Mixture-of-experts: 30B total, only ~3B active per token, so it delivers near-30B quality at close to 8B speed. 128 experts, top-8. Senda splits by expert with zero per-token cross-node traffic — pools cleanly across two contributors (each needs the ~6 GB shared trunk + its expert shard).",
   },
   {
     id: "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M",
@@ -136,16 +107,29 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 18.6,
     minVramGb: 22,
     description:
-      "Coding-specialised mixture-of-experts — same architecture as Qwen 3 30B A3B but post-trained for agentic coding and tool use. Drop-in upgrade from Qwen 2.5 Coder 7B when you have a 24 GB+ GPU or two contributors to pool.",
+      "The strongest local coding model that runs at real speed today — expert-sharded MoE post-trained for agentic coding and tool use, with a 256K context window. Point an editor or agent at Senda's OpenAI-compatible endpoint and use this as the backend.",
   },
   {
-    id: "GLM-4-32B-0414-Q4_K_M",
-    name: "GLM 4 · 32B",
+    id: "GLM-4.7-Flash-Q4_K_M",
+    name: "GLM 4.7 · Flash (MoE)",
     family: "glm",
-    sizeGb: 19.7,
-    minVramGb: 24,
+    sizeGb: 18,
+    minVramGb: 20,
     description:
-      "GLM 4 32B — strong dense generalist with solid tool calling. Same hardware envelope as Qwen 3 32B: 24 GB GPU, 36 GB+ Mac, or two mid-range contributors pooling.",
+      "Mixture-of-experts: 30B total, ~3B active per token, 64 experts top-4. The smallest min-experts-per-node of any MoE here, so it pools across asymmetric nodes — an 18 GB Mac + an 8 GB laptop GPU is enough. Fast inference, strong tool calling.",
+  },
+  // ── Capacity ─────────────────────────────────────────────────────────
+  // Big dense models: real quality, but slow through the mesh today (a
+  // proof-of-capacity demo, not the chat default). Fit a beefy single peer
+  // or pool across contributors.
+  {
+    id: "Gemma-3-27B-it-Q4_K_M",
+    name: "Gemma 3 · 27B",
+    family: "gemma",
+    sizeGb: 17,
+    minVramGb: 20,
+    description:
+      "Google Gemma 3 27B — strong dense all-round reasoning. Fits on a 24 GB GPU or a 28 GB+ Mac, or pools across two mid-range contributors (e.g. an 18 GB Mac + an 8 GB GPU at the bare minimum).",
   },
   {
     id: "Qwen3-32B-Q4_K_M",
@@ -154,61 +138,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 20,
     minVramGb: 24,
     description:
-      "Largest dense Qwen 3. Strong reasoning with thinking-mode, fits on a 24 GB GPU or a 36 GB+ Mac (a 32 GB Mac is right at the Metal-budget line and may not load at long context). Also pools nicely across two mid-range contributors.",
-  },
-  {
-    id: "Qwen2.5-Coder-32B-Instruct-Q4_K_M",
-    name: "Qwen 2.5 Coder · 32B Instruct",
-    family: "qwen",
-    sizeGb: 20,
-    minVramGb: 24,
-    description:
-      "Top-tier open coding model — comparable to GPT-4o on code benchmarks. The natural upgrade from the 7B coder when you have a 24 GB GPU, a 36 GB+ Mac, or two mid-range contributors to pool.",
-  },
-  {
-    id: "Llama-3.3-70B-Instruct-Q4_K_M",
-    name: "Llama 3.3 · 70B Instruct",
-    family: "llama",
-    sizeGb: 40,
-    minVramGb: 48,
-    description:
-      "Meta's frontier dense 70B. Broad tool ecosystem support. Needs a 48 GB GPU, a 64 GB+ Mac (Metal caps a 64 GB Mac at ~48 GB usable — exactly the threshold), or two ~24 GB contributors pooling.",
-  },
-  {
-    id: "DeepSeek-R1-Distill-70B-Q4_K_M",
-    name: "DeepSeek R1 Distill · 70B",
-    family: "deepseek",
-    sizeGb: 43,
-    minVramGb: 48,
-    description:
-      "Same 70B footprint as Llama 3.3, swapped for a thinking-mode reasoner distilled from DeepSeek-R1. Same hardware envelope: 48 GB GPU, a 64 GB+ Mac, or two ~24 GB contributors. Trades latency for stronger math and step-by-step problem solving.",
-  },
-  {
-    id: "Qwen2.5-72B-Instruct-Q4_K_M",
-    name: "Qwen 2.5 · 72B Instruct",
-    family: "qwen",
-    sizeGb: 47,
-    minVramGb: 56,
-    description:
-      "Qwen's flagship dense in this size class — the real frontier Qwen at 72B. Needs a 96 GB Mac (~72 GB usable to Metal), or two contributors with ~32 GB usable each (e.g. two 48 GB Macs). A great showcase for tensor-split inference.",
-  },
-  {
-    id: "Qwen3-Coder-Next-Q4_K_M",
-    name: "Qwen 3 · Coder Next (~85B)",
-    family: "qwen",
-    sizeGb: 48,
-    minVramGb: 56,
-    description:
-      "Frontier open-source coding model — ~85B dense, beats Qwen 2.5 Coder 32B by a real margin on agentic and tool-use benchmarks. Same envelope as Qwen 2.5 72B: 96 GB+ Mac solo, or two ~32 GB-usable contributors. Multi-part GGUF that splits cleanly across two beefy nodes.",
-  },
-  {
-    id: "Mixtral-8x22B-Instruct-Q4_K_M",
-    name: "Mixtral · 8x22B Instruct",
-    family: "mistral",
-    sizeGb: 86,
-    minVramGb: 96,
-    description:
-      "Mistral's larger mixture-of-experts: 141B params, ~39B active per token. The realistic 'a few people pooling capacity' showcase — needs roughly four 32 GB-usable contributors (e.g. four 48 GB Macs) or three with ~32 GB+ each.",
+      "Largest dense Qwen 3 — the dense quality ceiling in this size class. Fits a 24 GB GPU or a 36 GB+ Mac (a 32 GB Mac is right at the Metal-budget line and may not load at long context). Also pools across two mid-range contributors.",
   },
   {
     id: "Qwen3-235B-A22B-Q4_K_M",

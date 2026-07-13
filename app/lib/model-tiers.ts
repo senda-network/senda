@@ -97,6 +97,7 @@ const TIER_BY_MODEL: Record<string, ModelTier> = {
   // Mac (16 GB+) or a mid-range GPU (8 GB+ VRAM). These are the only
   // models that can hit the daily-driver SLA on a single peer.
   "Qwen3-8B-Q4_K_M": "daily_driver",
+  "Gemma-3-12B-it-Q4_K_M": "daily_driver",
   "Llama-3.1-8B-Instruct-Q4_K_M": "daily_driver",
   "Qwen2.5-Coder-7B-Instruct-Q4_K_M": "daily_driver",
   "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M": "daily_driver",
@@ -164,7 +165,7 @@ export const TIER_DESCRIPTIONS: Record<ModelTier, string> = {
   daily_driver:
     "Models a single contributor can serve at chat-viable latency. Targeted: under 3 s to first token, 8+ tok/s decode.",
   capacity:
-    "Large models (32B–70B class). Routable as a proof-of-capacity demo, not the chat default. Expect 10–15 s to first token and 1–2 tok/s decode through the mesh today.",
+    "Bigger models routable as a demo, not the chat default. Dense models (32B+) are slow through the mesh today — expect 10–15 s to first token and 1–2 tok/s. Expert-sharded MoEs (the 30B-A3B class) activate only ~3B params per token, so they pool across contributors and decode much faster.",
   experimental:
     "Newly added or uncategorised. Functional but not promised; behaviour and performance may change without notice.",
 };
