@@ -102,6 +102,7 @@ export type FallbackVerdict =
   | "fallback-no-mapping"
   | "fallback-wrong-tier"
   | "fallback-rate-limited"
+  | "vision-mesh-only"
   | "fallback-fired";
 
 export type FallbackDecision = {

@@ -8,6 +8,12 @@ export function ChatMessage({ message }: { message: UIMessage }) {
     .filter((p): p is { type: "text"; text: string } => p.type === "text")
     .map((p) => p.text)
     .join("");
+  const images = message.parts.filter(
+    (p): p is { type: "file"; mediaType: string; url: string; filename?: string } =>
+      p.type === "file" &&
+      typeof (p as { mediaType?: string }).mediaType === "string" &&
+      (p as { mediaType: string }).mediaType.startsWith("image/"),
+  );
 
   return (
     <div
@@ -26,18 +32,33 @@ export function ChatMessage({ message }: { message: UIMessage }) {
             Senda
           </div>
         )}
-        {!text ? (
+        {images.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {images.map((img, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={img.url}
+                alt={img.filename ?? "attached image"}
+                className="max-h-64 rounded-lg border border-[var(--border)] object-contain"
+              />
+            ))}
+          </div>
+        )}
+        {!text && images.length === 0 && !isUser ? (
           <span className="inline-flex items-center gap-1 text-[var(--fg-muted)]">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--fg-muted)] pulse-soft" />
             <span className="text-xs">thinking…</span>
           </span>
-        ) : isUser ? (
-          text
-        ) : (
-          <div className="senda-md">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-          </div>
-        )}
+        ) : text ? (
+          isUser ? (
+            text
+          ) : (
+            <div className="senda-md">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+            </div>
+          )
+        ) : null}
       </div>
     </div>
   );

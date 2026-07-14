@@ -10,9 +10,47 @@ import { ModelSelector } from "./ModelSelector";
 import { Button } from "./ui/Button";
 import { Callout } from "./ui/Callout";
 import { apiUrl } from "../lib/runtime-target";
+import { isVisionModel } from "../lib/model-catalog";
 
 const SESSION_KEY = "senda:threadId";
 const STORAGE_PREFIX = "senda:thread:";
+
+// Images are downscaled client-side before send. A vision model only needs
+// ~1–1.5k px on the long edge, and the whole request (base64-inflated data
+// URL) has to clear Vercel's ~4.5 MB body cap and the runtime's 8 MB chat
+// ingress limit — a resized JPEG lands around 200–400 KB, comfortably inside.
+const MAX_IMAGE_DIM = 1500;
+const IMAGE_JPEG_QUALITY = 0.85;
+
+type AttachedImage = { url: string; mediaType: string; name: string };
+
+async function fileToDownscaledDataUrl(file: File): Promise<AttachedImage> {
+  // `from-image` honours EXIF orientation so phone photos aren't sideways.
+  const bitmap = await createImageBitmap(file, {
+    imageOrientation: "from-image",
+  });
+  try {
+    const scale = Math.min(
+      1,
+      MAX_IMAGE_DIM / Math.max(bitmap.width, bitmap.height),
+    );
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas 2d context unavailable");
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    return {
+      url: canvas.toDataURL("image/jpeg", IMAGE_JPEG_QUALITY),
+      mediaType: "image/jpeg",
+      name: file.name,
+    };
+  } finally {
+    bitmap.close?.();
+  }
+}
 
 function newThreadId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -96,8 +134,11 @@ export function ChatExperience({
   const [selectedModel, setSelectedModel] = useState<string | undefined>(
     undefined,
   );
+  const [image, setImage] = useState<AttachedImage | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Mirror `selectedModel` into a ref so the transport — created once via
   // useMemo — can read the latest pick on every send without being torn
   // down and re-instantiated each time the dropdown changes (which would
@@ -206,14 +247,56 @@ export function ChatExperience({
     return () => cancelAnimationFrame(id);
   }, [messages.length, lastMessageDigest, status]);
 
+  const canAttach = isVisionModel(selectedModel);
+
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || isStreaming) return;
-    sendMessage({ text: trimmed });
+    if (isStreaming) return;
+    if (!trimmed && !image) return;
+    const files = image
+      ? [
+          {
+            type: "file" as const,
+            mediaType: image.mediaType,
+            filename: image.name,
+            url: image.url,
+          },
+        ]
+      : undefined;
+    if (files) {
+      sendMessage(trimmed ? { text: trimmed, files } : { files });
+    } else {
+      sendMessage({ text: trimmed });
+    }
     setInput("");
+    setImage(null);
+    setAttachError(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
+
+  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input so re-picking the same file still fires `onChange`.
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setAttachError("That file isn't an image.");
+      return;
+    }
+    try {
+      setAttachError(null);
+      setImage(await fileToDownscaledDataUrl(file));
+    } catch {
+      setAttachError("Couldn't read that image. Try a different file.");
+    }
+  };
+
+  // Dropping the vision model clears any staged image so we never send an
+  // image to a text-only model.
+  useEffect(() => {
+    if (!canAttach && image) setImage(null);
+  }, [canAttach, image]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -285,10 +368,69 @@ export function ChatExperience({
 
       <footer className="sticky bottom-0 border-t border-[var(--border)] bg-[var(--bg)]/85 backdrop-blur">
         <div className={centered ? "mx-auto max-w-3xl px-4 py-4" : "px-4 py-4"}>
+          {image && (
+            <div className="mb-2 flex items-center gap-2">
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={image.url}
+                  alt={image.name}
+                  className="h-16 w-16 rounded-lg border border-[var(--border)] object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setImage(null)}
+                  aria-label="Remove image"
+                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-elev)] text-xs text-[var(--fg-muted)] hover:text-[var(--fg)]"
+                >
+                  ×
+                </button>
+              </div>
+              <span className="truncate text-xs text-[var(--fg-muted)]">
+                {image.name}
+              </span>
+            </div>
+          )}
+          {attachError && (
+            <div className="mb-2 text-xs text-[var(--danger)]">{attachError}</div>
+          )}
           <form
             onSubmit={submit}
             className="flex items-end gap-2 rounded-[var(--radius-2xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-3 py-2 shadow-[var(--shadow-sm)] transition-colors focus-within:border-[var(--accent)]/60"
           >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onPickImage}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!canAttach}
+              title={
+                canAttach
+                  ? "Attach an image"
+                  : "Select a vision model (Gemma 3) to attach an image"
+              }
+              aria-label="Attach an image"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--fg-muted)] transition-colors hover:text-[var(--fg)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
             <textarea
               ref={textareaRef}
               value={input}
@@ -313,7 +455,7 @@ export function ChatExperience({
                 type="submit"
                 variant="primary"
                 size="sm"
-                disabled={!input.trim()}
+                disabled={!input.trim() && !image}
               >
                 Send
               </Button>

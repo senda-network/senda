@@ -11,6 +11,7 @@ import {
   decideFallback,
   getOpenRouterProvider,
 } from "../../lib/fallback-provider";
+import { isVisionModel } from "../../lib/model-catalog";
 import { recordServedByDecision } from "../../lib/mesh-share";
 import { recordMeshCredits } from "../../lib/credits-ledger";
 import type { SlaEvaluation } from "../../lib/routing-sla";
@@ -263,6 +264,29 @@ export async function POST(req: Request) {
 
   const modelId = parsed.body.model ?? (await pickDefaultModel());
 
+  // Vision gate. A message carries an image when any part is a file with an
+  // `image/*` media type (AI SDK v5 FileUIPart). Only models we've flagged
+  // vision-capable are launched with an `--mmproj` projector; routing an
+  // image at a text-only model produces an opaque llama-server failure, so
+  // reject early with an actionable message instead.
+  const hasImage = parsed.body.messages.some(
+    (m) =>
+      Array.isArray(m.parts) &&
+      m.parts.some(
+        (p) =>
+          (p as { type?: string }).type === "file" &&
+          typeof (p as { mediaType?: string }).mediaType === "string" &&
+          (p as { mediaType: string }).mediaType.startsWith("image/"),
+      ),
+  );
+  if (hasImage && !isVisionModel(modelId)) {
+    return badRequest(
+      req,
+      "This model can't see images. Pick a vision model like Gemma 3 12B or Gemma 3 27B, then attach your image again.",
+      422,
+    );
+  }
+
   // Phase 4.B — SLA gate inputs. Cached fetch (~5 s TTL) so the
   // hot path is essentially free in steady state.
   const peers = await fetchMeshPeersCached();
@@ -273,6 +297,16 @@ export async function POST(req: Request) {
   // consuming the testbed's per-IP per-hour budget, and that
   // happens only when the decision routes to the external provider.
   let decision = decideFallback(modelId, sla);
+  // The external fallback slugs are text-only; never ship an image to them.
+  // A vision request stays on the mesh even when the SLA gate would
+  // otherwise have leaned on fallback.
+  if (hasImage && decision.useFallback) {
+    decision = {
+      useFallback: false,
+      verdict: "vision-mesh-only",
+      fallbackModelSlug: null,
+    };
+  }
   let budgetRemaining: number | null = null;
   if (decision.useFallback) {
     const clientIp = getClientIp(req);

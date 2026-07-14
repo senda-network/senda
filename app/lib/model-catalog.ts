@@ -42,6 +42,12 @@ export type CatalogModel = {
   description: string;
   recommended?: boolean;
   cpuOk?: boolean;
+  /**
+   * Accepts image input (multimodal vision). The runtime launches these
+   * with an `--mmproj` projector; the chat UI lets you attach an image
+   * only when a vision model is selected.
+   */
+  vision?: boolean;
 };
 
 export const MODEL_CATALOG: CatalogModel[] = [
@@ -85,7 +91,8 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 7.3,
     minVramGb: 10,
     description:
-      "Google Gemma 3 12B — punches above its size on reasoning and writing, with a 128K context window. The natural step up from the 8B when you have a 12 GB GPU or a 16 GB+ Mac to spare.",
+      "Google Gemma 3 12B — punches above its size on reasoning and writing, with a 128K context window, and it can see images. The natural step up from the 8B when you have a 12 GB GPU or a 16 GB+ Mac to spare.",
+    vision: true,
   },
   // ── Fast expert-sharded MoE ──────────────────────────────────────────
   // ~30B total but only ~3B active per token, so they decode fast (native
@@ -129,7 +136,8 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 17,
     minVramGb: 20,
     description:
-      "Google Gemma 3 27B — strong dense all-round reasoning. Fits on a 24 GB GPU or a 28 GB+ Mac, or pools across two mid-range contributors (e.g. an 18 GB Mac + an 8 GB GPU at the bare minimum).",
+      "Google Gemma 3 27B — strong dense all-round reasoning, and it can see images. Fits on a 24 GB GPU or a 28 GB+ Mac, or pools across two mid-range contributors (e.g. an 18 GB Mac + an 8 GB GPU at the bare minimum).",
+    vision: true,
   },
   {
     id: "Qwen3-32B-Q4_K_M",
@@ -150,3 +158,17 @@ export const MODEL_CATALOG: CatalogModel[] = [
       "Frontier-class mixture-of-experts: 235B params, ~22B active per token. Won't fit on any single laptop — this is the model that demonstrates what the mesh is for.",
   },
 ];
+
+/**
+ * Catalog ids that accept image input. Derived from the `vision` flag so
+ * the flag stays the single source of truth. The chat route gates image
+ * uploads against this set, and the composer only lets you attach an
+ * image when one of these models is selected.
+ */
+export const VISION_MODEL_IDS: ReadonlySet<string> = new Set(
+  MODEL_CATALOG.filter((m) => m.vision).map((m) => m.id),
+);
+
+export function isVisionModel(id: string | null | undefined): boolean {
+  return !!id && VISION_MODEL_IDS.has(id);
+}
