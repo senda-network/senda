@@ -25,7 +25,8 @@ export const dynamic = "force-dynamic";
  *   1. gates auto-sends on the opt-in flag (manual sends are explicit
  *      consent and always allowed),
  *   2. gathers local-only context the client can't see (scrubbed stderr
- *      tail, runtime auto-upgrade state, OS/arch),
+ *      tail, runtime auto-upgrade state, OS/arch, desktop app version
+ *      from the SENDA_APP_VERSION env the Tauri shell injects),
  *   3. merges the client-supplied context (backend, VRAM, phase, …),
  *   4. forwards a scrubbed bundle to `${DIAG_BASE}/api/diagnostics`.
  *
@@ -172,13 +173,23 @@ export async function POST(req: Request) {
     tailFile(LOG_PATHS.stderr, STDERR_TAIL_BYTES),
   ]);
 
+  // The Tauri shell injects SENDA_APP_VERSION when it spawns this
+  // controller (see desktop/src/sidecar.rs). Prefer an explicit
+  // client-supplied value (e.g. a future UI that knows its own
+  // version), then fall through to the env the shell already sets —
+  // so already-shipped desktop builds report their version without a
+  // rebuild.
+  const desktopVersion =
+    str(ctx.desktopVersion, 64) ??
+    str(process.env.SENDA_APP_VERSION?.trim() || null, 64);
+
   const payload = {
     installId,
     trigger,
     os: process.platform,
     arch: process.arch,
     runtimeVersion: str(ctx.runtimeVersion, 64) ?? upgrade?.installed ?? null,
-    desktopVersion: str(ctx.desktopVersion, 64),
+    desktopVersion,
     backend: str(ctx.backend, 32),
     vramGb:
       typeof ctx.vramGb === "number" && Number.isFinite(ctx.vramGb)

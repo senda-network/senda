@@ -441,6 +441,43 @@ export default function DashboardPage() {
     }
   }, [runtimeUpgrade]);
 
+  // Auto-send a diagnostic when a runtime upgrade check fails (opt-in
+  // enforced server-side). Keyed on checkedAt so a persistent failure
+  // (same lastError across polls) only fires once per check, and a
+  // later distinct failure (new checkedAt) fires again. Deduped via
+  // localStorage so a tab refresh doesn't re-send the same failure;
+  // a session ref covers private mode where localStorage is unavailable.
+  const upgradeFailDiagSent = useRef<string | null>(null);
+  useEffect(() => {
+    if (!runtimeUpgrade || !runtimeUpgrade.ok) return;
+    if (runtimeUpgrade.lastOutcome !== "failed") return;
+    if (runtimeUpgrade.checking) return;
+    const key =
+      runtimeUpgrade.checkedAt ??
+      runtimeUpgrade.lastError ??
+      "failed";
+    if (upgradeFailDiagSent.current === key) return;
+    try {
+      const seen = localStorage.getItem("senda:diag-upgrade-failed-seen");
+      if (seen === key) {
+        upgradeFailDiagSent.current = key;
+        return;
+      }
+      localStorage.setItem("senda:diag-upgrade-failed-seen", key);
+    } catch {
+      // private mode — ref below still prevents re-sends this session.
+    }
+    upgradeFailDiagSent.current = key;
+    void sendDiagnostics("auto", {
+      runtimeVersion: runtimeUpgrade.installedVersion,
+      phase: "runtime_upgrade_failed",
+      serviceState: control?.service.state ?? null,
+      runtimeReachable:
+        control?.service.state === "running" ||
+        mesh.nodes.some((n) => n.isSelf),
+    });
+  }, [runtimeUpgrade, control?.service.state, mesh.nodes]);
+
   const runRepair = useCallback(async () => {
     setBusy("repair");
     setToast(null);
