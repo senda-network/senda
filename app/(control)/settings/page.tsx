@@ -14,6 +14,7 @@ type Settings = {
   backend: Backend;
   publicOrigins: string[];
   keepMeshRunningAfterQuit: boolean;
+  shareDiagnostics: boolean;
 };
 
 type LocalModel = { id: string };
@@ -191,6 +192,25 @@ export default function SettingsPage() {
                 {settings?.keepMeshRunningAfterQuit
                   ? "On — quitting leaves the runtime up"
                   : "Off — quitting stops the runtime"}
+              </span>
+            </div>
+          </Card>
+
+          <Card
+            eyebrow="Diagnostics"
+            title="Help improve Senda"
+            hint="When something looks stuck, send an anonymous diagnostic report — runtime and app versions, your hardware class, and scrubbed error logs. Never your chat messages. You can also send one manually from the loading card. Off by default."
+          >
+            <div className="flex items-center justify-between gap-4">
+              <Switch
+                checked={settings?.shareDiagnostics ?? false}
+                disabled={!settings}
+                onChange={(v) => update("shareDiagnostics", v)}
+              />
+              <span className="text-[12px] text-[var(--fg-muted)]">
+                {settings?.shareDiagnostics
+                  ? "On — sends reports automatically when stuck"
+                  : "Off — nothing is sent automatically"}
               </span>
             </div>
           </Card>

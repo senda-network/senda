@@ -145,6 +145,22 @@ export default function PrivacyPage() {
               </p>
             </Clause>
 
+            <Clause title="Optional diagnostic reports">
+              <p>
+                The desktop app can send{" "}
+                <span className="text-[var(--fg)]">diagnostic reports</span>{" "}
+                when something looks stuck — but only if you turn it on in
+                Settings, or click &ldquo;Send diagnostic report&rdquo;
+                yourself. A report contains app and runtime versions, your
+                hardware class (backend and memory), which model was loading,
+                and a scrubbed tail of the runtime&apos;s error log with home
+                paths, usernames, and tokens removed. It is tagged with a
+                random per-install id that isn&apos;t tied to your identity.
+                It never includes your prompts or chat content. Automatic
+                sending is off by default.
+              </p>
+            </Clause>
+
             <Clause title="Changes & contact">
               <p>
                 Senda is under active development, so this policy will

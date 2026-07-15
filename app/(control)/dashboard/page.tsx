@@ -20,6 +20,10 @@ import { nodeDisplayState } from "../../lib/node-display-state";
 import { loadedModelUnderprovisioning } from "../../lib/mesh-fit";
 import { LiveLaunchState } from "../../components/LiveLaunchState";
 import { Button } from "../../components/ui/Button";
+import {
+  sendDiagnostics,
+  type DiagnosticContext,
+} from "../../lib/diagnostics-client";
 
 type ServiceState =
   | { state: "running"; pid: number | null }
@@ -947,6 +951,16 @@ export default function DashboardPage() {
                   ) ?? null
                 }
                 selfHostname={selfNode?.hostname ?? null}
+                diagnosticContext={{
+                  runtimeVersion: selfNode?.version ?? null,
+                  backend: selfNode?.capability.backend ?? null,
+                  vramGb:
+                    selfNode?.capability.vramGb ?? selfNode?.vramGb ?? null,
+                  startupModel: startup?.[0]?.model ?? null,
+                  loadedModels: selfNode?.capability.loadedModels ?? [],
+                  serviceState: control?.service.state ?? null,
+                  runtimeReachable: running,
+                }}
               />
             )}
 
@@ -1943,6 +1957,7 @@ function ModelLoadingCard({
   runtimeRunning,
   meshModel,
   selfHostname,
+  diagnosticContext,
 }: {
   startupModelId: string;
   startedAt: number;
@@ -1959,10 +1974,17 @@ function ModelLoadingCard({
    * with the real reason in that case. */
   meshModel: MeshModel | null;
   selfHostname: string | null;
+  /** Machine/service context forwarded with a diagnostic report. The
+   * card enriches it with the live phase label before sending. */
+  diagnosticContext: DiagnosticContext;
 }) {
   const [elapsed, setElapsed] = useState(() =>
     Math.floor((Date.now() - startedAt) / 1000),
   );
+  const [reportState, setReportState] = useState<
+    "idle" | "sending" | "sent" | "failed"
+  >("idle");
+  const autoReportFired = useRef(false);
   useEffect(() => {
     const id = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startedAt) / 1000));
@@ -2027,6 +2049,31 @@ function ModelLoadingCard({
   // take action rather than just wait.
   const stuck = elapsed >= 150 || planner === "waiting_for_capacity";
 
+  const buildContext = (): DiagnosticContext => ({
+    ...diagnosticContext,
+    phase: phaseLabel,
+  });
+
+  // Auto-report the "runtime never came back" case (opt-in enforced
+  // server-side): the exact failure mode that strands a user on
+  // "Waiting for the runtime to come back up…" after an upgrade. We only
+  // fire when the runtime is genuinely down and we've waited past the
+  // normal cold-load window — not for waiting_for_capacity, which is a
+  // capacity choice, not a bug. Fires at most once per mount.
+  useEffect(() => {
+    if (autoReportFired.current) return;
+    if (runtimeRunning || elapsed < 150) return;
+    autoReportFired.current = true;
+    void sendDiagnostics("auto", buildContext());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runtimeRunning, elapsed]);
+
+  const sendManualReport = async () => {
+    setReportState("sending");
+    const res = await sendDiagnostics("manual", buildContext());
+    setReportState(res.ok && res.sent ? "sent" : "failed");
+  };
+
   return (
     <section
       className={
@@ -2080,13 +2127,37 @@ function ModelLoadingCard({
             </div>
           </div>
         </div>
-        <Link
-          href="/logs"
-          className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2 text-[11px] font-medium text-[var(--fg-muted)] transition hover:text-[var(--fg)]"
-        >
-          Open Activity →
-        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <Link
+            href="/logs"
+            className="rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2 text-[11px] font-medium text-[var(--fg-muted)] transition hover:text-[var(--fg)]"
+          >
+            Open Activity →
+          </Link>
+          {stuck && (
+            <button
+              type="button"
+              onClick={sendManualReport}
+              disabled={reportState === "sending" || reportState === "sent"}
+              className="rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)] px-3 py-2 text-[11px] font-medium text-[var(--fg-muted)] transition hover:text-[var(--fg)] disabled:opacity-60"
+            >
+              {reportState === "sending"
+                ? "Sending…"
+                : reportState === "sent"
+                  ? "Report sent ✓"
+                  : reportState === "failed"
+                    ? "Send failed — retry"
+                    : "Send diagnostic report"}
+            </button>
+          )}
+        </div>
       </div>
+      {stuck && reportState === "idle" && (
+        <div className="relative mt-3 text-[10px] text-[var(--fg-muted)]">
+          Sends versions, hardware class, and scrubbed error logs to help us
+          fix this — never your chat messages.
+        </div>
+      )}
     </section>
   );
 }

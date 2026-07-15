@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
-import path from "node:path";
 import { isPublic } from "../_lib";
+import {
+  DEFAULT_CONTROLLER_SETTINGS,
+  isBackend,
+  readControllerSettings,
+  writeControllerSettings,
+  type ControllerSettings,
+} from "../../../lib/controller-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,83 +23,10 @@ export const dynamic = "force-dynamic";
  *
  * We do *not* touch the runtime's own config file from here. The runtime
  * is the source of truth for things like the listen port; this file is the
- * UI's private preferences.
+ * UI's private preferences. The shape lives in
+ * `app/lib/controller-settings.ts` so the diagnostics collector can share
+ * it.
  */
-
-export type Backend = "auto" | "metal" | "cuda" | "rocm" | "vulkan" | "cpu";
-
-export type ControllerSettings = {
-  defaultModel: string | null;
-  backend: Backend;
-  publicOrigins: string[];
-  /**
-   * When true, quitting the desktop app leaves the runtime daemon running
-   * in the background (still serving the public mesh). When false (the
-   * default), the desktop app stops the launchd-supervised service on
-   * quit so closing the app actually leaves the mesh — matching what
-   * users expect from CMD+Q. The desktop shell reads this file directly
-   * on quit; nothing in the controller reads it.
-   */
-  keepMeshRunningAfterQuit: boolean;
-};
-
-const DEFAULTS: ControllerSettings = {
-  defaultModel: null,
-  backend: "auto",
-  publicOrigins: ["https://senda.network"],
-  keepMeshRunningAfterQuit: false,
-};
-
-const SETTINGS_PATH = path.join(
-  homedir(),
-  ".senda",
-  "controller-settings.json",
-);
-
-async function ensureDir(p: string) {
-  await fs.mkdir(path.dirname(p), { recursive: true });
-}
-
-async function readSettings(): Promise<ControllerSettings> {
-  try {
-    const raw = await fs.readFile(SETTINGS_PATH, "utf8");
-    const parsed = JSON.parse(raw) as Partial<ControllerSettings>;
-    return {
-      defaultModel:
-        typeof parsed.defaultModel === "string" || parsed.defaultModel === null
-          ? parsed.defaultModel
-          : DEFAULTS.defaultModel,
-      backend: isBackend(parsed.backend) ? parsed.backend : DEFAULTS.backend,
-      publicOrigins: Array.isArray(parsed.publicOrigins)
-        ? parsed.publicOrigins.filter(
-            (o): o is string => typeof o === "string",
-          )
-        : DEFAULTS.publicOrigins,
-      keepMeshRunningAfterQuit:
-        typeof parsed.keepMeshRunningAfterQuit === "boolean"
-          ? parsed.keepMeshRunningAfterQuit
-          : DEFAULTS.keepMeshRunningAfterQuit,
-    };
-  } catch {
-    return { ...DEFAULTS };
-  }
-}
-
-function isBackend(v: unknown): v is Backend {
-  return (
-    v === "auto" ||
-    v === "metal" ||
-    v === "cuda" ||
-    v === "rocm" ||
-    v === "vulkan" ||
-    v === "cpu"
-  );
-}
-
-async function writeSettings(s: ControllerSettings) {
-  await ensureDir(SETTINGS_PATH);
-  await fs.writeFile(SETTINGS_PATH, JSON.stringify(s, null, 2) + "\n");
-}
 
 export async function GET() {
   if (isPublic) {
@@ -104,7 +35,7 @@ export async function GET() {
       { status: 403 },
     );
   }
-  const settings = await readSettings();
+  const settings = await readControllerSettings();
   return NextResponse.json({ ok: true, settings });
 }
 
@@ -124,7 +55,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const current = await readSettings();
+  const current = await readControllerSettings();
   const next: ControllerSettings = {
     defaultModel:
       typeof patch.defaultModel === "string" || patch.defaultModel === null
@@ -140,7 +71,18 @@ export async function POST(req: Request) {
       typeof patch.keepMeshRunningAfterQuit === "boolean"
         ? patch.keepMeshRunningAfterQuit
         : current.keepMeshRunningAfterQuit,
+    shareDiagnostics:
+      typeof patch.shareDiagnostics === "boolean"
+        ? patch.shareDiagnostics
+        : current.shareDiagnostics,
+    // installId is never set from the UI — preserve whatever exists (or
+    // stays null until the diagnostics collector mints one). Fall back to
+    // the default so a hand-edited file with a bogus type self-heals.
+    installId:
+      typeof current.installId === "string"
+        ? current.installId
+        : DEFAULT_CONTROLLER_SETTINGS.installId,
   };
-  await writeSettings(next);
+  await writeControllerSettings(next);
   return NextResponse.json({ ok: true, settings: next });
 }
