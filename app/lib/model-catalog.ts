@@ -94,6 +94,16 @@ export const MODEL_CATALOG: CatalogModel[] = [
       "Google Gemma 3 12B — punches above its size on reasoning and writing, with a 128K context window, and it can see images. The natural step up from the 8B when you have a 12 GB GPU or a 16 GB+ Mac to spare.",
     vision: true,
   },
+  {
+    id: "Qwen3.5-9B-Vision-Q4_K_M",
+    name: "Qwen 3.5 · 9B Vision",
+    family: "qwen",
+    sizeGb: 5.8,
+    minVramGb: 8,
+    description:
+      "Vision and text in one compact 9B model — reads screenshots, photos and documents while holding its own on everyday chat. The lightest way to get image understanding on the mesh: fits an 8 GB GPU or a 16 GB Mac, well under the Gemma vision models.",
+    vision: true,
+  },
   // ── Fast expert-sharded MoE ──────────────────────────────────────────
   // ~30B total but only ~3B active per token, so they decode fast (native
   // 60–200+ tok/s) and Senda splits them by expert with zero per-token

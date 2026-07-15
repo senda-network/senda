@@ -275,11 +275,7 @@ export function ChatExperience({
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
-  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    // Reset the input so re-picking the same file still fires `onChange`.
-    e.target.value = "";
-    if (!file) return;
+  const stageImageFile = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) {
       setAttachError("That file isn't an image.");
       return;
@@ -290,6 +286,28 @@ export function ChatExperience({
     } catch {
       setAttachError("Couldn't read that image. Try a different file.");
     }
+  }, []);
+
+  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input so re-picking the same file still fires `onChange`.
+    e.target.value = "";
+    if (file) await stageImageFile(file);
+  };
+
+  // Paste an image straight into the composer (screenshots, copied images).
+  // Only intercept when a vision model is selected and the clipboard actually
+  // carries an image, so ordinary text paste is untouched.
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!canAttach) return;
+    const imageItem = Array.from(e.clipboardData.items).find((item) =>
+      item.type.startsWith("image/"),
+    );
+    if (!imageItem) return;
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    void stageImageFile(file);
   };
 
   // Dropping the vision model clears any staged image so we never send an
@@ -412,7 +430,7 @@ export function ChatExperience({
               title={
                 canAttach
                   ? "Attach an image"
-                  : "Select a vision model (Gemma 3) to attach an image"
+                  : "Select a vision model to attach an image"
               }
               aria-label="Attach an image"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--fg-muted)] transition-colors hover:text-[var(--fg)] disabled:cursor-not-allowed disabled:opacity-40"
@@ -441,6 +459,7 @@ export function ChatExperience({
                 el.style.height = Math.min(el.scrollHeight, 200) + "px";
               }}
               onKeyDown={onKeyDown}
+              onPaste={onPaste}
               placeholder="Ask anything…"
               rows={1}
               className="max-h-[200px] flex-1 resize-none bg-transparent px-1 py-1.5 text-[15px] leading-relaxed text-[var(--fg)] placeholder:text-[var(--fg-subtle)] focus:outline-none"

@@ -98,6 +98,7 @@ const TIER_BY_MODEL: Record<string, ModelTier> = {
   // models that can hit the daily-driver SLA on a single peer.
   "Qwen3-8B-Q4_K_M": "daily_driver",
   "Gemma-3-12B-it-Q4_K_M": "daily_driver",
+  "Qwen3.5-9B-Vision-Q4_K_M": "daily_driver",
   "Llama-3.1-8B-Instruct-Q4_K_M": "daily_driver",
   "Qwen2.5-Coder-7B-Instruct-Q4_K_M": "daily_driver",
   "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M": "daily_driver",
