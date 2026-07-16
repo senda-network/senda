@@ -803,6 +803,7 @@ function CatalogRow({
           model={model}
           meshModel={meshModel}
           forceSplit={startupForceSplit}
+          fitsSolo={fit.kind === "solo"}
           busy={startupBusy}
           onChange={(next) =>
             onSetStartup({ forceSplit: next ? true : undefined })
@@ -1067,12 +1068,14 @@ function RunOnMeshToggle({
   model,
   meshModel,
   forceSplit,
+  fitsSolo,
   busy,
   onChange,
 }: {
   model: CatalogModel;
   meshModel: MeshModel | null;
   forceSplit: boolean;
+  fitsSolo: boolean;
   busy: boolean;
   onChange: (next: boolean) => void;
 }) {
@@ -1086,13 +1089,21 @@ function RunOnMeshToggle({
     expertsPerShard !== null &&
     expertsPerShard < 64;
 
-  const explainer = meshCannotServe
-    ? "Won't run on this mesh yet — needs more contributors to split safely."
-    : forceSplit
-      ? "On — runs across the mesh whenever it's loaded."
-      : "Off — runs solo when one machine can fit it.";
+  // A model that fits on this machine always serves solo — forcing a
+  // pipeline split on it is pure downside (fragile rpc handshake, no
+  // capacity gain) and used to leave the model unable to serve at all.
+  // The runtime now ignores `force_split` for fits-solo models, so we
+  // disable the toggle here too and say why, rather than offer a switch
+  // that can only make serving worse.
+  const explainer = fitsSolo
+    ? "Runs solo on this machine — no split needed. The mesh is only used for models too big for one machine."
+    : meshCannotServe
+      ? "Won't run on this mesh yet — needs more contributors to split safely."
+      : forceSplit
+        ? "On — runs across the mesh whenever it's loaded."
+        : "Off — runs solo when one machine can fit it.";
 
-  const disabled = busy || meshCannotServe;
+  const disabled = busy || meshCannotServe || fitsSolo;
 
   return (
     <div className="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elev-2)]/60 px-3 py-2.5">
@@ -1118,7 +1129,7 @@ function RunOnMeshToggle({
             : "border-[var(--border)] bg-[var(--bg-elev)] text-[var(--fg-muted)] hover:border-[var(--accent)]/40 hover:text-[var(--fg)]")
         }
       >
-        {busy ? "Saving…" : forceSplit ? "On" : "Off"}
+        {busy ? "Saving…" : fitsSolo ? "Solo" : forceSplit ? "On" : "Off"}
       </button>
     </div>
   );
