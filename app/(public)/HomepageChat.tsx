@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChatExperience } from "../components/ChatExperience";
 import { EarlyAccessBanner } from "../components/EarlyAccessBanner";
 import { Logo } from "../components/Logo";
@@ -53,7 +54,12 @@ export function HeroChat() {
   }, [expanded]);
 
   if (expanded) {
-    return (
+    // Portal to <body> so the fixed overlay escapes the hero's `z-10`
+    // stacking context. Rendered in place, a later `z-10` sibling spacer in
+    // the hero paints over the overlay's bottom region and silently
+    // intercepts clicks on the composer — the chat looked "frozen" once the
+    // input lost focus and couldn't be clicked back into.
+    const overlay = (
       <div className="fixed inset-0 z-50 flex h-dvh flex-col bg-[var(--bg)] text-[var(--fg)]">
         <EarlyAccessBanner />
         <header className="border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur">
@@ -83,6 +89,9 @@ export function HeroChat() {
         </main>
       </div>
     );
+    return typeof document !== "undefined"
+      ? createPortal(overlay, document.body)
+      : overlay;
   }
 
   return (
