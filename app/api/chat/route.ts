@@ -418,10 +418,25 @@ export async function POST(req: Request) {
     });
   }
 
+  // When the request is being served from the mesh but the SLA gate found
+  // zero candidate peers hosting this model, the runtime call is a foregone
+  // failure — and its error string used to get mislabeled as "at capacity"
+  // (a rate-limit message) by `friendlyChatError`'s keyword matching. We
+  // already know the real reason from our own signal, so surface it
+  // accurately instead of guessing. The mesh path streams even below SLA
+  // (a slow serve beats no serve), so we only override for the genuine
+  // no-host case, not for degraded-but-serving peers.
+  const onError = (error: unknown): string => {
+    if (!decision.useFallback && sla.candidatePeerCount === 0) {
+      return `No contributor is currently serving ${modelId} on the mesh right now. A peer needs to load and share it before requests can be served — see senda.network/status.`;
+    }
+    return friendlyChatError(error);
+  };
+
   return applyCors(
     req,
     result.toUIMessageStreamResponse({
-      onError: friendlyChatError,
+      onError,
       headers,
     }),
   );
