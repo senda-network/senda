@@ -250,7 +250,7 @@ function Hero({
             runtime versions, hardware class, and scrubbed logs. Never your chat
             messages. Change this anytime in Settings.{" "}
             <a
-              href="/privacy"
+              href="https://senda.network/privacy"
               target="_blank"
               rel="noreferrer"
               className="underline hover:text-[var(--fg)]"

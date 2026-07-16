@@ -161,9 +161,15 @@ fn main() {
             // graceful fallback we want anyway.
             let base = mesh::preferred_url();
             let url = control_entry_url(&base);
-            let parsed = url
+            let parsed: tauri::Url = url
                 .parse()
                 .map_err(|e| format!("invalid chat URL `{url}`: {e}"))?;
+
+            // Origin the control UI is served from — the local sidecar in
+            // the normal case, senda.network in the sidecar-failed fallback.
+            // Navigations to this origin stay in the webview; everything
+            // else is an external link that belongs in the user's browser.
+            let internal_origin = parsed.origin();
 
             WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::External(parsed))
                 .title("Senda")
@@ -171,6 +177,23 @@ fn main() {
                 .min_inner_size(720.0, 520.0)
                 .center()
                 .visible(true)
+                // wry doesn't hand `target="_blank"` links to the OS browser
+                // on its own, so external links (senda.network/status, GitHub
+                // release pages, …) silently did nothing when clicked. This
+                // script rewrites external-origin link clicks into a
+                // top-level navigation, which `on_navigation` below cancels
+                // and opens in the system browser instead.
+                .initialization_script(EXTERNAL_LINK_SCRIPT)
+                .on_navigation(move |url| {
+                    if url.scheme() != "http" && url.scheme() != "https" {
+                        return true;
+                    }
+                    if url.origin() == internal_origin {
+                        return true;
+                    }
+                    open_external_url(url.as_str());
+                    false
+                })
                 .build()?;
 
             build_tray(app, setup_state.clone())?;
@@ -543,6 +566,55 @@ fn pin_huggingface_cache_dir() {
 fn control_entry_url(base: &str) -> String {
     let trimmed = base.trim_end_matches('/');
     format!("{trimmed}/chat")
+}
+
+/// Injected into the control webview. wry does not open `target="_blank"`
+/// links in the system browser (and this single-window app has nowhere to
+/// put a "new tab"), so external-origin link clicks are rewritten into a
+/// top-level navigation that `on_navigation` intercepts and hands to the
+/// OS browser. Same-origin links are left untouched so in-app routing and
+/// same-origin navigations behave normally.
+const EXTERNAL_LINK_SCRIPT: &str = r#"
+(function () {
+  document.addEventListener('click', function (e) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var el = e.target;
+    var a = el && el.closest ? el.closest('a[href]') : null;
+    if (!a) return;
+    var href = a.href;
+    if (!/^https?:\/\//i.test(href)) return;
+    try { if (new URL(href).origin === window.location.origin) return; } catch (err) { return; }
+    e.preventDefault();
+    window.location.href = href;
+  }, true);
+})();
+"#;
+
+/// Open an external URL in the user's default browser. Only http(s) is
+/// accepted — the navigation interceptor forwards untrusted page URLs here,
+/// so we refuse anything that could hand a custom scheme to `open`/`start`.
+fn open_external_url(url: &str) {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(url).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: don't flash a console window (the app is a GUI
+        // subsystem process; see the "opening terminals like crazy" fix).
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .creation_flags(0x0800_0000)
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    }
 }
 
 /// Wipe the WKWebView / WebKit2GTK / WebView2 disk cache the first time
