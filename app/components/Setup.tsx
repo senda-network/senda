@@ -13,6 +13,10 @@ type Phase = "idle" | "installing" | "starting" | "done" | "failed";
 
 export function Setup({ onInstalled }: { onInstalled: () => void }) {
   const [autoStart, setAutoStart] = useState(true);
+  // Opt-in, unticked by default: the user actively chooses to share crash /
+  // error reports. Persisted to controller settings on install so the
+  // diagnostics collector honors it without a trip through Settings.
+  const [shareDiagnostics, setShareDiagnostics] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [lines, setLines] = useState<LogLine[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +31,17 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
     setPhase("installing");
     setLines([]);
     setError(null);
+
+    // Record the user's diagnostics choice at click time (fire-and-forget;
+    // the settings write creates ~/.senda if needed). Default is off, so we
+    // only need to persist when the box is ticked.
+    if (shareDiagnostics) {
+      void fetch("/api/control/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ shareDiagnostics: true }),
+      }).catch(() => {});
+    }
 
     let res: Response;
     try {
@@ -110,7 +125,7 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
 
     setPhase("failed");
     setError("Something went wrong. Try again.");
-  }, [autoStart, onInstalled]);
+  }, [autoStart, shareDiagnostics, onInstalled]);
 
   // Cover the sidebar — first-run is a focused moment, no nav until set up.
   return (
@@ -138,6 +153,8 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
             <Hero
               autoStart={autoStart}
               onAutoStartChange={setAutoStart}
+              shareDiagnostics={shareDiagnostics}
+              onShareDiagnosticsChange={setShareDiagnostics}
               onInstall={install}
             />
           ) : (
@@ -165,10 +182,14 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
 function Hero({
   autoStart,
   onAutoStartChange,
+  shareDiagnostics,
+  onShareDiagnosticsChange,
   onInstall,
 }: {
   autoStart: boolean;
   onAutoStartChange: (v: boolean) => void;
+  shareDiagnostics: boolean;
+  onShareDiagnosticsChange: (v: boolean) => void;
   onInstall: () => void;
 }) {
   return (
@@ -215,6 +236,28 @@ function Hero({
             className="h-4 w-4 accent-[var(--accent)]"
           />
           Stay in the mesh when I log in (recommended)
+        </label>
+
+        <label className="flex cursor-pointer items-start gap-2.5 text-left text-[13px] text-[var(--fg-muted)]">
+          <input
+            type="checkbox"
+            checked={shareDiagnostics}
+            onChange={(e) => onShareDiagnosticsChange(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+          />
+          <span>
+            Send anonymous crash &amp; error reports to help fix bugs — app and
+            runtime versions, hardware class, and scrubbed logs. Never your chat
+            messages. Change this anytime in Settings.{" "}
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-[var(--fg)]"
+            >
+              What&apos;s sent
+            </a>
+          </span>
         </label>
       </div>
     </div>

@@ -478,6 +478,68 @@ export default function DashboardPage() {
     });
   }, [runtimeUpgrade, control?.service.state, mesh.nodes]);
 
+  // Crash sentinel: poll the local stderr scanner on a slow cadence and
+  // auto-send one report per distinct crash signature — the "we get
+  // notified when the runtime actually crashes" path, independent of the
+  // model-loading card. Opt-in is enforced server-side; dedup (localStorage
+  // + a session ref) keeps a crash-loop that writes the same panic from
+  // reporting on every poll. Context is read through a ref so the poll
+  // interval stays a stable 60s instead of resetting on every status tick.
+  const crashDiagSent = useRef<string | null>(null);
+  const crashCtxRef = useRef<DiagnosticContext>({});
+  const crashSelf = mesh.nodes.find((n) => n.isSelf) ?? null;
+  crashCtxRef.current = {
+    runtimeVersion: crashSelf?.version ?? null,
+    backend: crashSelf?.capability.backend ?? null,
+    vramGb: crashSelf?.capability.vramGb ?? crashSelf?.vramGb ?? null,
+    startupModel: startup?.[0]?.model ?? null,
+    loadedModels: crashSelf?.capability.loadedModels ?? [],
+    serviceState: control?.service.state ?? null,
+    runtimeReachable:
+      control?.service.state === "running" ||
+      mesh.nodes.some((n) => n.isSelf),
+  };
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch("/api/control/diagnostics", {
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          ok: boolean;
+          crash?: { detected: boolean; signature: string | null };
+        };
+        const sig = data.crash?.detected ? data.crash.signature : null;
+        if (!sig || cancelled) return;
+        if (crashDiagSent.current === sig) return;
+        try {
+          if (localStorage.getItem("senda:diag-crash-seen") === sig) {
+            crashDiagSent.current = sig;
+            return;
+          }
+          localStorage.setItem("senda:diag-crash-seen", sig);
+        } catch {
+          // private mode — the session ref below still dedups.
+        }
+        crashDiagSent.current = sig;
+        void sendDiagnostics("auto", {
+          ...crashCtxRef.current,
+          phase: `runtime_crash: ${sig}`,
+        });
+      } catch {
+        // controller off / transient — retry next tick.
+      }
+    };
+    void check();
+    const id = setInterval(() => void check(), 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   const runRepair = useCallback(async () => {
     setBusy("repair");
     setToast(null);

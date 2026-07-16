@@ -141,6 +141,53 @@ function str(v: unknown, max = 256): string | null {
   return v.length <= max ? v : v.slice(0, max);
 }
 
+// Unambiguous "the runtime crashed / aborted / hit a hard error" markers.
+// Deliberately conservative — no generic "error"/"warn" — so the crash
+// sentinel that polls this only fires on genuine faults, and dedup by the
+// matched line keeps a crash-loop from flooding the report store.
+const CRASH_SIGNATURES: RegExp[] = [
+  /panicked at/i,
+  /thread '[^']*' panicked/i,
+  /fatal runtime error/i,
+  /GGML_ASSERT/,
+  /terminate called after throwing/i,
+  /segmentation fault/i,
+  /\bSIG(SEGV|ABRT|BUS|ILL)\b/,
+  /abort trap/i,
+  /core dumped/i,
+  /CUDA error/i,
+];
+
+/**
+ * Scan the tail of the runtime's stderr for a hard-error signature. Read
+ * only (nothing leaves the machine); the dashboard's crash sentinel polls
+ * this and, when it sees a *new* signature, fires an opt-in `POST` report.
+ * Returns the scrubbed matched line as the signature so the client can
+ * dedup on it.
+ */
+export async function GET() {
+  if (isPublic) {
+    return NextResponse.json(
+      { ok: false, message: "Diagnostics are only available in the desktop app." },
+      { status: 403 },
+    );
+  }
+  const raw = await tailFile(LOG_PATHS.stderr, STDERR_TAIL_BYTES);
+  const lines = raw.split(/\r?\n/);
+  // Walk from the end so we report the most recent crash line.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (CRASH_SIGNATURES.some((re) => re.test(line))) {
+      const signature = scrub(line).trim().slice(0, 200);
+      return NextResponse.json({
+        ok: true,
+        crash: { detected: true, signature },
+      });
+    }
+  }
+  return NextResponse.json({ ok: true, crash: { detected: false, signature: null } });
+}
+
 export async function POST(req: Request) {
   if (isPublic) {
     return NextResponse.json(
