@@ -26,6 +26,9 @@ export type DiagnosticReportInput = {
   desktopVersion: string | null;
   backend: string | null;
   vramGb: number | null;
+  /** Size (GB) of the model being loaded; with `vramGb` yields the fit
+   * verdict without needing to inspect the machine. */
+  modelSizeGb: number | null;
   startupModel: string | null;
   loadedModels: string[];
   /** running | stopped | unknown | unreachable | null */

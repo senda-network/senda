@@ -41,6 +41,7 @@ type WireReport = Partial<{
   desktopVersion: unknown;
   backend: unknown;
   vramGb: unknown;
+  modelSizeGb: unknown;
   startupModel: unknown;
   loadedModels: unknown;
   serviceState: unknown;
@@ -85,6 +86,7 @@ function parseReport(raw: WireReport): DiagnosticReportInput | null {
     desktopVersion: clampString(raw.desktopVersion, 64),
     backend: clampString(raw.backend, 32),
     vramGb: clampNumber(raw.vramGb),
+    modelSizeGb: clampNumber(raw.modelSizeGb),
     startupModel: clampString(raw.startupModel, 256),
     loadedModels: Array.isArray(raw.loadedModels)
       ? raw.loadedModels

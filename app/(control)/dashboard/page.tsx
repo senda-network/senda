@@ -777,6 +777,27 @@ export default function DashboardPage() {
   }, [loadedKey]);
   const startupConfigured = (startup ?? []).length > 0;
 
+  // Fit context for the loading card's underprovisioned fallback: when the
+  // runtime hasn't published per-model `mesh_fit` yet (model parked in
+  // standby or still downloading), we compare the catalog's `minVramGb`
+  // against this machine's — and the whole mesh's — GPU memory so a model
+  // that can never load solo shows a fit verdict instead of a perpetual
+  // "loading…" spinner.
+  const startupModelId = startup?.[0]?.model ?? null;
+  const startupCatalog = startupModelId
+    ? catalog.find((c) => c.id === startupModelId) ?? null
+    : null;
+  const startupMeshModel = startupModelId
+    ? meshModels.models.find((m) => m.name === startupModelId) ?? null
+    : null;
+  // Nodes that can actually hold model weights on a GPU (Metal/CUDA/…);
+  // CPU-only peers (e.g. the entry node) report 0 VRAM and can't pool.
+  const gpuPeerCount = mesh.nodes.filter(
+    (n) => (n.capability.vramGb || n.vramGb || 0) > 0,
+  ).length;
+  const localVramGb =
+    selfNode?.capability.vramGb ?? selfNode?.vramGb ?? null;
+
   // A NodeSummary view of self with `capability.loadedModels` collapsed
   // to the stable set. ThisNodeCard / ContributionCard / nodeDisplayState
   // all read from `capability.loadedModels`; passing the stable view makes
@@ -977,23 +998,22 @@ export default function DashboardPage() {
               // itself surfaces the "Something might be wrong" copy after
               // ~150s if the load never completes.
               <ModelLoadingCard
-                startupModelId={startup?.[0]?.model ?? "unknown"}
-                startedAt={ensureLoadingStartedAt(
-                  startup?.[0]?.model ?? "unknown",
-                )}
+                startupModelId={startupModelId ?? "unknown"}
+                startedAt={ensureLoadingStartedAt(startupModelId ?? "unknown")}
                 runtimeRunning={running}
-                meshModel={
-                  meshModels.models.find(
-                    (m) => m.name === (startup?.[0]?.model ?? ""),
-                  ) ?? null
-                }
+                meshModel={startupMeshModel}
                 selfHostname={selfNode?.hostname ?? null}
+                localVramGb={localVramGb}
+                pooledVramGb={totalVram}
+                gpuPeerCount={gpuPeerCount}
+                modelMinVramGb={startupCatalog?.minVramGb ?? null}
                 diagnosticContext={{
                   runtimeVersion: selfNode?.version ?? null,
                   backend: selfNode?.capability.backend ?? null,
-                  vramGb:
-                    selfNode?.capability.vramGb ?? selfNode?.vramGb ?? null,
-                  startupModel: startup?.[0]?.model ?? null,
+                  vramGb: localVramGb,
+                  modelSizeGb:
+                    startupMeshModel?.sizeGb ?? startupCatalog?.sizeGb ?? null,
+                  startupModel: startupModelId,
                   loadedModels: selfNode?.capability.loadedModels ?? [],
                   serviceState: control?.service.state ?? null,
                   runtimeReachable: running,
@@ -1994,6 +2014,10 @@ function ModelLoadingCard({
   runtimeRunning,
   meshModel,
   selfHostname,
+  localVramGb,
+  pooledVramGb,
+  gpuPeerCount,
+  modelMinVramGb,
   diagnosticContext,
 }: {
   startupModelId: string;
@@ -2011,6 +2035,17 @@ function ModelLoadingCard({
    * with the real reason in that case. */
   meshModel: MeshModel | null;
   selfHostname: string | null;
+  /** This machine's usable GPU memory (GB), Metal-budget-adjusted on Apple
+   * Silicon. Null when we haven't seen the self node yet. */
+  localVramGb: number | null;
+  /** Total usable GPU memory pooled across every GPU-capable mesh node
+   * (includes this machine). */
+  pooledVramGb: number;
+  /** How many mesh nodes can actually hold weights on a GPU (VRAM > 0). */
+  gpuPeerCount: number;
+  /** Catalog `minVramGb` for the startup model — the memory the runtime
+   * needs to serve it. Null for models absent from the catalog. */
+  modelMinVramGb: number | null;
   /** Machine/service context forwarded with a diagnostic report. The
    * card enriches it with the live phase label before sending. */
   diagnosticContext: DiagnosticContext;
@@ -2037,8 +2072,26 @@ function ModelLoadingCard({
   // before trusting it (a fresh /api/models call after a bounce can come
   // back with stale or empty data on the first poll).
   const fit = meshModel?.meshFit ?? null;
+  const runtimeUnfit = !!fit && !fit.fitsOnLargestNode && !fit.fitsPooled;
+
+  // Catalog-based fallback for when the runtime hasn't published `mesh_fit`
+  // yet — the exact hole a stuck 27B fell through: parked in Standby while
+  // downloading, so it never appeared in `/api/models` and the fit override
+  // above never fired. If the catalog says the model needs more GPU memory
+  // than the whole mesh can pool, it will never load here; say so instead of
+  // escalating the time-based "loading…" copy forever. Guarded to require a
+  // real VRAM shortfall (not a borderline miss) and only after a grace window
+  // so a model that's genuinely just loading doesn't flash the warning.
+  const catalogUnfit =
+    !fit &&
+    modelMinVramGb !== null &&
+    localVramGb !== null &&
+    modelMinVramGb > localVramGb + 0.5 &&
+    pooledVramGb + 0.5 < modelMinVramGb;
+  const unfit = catalogUnfit || runtimeUnfit;
+
   const planner =
-    elapsed >= 5 && fit && !fit.fitsOnLargestNode && !fit.fitsPooled
+    elapsed >= (fit ? 5 : 20) && unfit
       ? "waiting_for_capacity"
       : meshModel && (meshModel.splitKind === "pipeline" || meshModel.splitKind === "moe")
         ? "loading_split"
@@ -2046,14 +2099,24 @@ function ModelLoadingCard({
 
   let phaseLabel: string;
   let hint: string;
-  if (planner === "waiting_for_capacity" && fit) {
-    const shortfall = Math.max(0, fit.neededVramGb - fit.pooledVramGb);
+  if (planner === "waiting_for_capacity") {
+    // Prefer the runtime's authoritative fit numbers; fall back to the
+    // catalog estimate vs live pooled VRAM when the runtime hasn't
+    // published fit data for this (not-yet-loaded) model.
+    const neededGb = fit ? fit.neededVramGb : modelMinVramGb ?? 0;
+    const pooledGb = fit ? fit.pooledVramGb : pooledVramGb;
+    const peerCount = fit ? fit.eligiblePeerCount : gpuPeerCount;
     const here = selfHostname ?? "this machine";
-    phaseLabel = `Waiting for capacity — need ${shortfall.toFixed(0)} GB more pooled VRAM`;
-    hint =
-      fit.eligiblePeerCount <= 1
-        ? `Pooled ${fit.pooledVramGb.toFixed(1)} of ${fit.neededVramGb.toFixed(1)} GB so far (only ${here} contributing). Invite a friend or spin up another machine on this mesh — the runtime will load the model the moment pooled capacity crosses the threshold.`
-        : `Pooled ${fit.pooledVramGb.toFixed(1)} of ${fit.neededVramGb.toFixed(1)} GB across ${fit.eligiblePeerCount} peers. Add another contributor to cross the threshold.`;
+    if (peerCount <= 1) {
+      // Solo underprovisioning — the common single-machine case. Name the
+      // fit verdict and point at the two real fixes.
+      phaseLabel = `Too big for this machine — needs ~${neededGb.toFixed(0)} GB, ${here} has ${pooledGb.toFixed(0)} GB`;
+      hint = `The runtime can't load ${startupModelId} on this machine alone. Pick a smaller model, or start sharing / add another machine so the mesh can pool memory — it'll load the moment pooled capacity crosses ~${neededGb.toFixed(0)} GB.`;
+    } else {
+      const shortfall = Math.max(0, neededGb - pooledGb);
+      phaseLabel = `Waiting for capacity — need ${shortfall.toFixed(0)} GB more pooled VRAM`;
+      hint = `Pooled ${pooledGb.toFixed(1)} of ${neededGb.toFixed(1)} GB across ${peerCount} peers. Add another contributor to cross the threshold.`;
+    }
   } else if (!runtimeRunning) {
     // Runtime crashed, bounced, or is being upgraded. The startup
     // model is still configured so we know the user wants it loaded

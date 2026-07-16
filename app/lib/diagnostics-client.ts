@@ -12,6 +12,10 @@ export type DiagnosticContext = {
   runtimeVersion?: string | null;
   backend?: string | null;
   vramGb?: number | null;
+  /** Size (GB) of the model we're trying to load — paired with `vramGb`
+   * this makes the fit verdict (too big for this machine) diagnosable
+   * from the report alone. */
+  modelSizeGb?: number | null;
   startupModel?: string | null;
   loadedModels?: string[];
   serviceState?: string | null;

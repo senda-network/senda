@@ -51,6 +51,7 @@ type ClientContext = Partial<{
   desktopVersion: string | null;
   backend: string | null;
   vramGb: number | null;
+  modelSizeGb: number | null;
   startupModel: string | null;
   loadedModels: string[];
   serviceState: string | null;
@@ -194,6 +195,10 @@ export async function POST(req: Request) {
     vramGb:
       typeof ctx.vramGb === "number" && Number.isFinite(ctx.vramGb)
         ? ctx.vramGb
+        : null,
+    modelSizeGb:
+      typeof ctx.modelSizeGb === "number" && Number.isFinite(ctx.modelSizeGb)
+        ? ctx.modelSizeGb
         : null,
     startupModel: str(ctx.startupModel, 256),
     loadedModels: Array.isArray(ctx.loadedModels)
