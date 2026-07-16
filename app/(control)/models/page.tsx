@@ -835,6 +835,18 @@ function CatalogRow({
                 : `${download.percent.toFixed(0)}%`}
             </span>
           </div>
+          {/* A failed download and the "Needs more capacity" badge sit on
+              the same row, which makes a disk/network failure read as a
+              capacity problem. It isn't: downloading only writes weights to
+              disk — mesh memory is irrelevant until you serve the model. */}
+          {download.phase === "failed" && (
+            <div className="mt-1.5 text-[11px] text-[var(--fg-muted)]">
+              This is a download error (disk or network) — not a mesh-capacity
+              limit. Downloading only needs free disk space; pooled memory only
+              matters once you serve the model. Check your connection and disk,
+              then try again.
+            </div>
+          )}
         </div>
       )}
     </li>

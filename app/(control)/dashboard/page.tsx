@@ -2060,9 +2060,23 @@ function ModelLoadingCard({
     // — keep the card up with a "waiting" message instead of
     // disappearing. The card auto-disappears once `loadedHere` fills
     // in or the user explicitly stops the service from the header.
-    phaseLabel = "Waiting for the runtime to come back up…";
-    hint =
-      "The local runtime is restarting (config change, helper install, or version upgrade). It usually comes back within a few seconds; the model will start loading the moment it does.";
+    //
+    // Escalate the copy with elapsed time: a genuine restart (config
+    // change, helper install, version upgrade) is back within a few
+    // seconds. If the service is *still* down after ~1 min the honest
+    // explanation is almost always that the model can't load on this
+    // machine alone and the runtime is crash-looping on it — say so and
+    // point at the real fix (pool memory by sharing, or go smaller)
+    // instead of repeating "back in a few seconds" for minutes on end.
+    if (elapsed < 60) {
+      phaseLabel = "Waiting for the runtime to come back up…";
+      hint =
+        "The local runtime is restarting (config change, helper install, or version upgrade). It usually comes back within a few seconds; the model will start loading the moment it does.";
+    } else {
+      phaseLabel = "The runtime isn't staying up.";
+      hint =
+        "It keeps restarting instead of loading the model — usually because the model is too large to load on this machine alone. Start sharing to pool memory with the mesh, pick a smaller model, or open Activity for the crash log.";
+    }
   } else if (elapsed < 8) {
     phaseLabel = "Restarting the runtime…";
     hint = "Bouncing the launchd unit so it picks up the new config.";
@@ -2081,10 +2095,14 @@ function ModelLoadingCard({
       "Something might be wrong. Open Activity for the runtime log, or stop & try a smaller model.";
   }
 
-  // "Stuck" styling when we genuinely look stuck (>2.5min) OR when the
-  // planner is parked waiting for capacity — both cases need the user to
-  // take action rather than just wait.
-  const stuck = elapsed >= 150 || planner === "waiting_for_capacity";
+  // "Stuck" styling when we genuinely look stuck (>2.5min), when the
+  // planner is parked waiting for capacity, or when the runtime has been
+  // down long enough (>1min) that it's crash-looping rather than doing a
+  // quick bounce — all three need the user to act rather than just wait.
+  const stuck =
+    elapsed >= 150 ||
+    planner === "waiting_for_capacity" ||
+    (!runtimeRunning && elapsed >= 60);
 
   const buildContext = (): DiagnosticContext => ({
     ...diagnosticContext,
