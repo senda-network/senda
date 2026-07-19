@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
-import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
-import {
-  mapRuntimeCatalog,
-  type RuntimeCatalogEntry,
-} from "../../lib/catalog-merge";
+import { resolveCatalog } from "../../lib/resolve-catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,11 +11,10 @@ export const dynamic = "force-dynamic";
  * `GET /api/catalog` (the `listed` entries in its bundled `catalog.json`), so
  * a model can be added or retired in one place — the runtime — without a
  * website deploy. This route fetches that list and enriches each entry with
- * the site's curated display copy ({@link MODEL_CATALOG}) when it has a match;
- * runtime-listed models the site doesn't have copy for yet are rendered from
- * the runtime's own fields. If the runtime is unreachable or too old to expose
- * the endpoint, we fall back to the bundled snapshot so the dashboard is never
- * empty.
+ * the site's curated display copy when it has a match; runtime-listed models
+ * the site doesn't have copy for yet are rendered from the runtime's own
+ * fields. If the runtime is unreachable or too old to expose the endpoint, we
+ * fall back to the bundled snapshot so the dashboard is never empty.
  *
  * The desktop app's bundled controller fetches this URL **directly** from the
  * browser (see `use-catalog.ts`), so CORS is wide open on purpose: the catalog
@@ -32,43 +27,6 @@ const CORS_HEADERS: Record<string, string> = {
   "access-control-allow-headers": "Content-Type",
   "access-control-max-age": "86400",
 };
-
-function trimmedEnv(...keys: string[]): string | undefined {
-  for (const key of keys) {
-    const raw = process.env[key];
-    if (raw === undefined) continue;
-    const value = raw.trim();
-    if (value) return value;
-  }
-  return undefined;
-}
-
-const ADMIN_URL =
-  trimmedEnv("SENDA_ADMIN_URL", "MESH_CONSOLE_URL") ?? "http://127.0.0.1:3131";
-const RUNTIME_TOKEN = trimmedEnv("SENDA_RUNTIME_TOKEN") ?? "";
-const runtimeHeaders: Record<string, string> = RUNTIME_TOKEN
-  ? { Authorization: `Bearer ${RUNTIME_TOKEN}` }
-  : {};
-
-async function resolveCatalog(): Promise<CatalogModel[]> {
-  try {
-    const res = await fetch(`${ADMIN_URL}/api/catalog`, {
-      cache: "no-store",
-      headers: runtimeHeaders,
-    });
-    if (!res.ok) return MODEL_CATALOG;
-    const data = (await res.json()) as { catalog?: RuntimeCatalogEntry[] };
-    if (!Array.isArray(data.catalog) || data.catalog.length === 0) {
-      return MODEL_CATALOG;
-    }
-    const mapped = mapRuntimeCatalog(data.catalog, MODEL_CATALOG);
-    return mapped.length > 0 ? mapped : MODEL_CATALOG;
-  } catch {
-    // Runtime paused / entry node flaky / older runtime without the endpoint.
-    // The bundled snapshot is the safety net.
-    return MODEL_CATALOG;
-  }
-}
 
 export function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });

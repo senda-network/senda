@@ -170,15 +170,23 @@ export const MODEL_CATALOG: CatalogModel[] = [
 ];
 
 /**
- * Catalog ids that accept image input. Derived from the `vision` flag so
- * the flag stays the single source of truth. The chat route gates image
- * uploads against this set, and the composer only lets you attach an
- * image when one of these models is selected.
+ * Bundled fallback: catalog ids flagged `vision` in {@link MODEL_CATALOG}.
+ * Prefer {@link isVisionModel} with a live catalog from `/api/catalog` /
+ * `useCatalog()` so a runtime-listed vision model works without a site deploy.
  */
 export const VISION_MODEL_IDS: ReadonlySet<string> = new Set(
   MODEL_CATALOG.filter((m) => m.vision).map((m) => m.id),
 );
 
-export function isVisionModel(id: string | null | undefined): boolean {
-  return !!id && VISION_MODEL_IDS.has(id);
+/**
+ * Whether `id` accepts image input. Pass the resolved catalog (from
+ * `useCatalog` or `resolveCatalog`) so runtime-listed vision models are
+ * recognized; omit it only for sync fallbacks that must use the bundle.
+ */
+export function isVisionModel(
+  id: string | null | undefined,
+  catalog: readonly CatalogModel[] = MODEL_CATALOG,
+): boolean {
+  if (!id) return false;
+  return catalog.some((m) => m.id === id && m.vision === true);
 }

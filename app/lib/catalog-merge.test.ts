@@ -4,8 +4,10 @@ import {
   estimateVram,
   inferFamily,
   mapRuntimeCatalog,
+  resolveVisionFlag,
   type RuntimeCatalogEntry,
 } from "./catalog-merge";
+import { isVisionModel } from "./model-catalog";
 
 describe("inferFamily", () => {
   it("maps known ids to their family", () => {
@@ -39,8 +41,32 @@ describe("mapRuntimeCatalog", () => {
     );
     expect(result).toHaveLength(1);
     // Curated description/minVramGb win over the runtime's terse fields.
-    expect(result[0]).toEqual(curated);
+    expect(result[0].description).toBe(curated.description);
+    expect(result[0].minVramGb).toBe(curated.minVramGb);
     expect(result[0].description).not.toBe("runtime terse copy");
+  });
+
+  it("lets the runtime vision flag override curated display rows", () => {
+    const result = mapRuntimeCatalog(
+      [
+        {
+          id: "Qwen3-8B-Q4_K_M",
+          sizeGb: 5,
+          vision: true,
+        },
+      ],
+      MODEL_CATALOG,
+    );
+    expect(result[0].vision).toBe(true);
+    expect(isVisionModel("Qwen3-8B-Q4_K_M", result)).toBe(true);
+  });
+
+  it("keeps curated vision when the runtime omits the field", () => {
+    const result = mapRuntimeCatalog(
+      [{ id: "Gemma-3-12B-it-Q4_K_M", sizeGb: 7.3 }],
+      MODEL_CATALOG,
+    );
+    expect(result[0].vision).toBe(true);
   });
 
   it("synthesises a row for a runtime-listed model the site has no copy for", () => {
@@ -74,5 +100,33 @@ describe("mapRuntimeCatalog", () => {
     ];
     const result = mapRuntimeCatalog(entries, MODEL_CATALOG);
     expect(result.map((m) => m.id)).toEqual(["Qwen3-8B-Q4_K_M"]);
+  });
+});
+
+describe("resolveVisionFlag", () => {
+  it("lets runtime true/false win and falls back to curated when omitted", () => {
+    expect(resolveVisionFlag(true, undefined)).toBe(true);
+    expect(resolveVisionFlag(false, true)).toBeUndefined();
+    expect(resolveVisionFlag(undefined, true)).toBe(true);
+    expect(resolveVisionFlag(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe("isVisionModel", () => {
+  it("reads vision from the provided catalog, not only the bundle", () => {
+    expect(isVisionModel("Qwen3-8B-Q4_K_M")).toBe(false);
+    expect(
+      isVisionModel("Brand-New-Vision-Q4_K_M", [
+        {
+          id: "Brand-New-Vision-Q4_K_M",
+          name: "Brand New Vision",
+          family: "qwen",
+          sizeGb: 6,
+          minVramGb: 8,
+          description: "",
+          vision: true,
+        },
+      ]),
+    ).toBe(true);
   });
 });

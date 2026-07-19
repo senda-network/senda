@@ -60,7 +60,12 @@ export function mapRuntimeCatalog(
     if (!entry.id) continue;
     const curated = byId.get(entry.id);
     if (curated) {
-      mapped.push(curated);
+      // Runtime owns capability flags (vision); site owns display copy.
+      // When the runtime omits `vision` (older builds), keep the curated flag.
+      mapped.push({
+        ...curated,
+        vision: resolveVisionFlag(entry.vision, curated.vision),
+      });
       continue;
     }
     const sizeGb = typeof entry.sizeGb === "number" ? entry.sizeGb : 0;
@@ -71,8 +76,18 @@ export function mapRuntimeCatalog(
       sizeGb,
       minVramGb: estimateVram(sizeGb),
       description: entry.description ?? "",
-      vision: entry.vision ? true : undefined,
+      vision: resolveVisionFlag(entry.vision, undefined),
     });
   }
   return mapped;
+}
+
+/** Runtime `vision` wins when explicitly set; otherwise fall back to curated. */
+export function resolveVisionFlag(
+  runtimeVision: boolean | undefined,
+  curatedVision: boolean | undefined,
+): true | undefined {
+  if (runtimeVision === true) return true;
+  if (runtimeVision === false) return undefined;
+  return curatedVision ? true : undefined;
 }

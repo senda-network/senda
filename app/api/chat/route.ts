@@ -12,6 +12,7 @@ import {
   getOpenRouterProvider,
 } from "../../lib/fallback-provider";
 import { isVisionModel } from "../../lib/model-catalog";
+import { resolveCatalog } from "../../lib/resolve-catalog";
 import { recordServedByDecision } from "../../lib/mesh-share";
 import { recordMeshCredits } from "../../lib/credits-ledger";
 import type { SlaEvaluation } from "../../lib/routing-sla";
@@ -265,10 +266,11 @@ export async function POST(req: Request) {
   const modelId = parsed.body.model ?? (await pickDefaultModel());
 
   // Vision gate. A message carries an image when any part is a file with an
-  // `image/*` media type (AI SDK v5 FileUIPart). Only models we've flagged
-  // vision-capable are launched with an `--mmproj` projector; routing an
-  // image at a text-only model produces an opaque llama-server failure, so
-  // reject early with an actionable message instead.
+  // `image/*` media type (AI SDK v5 FileUIPart). Only models flagged
+  // vision-capable (runtime catalog `vision`, merged with site copy) are
+  // launched with an `--mmproj` projector; routing an image at a text-only
+  // model produces an opaque llama-server failure, so reject early with an
+  // actionable message instead.
   const hasImage = parsed.body.messages.some(
     (m) =>
       Array.isArray(m.parts) &&
@@ -279,12 +281,15 @@ export async function POST(req: Request) {
           (p as { mediaType: string }).mediaType.startsWith("image/"),
       ),
   );
-  if (hasImage && !isVisionModel(modelId)) {
-    return badRequest(
-      req,
-      "This model can't see images. Pick a vision model like Gemma 3 12B or Gemma 3 27B, then attach your image again.",
-      422,
-    );
+  if (hasImage) {
+    const catalog = await resolveCatalog();
+    if (!isVisionModel(modelId, catalog)) {
+      return badRequest(
+        req,
+        "This model can't see images. Pick a vision model like Gemma 3 12B or Gemma 3 27B, then attach your image again.",
+        422,
+      );
+    }
   }
 
   // Phase 4.B — SLA gate inputs. Cached fetch (~5 s TTL) so the

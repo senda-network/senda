@@ -11,6 +11,7 @@ import { Button } from "./ui/Button";
 import { Callout } from "./ui/Callout";
 import { apiUrl } from "../lib/runtime-target";
 import { isVisionModel } from "../lib/model-catalog";
+import { useCatalog } from "../lib/use-catalog";
 
 const SESSION_KEY = "senda:threadId";
 const STORAGE_PREFIX = "senda:thread:";
@@ -136,6 +137,7 @@ export function ChatExperience({
   );
   const [image, setImage] = useState<AttachedImage | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
+  const { catalog } = useCatalog();
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -247,7 +249,7 @@ export function ChatExperience({
     return () => cancelAnimationFrame(id);
   }, [messages.length, lastMessageDigest, status]);
 
-  const canAttach = isVisionModel(selectedModel);
+  const canAttach = isVisionModel(selectedModel, catalog);
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
