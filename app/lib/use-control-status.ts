@@ -70,6 +70,11 @@ export function useSharing() {
   const [toast, setToast] = useState<string | null>(null);
   const busyRef = useRef(busy);
   busyRef.current = busy;
+  // The whole product is the mesh. Opening the app means joining — we only
+  // stay stopped if the user explicitly hit Stop this session. Next launch
+  // (or a full page reload) clears this and we join again.
+  const userStoppedRef = useRef(false);
+  const autoJoinAttemptedRef = useRef(false);
 
   const selfNode: NodeSummary | null =
     mesh.nodes.find((n) => n.isSelf) ?? null;
@@ -107,8 +112,29 @@ export function useSharing() {
     [refresh],
   );
 
-  const start = useCallback(() => act("start"), [act]);
-  const stop = useCallback(() => act("stop"), [act]);
+  const start = useCallback(() => {
+    userStoppedRef.current = false;
+    return act("start");
+  }, [act]);
+  const stop = useCallback(() => {
+    userStoppedRef.current = true;
+    return act("stop");
+  }, [act]);
+
+  // Auto-join: if the runtime is installed but not running, start it.
+  // One attempt per mount so a hard failure doesn't spin; Rust also starts
+  // the service on desktop launch — this covers the UI path when that
+  // missed or the user landed on a stopped service.
+  useEffect(() => {
+    if (publicDeployment) return;
+    if (!control?.available) return;
+    if (userStoppedRef.current) return;
+    if (autoJoinAttemptedRef.current) return;
+    if (busy !== null) return;
+    if (state !== "stopped") return;
+    autoJoinAttemptedRef.current = true;
+    void start();
+  }, [publicDeployment, control?.available, busy, state, start]);
 
   const peerCount = mesh.nodeCount;
   const loadedModel = mesh.models[0] ?? null;

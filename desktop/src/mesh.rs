@@ -2731,31 +2731,30 @@ fn current_uid() -> u32 {
 
 /// Reads the `keepMeshRunningAfterQuit` toggle from the controller's
 /// settings file. The Settings page writes to this same JSON, so the
-/// preference is shared without any IPC. Returns `false` (the default
-/// — i.e. "stop the runtime on quit") when the file is missing,
-/// unparseable, or the field is absent. We deliberately don't depend
-/// on `serde_json` for this one bool: a regex is robust enough and
-/// keeps the desktop binary lean.
+/// preference is shared without any IPC.
+///
+/// Default is `true` (stay on the mesh after quit) — the product is the
+/// mesh. Only an explicit `"keepMeshRunningAfterQuit": false` leaves the
+/// mesh on quit. Missing file / missing field / unparseable → stay up.
+/// We deliberately don't depend on `serde_json` for this one bool.
 pub fn keep_running_after_quit() -> bool {
     let Some(home) = dirs::home_dir() else {
-        return false;
+        return true;
     };
     let path = home.join(".senda").join("controller-settings.json");
     let Ok(raw) = std::fs::read_to_string(&path) else {
-        return false;
+        return true;
     };
     // Tolerant scan — handles `"keepMeshRunningAfterQuit":true` and
     // `"keepMeshRunningAfterQuit": true` and trailing comma variants.
-    // serde_json would be 30 LoC less but pulls in another dep.
     let needle = "\"keepMeshRunningAfterQuit\"";
     let Some(idx) = raw.find(needle) else {
-        return false;
+        return true;
     };
     let after = &raw[idx + needle.len()..];
-    // Skip the colon + whitespace, then look for the literal `true` /
-    // `false` token.
     let trimmed = after.trim_start_matches([':', ' ', '\t', '\n', '\r']);
-    trimmed.starts_with("true")
+    // Opt-out only: explicit false leaves the mesh; everything else stays.
+    !trimmed.starts_with("false")
 }
 
 // ---------- Windows / Task Scheduler ------------------------------------

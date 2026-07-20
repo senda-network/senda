@@ -23,14 +23,17 @@ export type ControllerSettings = {
   backend: Backend;
   publicOrigins: string[];
   /**
-   * When true, quitting the desktop app leaves the runtime daemon running
-   * in the background (still serving the public mesh). When false (the
-   * default), the desktop app stops the launchd-supervised service on
-   * quit so closing the app actually leaves the mesh — matching what
-   * users expect from CMD+Q. The desktop shell reads this file directly
-   * on quit; nothing in the controller reads it.
+   * When true (the default), quitting the desktop app leaves the runtime
+   * daemon running — you stay on the mesh. When false, quit stops the
+   * service and leaves the mesh. The desktop shell reads this file on
+   * quit. Opt-out only: the product is the mesh.
    */
   keepMeshRunningAfterQuit: boolean;
+  /**
+   * Bumped when defaults change in a way that should rewrite existing
+   * installs. Schema 2 flipped `keepMeshRunningAfterQuit` to true.
+   */
+  settingsSchema?: number;
   /**
    * Opt-in: when true, the controller may send anonymous diagnostic
    * reports (versions, hardware class, scrubbed error logs — never chat
@@ -49,13 +52,17 @@ export type ControllerSettings = {
   installId: string | null;
 };
 
+/** Current settings schema — bump when migrating stored defaults. */
+export const CONTROLLER_SETTINGS_SCHEMA = 2;
+
 export const DEFAULT_CONTROLLER_SETTINGS: ControllerSettings = {
   defaultModel: null,
   backend: "auto",
   publicOrigins: ["https://senda.network"],
-  keepMeshRunningAfterQuit: false,
+  keepMeshRunningAfterQuit: true,
   shareDiagnostics: false,
   installId: null,
+  settingsSchema: CONTROLLER_SETTINGS_SCHEMA,
 };
 
 export const SETTINGS_PATH = path.join(
@@ -79,7 +86,13 @@ export async function readControllerSettings(): Promise<ControllerSettings> {
   try {
     const raw = await fs.readFile(SETTINGS_PATH, "utf8");
     const parsed = JSON.parse(raw) as Partial<ControllerSettings>;
-    return {
+    const schema =
+      typeof parsed.settingsSchema === "number" ? parsed.settingsSchema : 1;
+    // Schema 2: mesh stays up after quit by default. Older installs wrote
+    // keepMeshRunningAfterQuit:false as the product default — rewrite that
+    // once so existing boxes stop dropping off the mesh on CMD+Q.
+    const migrateKeepMesh = schema < 2;
+    const settings: ControllerSettings = {
       defaultModel:
         typeof parsed.defaultModel === "string" || parsed.defaultModel === null
           ? parsed.defaultModel
@@ -92,8 +105,9 @@ export async function readControllerSettings(): Promise<ControllerSettings> {
             (o): o is string => typeof o === "string",
           )
         : DEFAULT_CONTROLLER_SETTINGS.publicOrigins,
-      keepMeshRunningAfterQuit:
-        typeof parsed.keepMeshRunningAfterQuit === "boolean"
+      keepMeshRunningAfterQuit: migrateKeepMesh
+        ? true
+        : typeof parsed.keepMeshRunningAfterQuit === "boolean"
           ? parsed.keepMeshRunningAfterQuit
           : DEFAULT_CONTROLLER_SETTINGS.keepMeshRunningAfterQuit,
       shareDiagnostics:
@@ -104,7 +118,12 @@ export async function readControllerSettings(): Promise<ControllerSettings> {
         typeof parsed.installId === "string" && parsed.installId.length > 0
           ? parsed.installId
           : DEFAULT_CONTROLLER_SETTINGS.installId,
+      settingsSchema: CONTROLLER_SETTINGS_SCHEMA,
     };
+    if (migrateKeepMesh) {
+      await writeControllerSettings(settings);
+    }
+    return settings;
   } catch {
     return { ...DEFAULT_CONTROLLER_SETTINGS };
   }
@@ -114,7 +133,11 @@ export async function writeControllerSettings(
   s: ControllerSettings,
 ): Promise<void> {
   await fs.mkdir(path.dirname(SETTINGS_PATH), { recursive: true });
-  await fs.writeFile(SETTINGS_PATH, JSON.stringify(s, null, 2) + "\n");
+  const payload: ControllerSettings = {
+    ...s,
+    settingsSchema: CONTROLLER_SETTINGS_SCHEMA,
+  };
+  await fs.writeFile(SETTINGS_PATH, JSON.stringify(payload, null, 2) + "\n");
 }
 
 /**

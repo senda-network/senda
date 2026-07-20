@@ -180,16 +180,16 @@ export default function SettingsPage() {
           <Card
             eyebrow="Quitting"
             title="Stay in the mesh after I quit Senda"
-            hint="On: the runtime keeps serving in the background after you close the app — your machine still answers chat requests for the mesh. Off (default): quitting actually leaves the mesh, like CMD+Q implies."
+            hint="On by default: closing the app leaves the runtime serving in the background — that is the product. Turn off only if you want quit to leave the mesh."
           >
             <div className="flex items-center justify-between gap-4">
               <Switch
-                checked={settings?.keepMeshRunningAfterQuit ?? false}
+                checked={settings?.keepMeshRunningAfterQuit ?? true}
                 disabled={!settings}
                 onChange={(v) => update("keepMeshRunningAfterQuit", v)}
               />
               <span className="text-[12px] text-[var(--fg-muted)]">
-                {settings?.keepMeshRunningAfterQuit
+                {settings?.keepMeshRunningAfterQuit ?? true
                   ? "On — quitting leaves the runtime up"
                   : "Off — quitting stops the runtime"}
               </span>

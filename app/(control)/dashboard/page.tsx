@@ -1503,7 +1503,7 @@ function ThisNodeCard({
         <div className="flex gap-2">
           {running ? (
             <Button variant="secondary" disabled={busy !== null} onClick={onStop}>
-              {busy === "stop" ? "Stopping…" : "Stop sharing"}
+              {busy === "stop" ? "Leaving…" : "Leave mesh"}
             </Button>
           ) : (
             <Button
@@ -1511,7 +1511,7 @@ function ThisNodeCard({
               disabled={busy !== null || running}
               onClick={onStart}
             >
-              {busy === "start" ? "Starting…" : "Start sharing"}
+              {busy === "start" ? "Joining…" : "Join mesh"}
             </Button>
           )}
         </div>
@@ -1825,7 +1825,7 @@ function MeshGlanceRow({
             ? parts.join(" · ")
             : teammates > 0
               ? "Connecting to the mesh…"
-              : "You're not connected to the mesh yet — start sharing to join."}
+              : "You're not on the mesh yet — joining should start automatically."}
         </div>
       </div>
       <span className="shrink-0 text-[12px] font-medium text-[var(--accent)] transition group-hover:translate-x-0.5">
@@ -2173,7 +2173,7 @@ function ModelLoadingCard({
       // Solo underprovisioning — the common single-machine case. Name the
       // fit verdict and point at the two real fixes.
       phaseLabel = `Too big for this machine — needs ~${neededGb.toFixed(0)} GB, ${here} has ${pooledGb.toFixed(0)} GB`;
-      hint = `The runtime can't load ${startupModelId} on this machine alone. Pick a smaller model, or start sharing / add another machine so the mesh can pool memory — it'll load the moment pooled capacity crosses ~${neededGb.toFixed(0)} GB.`;
+      hint = `The runtime can't load ${startupModelId} on this machine alone. Pick a smaller model, or keep this machine on the mesh with another peer so memory can pool — it'll load the moment pooled capacity crosses ~${neededGb.toFixed(0)} GB.`;
     } else {
       const shortfall = Math.max(0, neededGb - pooledGb);
       phaseLabel = `Waiting for capacity — need ${shortfall.toFixed(0)} GB more pooled VRAM`;
@@ -2200,7 +2200,7 @@ function ModelLoadingCard({
     } else {
       phaseLabel = "The runtime isn't staying up.";
       hint =
-        "It keeps restarting instead of loading the model — usually because the model is too large to load on this machine alone. Start sharing to pool memory with the mesh, pick a smaller model, or open Activity for the crash log.";
+        "It keeps restarting instead of loading the model — usually because the model is too large to load on this machine alone. Stay on the mesh so peers can pool memory, pick a smaller model, or open Activity for the crash log.";
     }
   } else if (elapsed < 8) {
     phaseLabel = "Restarting the runtime…";
@@ -2690,7 +2690,7 @@ function EarningsPreviewCard({
             ) : running ? (
               "Nothing served yet this week. When your machine answers mesh requests, your token tally shows up here."
             ) : (
-              "Start sharing to serve mesh requests — your weekly token tally will appear here."
+              "Once this machine is on the mesh and serving, your weekly token tally will appear here."
             )}
           </div>
         </div>

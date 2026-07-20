@@ -82,6 +82,7 @@ export async function POST(req: Request) {
       typeof current.installId === "string"
         ? current.installId
         : DEFAULT_CONTROLLER_SETTINGS.installId,
+    settingsSchema: current.settingsSchema,
   };
   await writeControllerSettings(next);
   return NextResponse.json({ ok: true, settings: next });

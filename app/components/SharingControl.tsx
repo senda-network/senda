@@ -36,14 +36,14 @@ export function SharingControl() {
 
   const label =
     s.state === "running"
-      ? "Sharing"
+      ? "On mesh"
       : s.state === "starting"
-        ? "Starting…"
+        ? "Joining…"
         : s.state === "stopping"
-          ? "Stopping…"
+          ? "Leaving…"
           : s.state === "loading"
             ? "Checking…"
-            : "Not sharing";
+            : "Offline";
 
   const node = s.selfNode;
   const backend = node ? BACKEND_LABEL[node.capability.backend] ?? node.capability.backend : "—";
@@ -138,7 +138,7 @@ export function SharingControl() {
                 disabled={busy}
                 onClick={() => s.stop()}
               >
-                {s.busy === "stop" ? "Stopping…" : "Stop sharing"}
+                {s.busy === "stop" ? "Leaving…" : "Leave mesh"}
               </Button>
             ) : (
               <Button
@@ -148,13 +148,13 @@ export function SharingControl() {
                 disabled={busy || s.state === "loading"}
                 onClick={() => s.start()}
               >
-                {s.busy === "start" ? "Starting…" : "Start sharing"}
+                {s.busy === "start" ? "Joining…" : "Join mesh"}
               </Button>
             )}
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--fg-muted)]">
               {s.state === "running"
-                ? "Your machine is serving models to the mesh."
-                : "Start to serve models to the mesh, or run them privately for yourself."}
+                ? "Your machine is on the mesh and serving what it can."
+                : "This app joins the mesh by default. Start if the runtime stopped — Stop only if you need to leave temporarily."}
             </p>
             <Link
               href="/dashboard"

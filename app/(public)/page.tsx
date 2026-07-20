@@ -161,13 +161,13 @@ export default function PublicHomePage() {
                 The app
               </div>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-                Run open models on your own machine.
+                Put your machine on the mesh.
               </h2>
               <p className="mt-3 text-[15px] leading-relaxed text-[var(--fg-muted)]">
-                The Senda app puts the network on your hardware: serve models to
-                the mesh, or run them privately just for yourself. Manage models,
-                watch the mesh, and chat with what&apos;s live — one native app
-                for macOS, Windows, and Linux.
+                The Senda app joins the peer-to-peer mesh on install: your
+                hardware serves what it can, and you chat with what the mesh
+                serves. Manage models, watch peers, and talk to live open-weight
+                models — one native app for macOS, Windows, and Linux.
               </p>
             </div>
             <AppShowcase />

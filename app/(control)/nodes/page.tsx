@@ -115,8 +115,8 @@ function NodesTable({
           No machines connected yet
         </div>
         <div className="mx-auto mt-1.5 max-w-md text-sm text-[var(--fg-muted)]">
-          Start sharing from the top bar to add this machine, or add another one
-          under Advanced below.
+          This machine should join automatically — if it&apos;s offline, use
+          Join mesh in the top bar, or add another machine under Advanced.
         </div>
       </section>
     );

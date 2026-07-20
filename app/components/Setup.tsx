@@ -12,10 +12,10 @@ type LogLine =
 type Phase = "idle" | "installing" | "starting" | "done" | "failed";
 
 export function Setup({ onInstalled }: { onInstalled: () => void }) {
-  const [autoStart, setAutoStart] = useState(true);
   // Opt-in, unticked by default: the user actively chooses to share crash /
   // error reports. Persisted to controller settings on install so the
   // diagnostics collector honors it without a trip through Settings.
+  // Mesh join is NOT optional — installing Senda means joining the mesh.
   const [shareDiagnostics, setShareDiagnostics] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [lines, setLines] = useState<LogLine[]>([]);
@@ -48,7 +48,8 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
       res = await fetch("/api/control/install", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ autoStart }),
+        // Always install the OS autostart unit — the product is the mesh.
+        body: JSON.stringify({ autoStart: true }),
       });
     } catch (e) {
       setPhase("failed");
@@ -125,7 +126,7 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
 
     setPhase("failed");
     setError("Something went wrong. Try again.");
-  }, [autoStart, shareDiagnostics, onInstalled]);
+  }, [shareDiagnostics, onInstalled]);
 
   // Cover the sidebar — first-run is a focused moment, no nav until set up.
   return (
@@ -151,8 +152,6 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
         <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
           {phase === "idle" ? (
             <Hero
-              autoStart={autoStart}
-              onAutoStartChange={setAutoStart}
               shareDiagnostics={shareDiagnostics}
               onShareDiagnosticsChange={setShareDiagnostics}
               onInstall={install}
@@ -180,14 +179,10 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
 }
 
 function Hero({
-  autoStart,
-  onAutoStartChange,
   shareDiagnostics,
   onShareDiagnosticsChange,
   onInstall,
 }: {
-  autoStart: boolean;
-  onAutoStartChange: (v: boolean) => void;
   shareDiagnostics: boolean;
   onShareDiagnosticsChange: (v: boolean) => void;
   onInstall: () => void;
@@ -204,12 +199,10 @@ function Hero({
         Unlock more capacity for everyone.
       </h1>
       <p className="mt-5 max-w-xl text-pretty text-[15px] leading-relaxed text-[var(--fg-muted)] sm:text-base">
-        Installing Senda adds your machine to an open peer-to-peer
-        mesh serving open-weight models. Every chat session runs end-to-end
-        on one capable peer at full quality — the mesh&apos;s job is to route
-        each session to the best machine for it. Your box serves the models
-        it can hold, grows the mesh&apos;s capacity, and you get to chat with
-        everything the mesh serves in return.
+        Installing Senda puts this machine on the open peer-to-peer mesh.
+        It serves the models it can hold, stays in the mesh when you log in,
+        and you chat with everything the mesh serves in return. That is the
+        product — not an optional toggle.
       </p>
 
       <div className="mt-7 flex flex-wrap justify-center gap-2 text-[11px]">
@@ -228,15 +221,9 @@ function Hero({
         >
           Install and join the mesh
         </Button>
-        <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-[var(--fg-muted)]">
-          <input
-            type="checkbox"
-            checked={autoStart}
-            onChange={(e) => onAutoStartChange(e.target.checked)}
-            className="h-4 w-4 accent-[var(--accent)]"
-          />
-          Stay in the mesh when I log in (recommended)
-        </label>
+        <p className="text-[12px] text-[var(--fg-muted)]">
+          Autostarts with your login so you stay on the mesh.
+        </p>
 
         <label className="flex cursor-pointer items-start gap-2.5 text-left text-[13px] text-[var(--fg-muted)]">
           <input

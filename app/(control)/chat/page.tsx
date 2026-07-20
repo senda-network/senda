@@ -114,54 +114,65 @@ function ControlEmptyState({
 }
 
 /**
- * First-run onboarding nudge on the chat home: when this machine isn't sharing
- * yet, offer a one-tap path to join the mesh. Once it's sharing, this returns
- * null — the global top bar already owns the live sharing status, so repeating
- * it here would just be noise.
+ * Soft status on the chat home while this machine is joining the mesh.
+ * Join is automatic (see useSharing) — we never pitch "start sharing" as an
+ * opt-in. Once connected, the top-bar Sharing control owns live status.
  */
 function SharingHomeCard() {
   const sharing = useSharing();
 
-  // The hosted/public deployment has no machine to share, so the whole card is
-  // irrelevant there.
   if (sharing.publicDeployment) return null;
-
-  // Already sharing? The top bar's Sharing control shows that live — don't
-  // duplicate it on the chat canvas.
   if (sharing.state === "running") return null;
 
-  const transitioning =
+  const joining =
     sharing.state === "loading" ||
     sharing.state === "starting" ||
-    sharing.state === "stopping";
+    sharing.busy === "start";
 
-  const label =
-    sharing.state === "starting"
-      ? "Starting…"
-      : sharing.state === "stopping"
-        ? "Stopping…"
-        : sharing.state === "loading"
-          ? "Checking…"
-          : "Start sharing";
+  if (joining) {
+    return (
+      <div className="mx-auto mt-7 max-w-md rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left">
+        <div className="text-[13px] font-medium text-[var(--fg)]">
+          Joining the mesh…
+        </div>
+        <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
+          Starting the runtime on this machine so it can serve and use the
+          network.
+        </div>
+      </div>
+    );
+  }
 
+  if (sharing.state === "stopping") {
+    return (
+      <div className="mx-auto mt-7 max-w-md rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left">
+        <div className="text-[13px] font-medium text-[var(--fg)]">
+          Leaving the mesh…
+        </div>
+      </div>
+    );
+  }
+
+  // Stopped after an auto-join miss — retry is the recovery path, not an
+  // invitation to stay private.
   return (
     <div className="mx-auto mt-7 flex max-w-md items-center justify-between gap-4 rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--bg-elev)] px-4 py-3 text-left">
       <div className="min-w-0">
         <div className="text-[13px] font-medium text-[var(--fg)]">
-          This machine isn&apos;t sharing yet
+          Couldn&apos;t join the mesh
         </div>
         <div className="mt-0.5 text-[12px] text-[var(--fg-muted)]">
-          Start to join the mesh — serve models to the network and run them
-          privately on your own hardware.
+          The runtime isn&apos;t running on this machine. Retry, or check
+          Machine details.
         </div>
       </div>
       <Button
         variant="primary"
         size="sm"
-        disabled={sharing.busy !== null || transitioning}
+        disabled={sharing.busy !== null}
         onClick={() => sharing.start()}
       >
-        {label}
+        {sharing.busy === "start" ? "Starting…" : "Retry"}
       </Button>
     </div>
   );
