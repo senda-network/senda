@@ -765,7 +765,20 @@ fn stop_runtime_aggressively_windows(log_context: &str) {
     let self_pid = std::process::id();
     let pid_filter = format!("PID ne {self_pid}");
 
-    for image in ["llama-server.exe", "rpc-server.exe", "senda.exe"] {
+    // Include flavor-suffixed helpers (`llama-server-cuda.exe`, etc.) —
+    // `/IM` is exact-match, so the unsuffixed name alone misses them and
+    // they keep a handle on sibling DLLs / the install dir during upgrade.
+    for image in [
+        "llama-server.exe",
+        "llama-server-cuda.exe",
+        "llama-server-vulkan.exe",
+        "llama-server-cpu.exe",
+        "rpc-server.exe",
+        "rpc-server-cuda.exe",
+        "rpc-server-vulkan.exe",
+        "rpc-server-cpu.exe",
+        "senda.exe",
+    ] {
         let out = Command::new("taskkill")
             .args(["/F", "/T", "/IM", image, "/FI", &pid_filter])
             .hide_console()
@@ -789,6 +802,66 @@ fn stop_runtime_aggressively_windows(log_context: &str) {
     // the process actually exits. 700 ms is empirically enough on
     // Windows 11 / NTFS without making cold starts feel laggy.
     std::thread::sleep(Duration::from_millis(700));
+}
+
+/// Replace `dest` with `new_bin` on Windows.
+///
+/// `std::fs::rename(new, dest)` **cannot replace an existing file on
+/// Windows** (POSIX rename-over is not supported). Pre-0.1.114 the
+/// upgrade loop hit exactly that and surfaced "Access is denied (os
+/// error 5)" even after every senda process was killed — the running
+/// binary wasn't the problem; the rename API was. Move the live binary
+/// aside, then rename the staged one into place, with kill+retry if a
+/// lingering handle still blocks the first attempt.
+#[cfg(target_os = "windows")]
+fn replace_runtime_binary_windows(new_bin: &Path, dest: &Path) -> Result<(), String> {
+    let bak = dest.with_extension("exe.upgrade-bak");
+    let mut last_err = String::new();
+
+    for attempt in 1..=5u32 {
+        if attempt > 1 {
+            stop_runtime_aggressively_windows(&format!("runtime upgrade retry {attempt}"));
+            // Escalating settle — Defender / Search Indexer sometimes
+            // re-open the file for a second or two after taskkill.
+            std::thread::sleep(Duration::from_millis(500 * u64::from(attempt)));
+        }
+
+        let _ = std::fs::remove_file(&bak);
+
+        if dest.exists() {
+            if let Err(e) = std::fs::rename(dest, &bak) {
+                last_err = format!(
+                    "couldn't move live binary aside ({} -> {}): {e}",
+                    dest.display(),
+                    bak.display()
+                );
+                eprintln!("[senda] runtime upgrade: attempt {attempt}: {last_err}");
+                continue;
+            }
+        }
+
+        match std::fs::rename(new_bin, dest) {
+            Ok(()) => {
+                let _ = std::fs::remove_file(&bak);
+                return Ok(());
+            }
+            Err(e) => {
+                // Put the old binary back if we moved it — leave the
+                // machine bootable even if this attempt failed.
+                if bak.exists() && !dest.exists() {
+                    let _ = std::fs::rename(&bak, dest);
+                }
+                last_err = format!(
+                    "couldn't install staged binary ({} -> {}): {e}",
+                    new_bin.display(),
+                    dest.display()
+                );
+                eprintln!("[senda] runtime upgrade: attempt {attempt}: {last_err}");
+            }
+        }
+    }
+
+    Err(last_err)
 }
 
 /// One-shot migration from the legacy auto-installer location
@@ -1980,47 +2053,54 @@ fn try_upgrade_runtime(bin: &Path) -> UpgradeOutcome {
     // Stop the service so launchd / SCM releases its handle on the
     // current binary. POSIX rename-over-running-binary is technically
     // legal (the kernel keeps the old inode alive for the running
-    // process) but Windows holds an exclusive lock.
-    //
-    // On Windows the gentle `senda service stop` (= `schtasks /End`)
-    // is not enough by itself: it kills the wscript wrapper but the
-    // wscript -> cmd -> senda.exe -> {blobstore plugin, rpc-server,
-    // llama-server} subtree gets reparented and keeps holding an
-    // exclusive section handle on senda.exe (the plugin
-    // subprocess is itself another `senda.exe` instance, so the
-    // file is mapped twice). The rename below then fails with
-    // ERROR_ACCESS_DENIED. Use the same belt-and-braces stop the
-    // startup path uses: schtasks /End, then `taskkill /F /T /IM` for
-    // every senda-family image (with a `PID ne <self>` filter so
-    // the GUI doesn't kill itself), then a settle sleep so NTFS
-    // releases the handles before we rename.
+    // process) but Windows holds an exclusive lock — and worse,
+    // `std::fs::rename(new, dest)` cannot replace an existing file on
+    // Windows at all (os error 5), so we must move the live binary
+    // aside first. See `replace_runtime_binary_windows`.
     #[cfg(target_os = "windows")]
-    stop_runtime_aggressively_windows("runtime upgrade");
+    {
+        stop_runtime_aggressively_windows("runtime upgrade");
+        std::thread::sleep(Duration::from_secs(2));
+        if let Err(e) = replace_runtime_binary_windows(&new_bin, &dest) {
+            eprintln!(
+                "[senda] runtime upgrade: Windows replace failed: {e}; restarting old service"
+            );
+            let _ = std::fs::remove_dir_all(&stage_dir);
+            start_service();
+            return UpgradeOutcome::Failed {
+                installed: Some(installed_str.clone()),
+                latest: Some(latest_str.clone()),
+                error: format!(
+                    "couldn't replace the runtime binary at {}: {e}. \
+                     Quit Senda fully, then click Check for update again — or install desktop \
+                     v0.1.114+ which moves the live binary aside before installing the new one.",
+                    dest.display()
+                ),
+            };
+        }
+    }
     #[cfg(not(target_os = "windows"))]
     {
         stop_service();
         std::thread::sleep(Duration::from_secs(2));
-    }
-
-    if let Err(e) = std::fs::rename(&new_bin, &dest) {
-        eprintln!(
-            "[senda] runtime upgrade: rename {} -> {} failed: {e}; restarting old service",
-            new_bin.display(),
-            dest.display()
-        );
-        let _ = std::fs::remove_dir_all(&stage_dir);
-        start_service();
-        return UpgradeOutcome::Failed {
-            installed: Some(installed_str.clone()),
-            latest: Some(latest_str.clone()),
-            error: format!(
-                "couldn't replace the running runtime binary at {}: {e}. \
-                 On Windows this usually means another process is still holding the file open \
-                 (antivirus real-time scan, Search Indexer, or a runtime child we didn't reach). \
-                 The old binary is still in place and the service was restarted.",
+        if let Err(e) = std::fs::rename(&new_bin, &dest) {
+            eprintln!(
+                "[senda] runtime upgrade: rename {} -> {} failed: {e}; restarting old service",
+                new_bin.display(),
                 dest.display()
-            ),
-        };
+            );
+            let _ = std::fs::remove_dir_all(&stage_dir);
+            start_service();
+            return UpgradeOutcome::Failed {
+                installed: Some(installed_str.clone()),
+                latest: Some(latest_str.clone()),
+                error: format!(
+                    "couldn't replace the runtime binary at {}: {e}. \
+                     The old binary is still in place and the service was restarted.",
+                    dest.display()
+                ),
+            };
+        }
     }
 
     // Refresh the llama.cpp helpers (`rpc-server-*`, `llama-server-*`,
