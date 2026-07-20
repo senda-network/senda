@@ -218,7 +218,7 @@ Function ReadStartupModel(configPath)
     line = Trim(ts.ReadLine)
     If Len(line) = 0 Then
       ' skip blank
-    ElseIf Left(line, 1) = "#" Then
+    ElseIf Left(line, 1) = Chr(35) Then
       ' skip comment
     ElseIf Left(line, 2) = "[[" Then
       inModels = (LCase(line) = "[[models]]")
@@ -230,7 +230,7 @@ Function ReadStartupModel(configPath)
           If Len(raw) >= 2 Then
             ch0 = Left(raw, 1)
             ch1 = Right(raw, 1)
-            If (ch0 = Chr(34) And ch1 = Chr(34)) Or (ch0 = "'" And ch1 = "'") Then
+            If (ch0 = Chr(34) And ch1 = Chr(34)) Or (ch0 = Chr(39) And ch1 = Chr(39)) Then
               raw = Mid(raw, 2, Len(raw) - 2)
             End If
           End If

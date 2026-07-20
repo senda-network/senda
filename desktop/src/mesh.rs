@@ -3011,7 +3011,9 @@ pub fn keep_running_after_quit() -> bool {
 /// uses as a string terminator. The same bug bit `public/install.ps1`
 /// (see the leading comment block in that file) - keep both in sync.
 #[cfg(target_os = "windows")]
-const REGISTER_TASK_PS: &str = r#"param(
+// r## so embedded VBS can contain the sequence "# without terminating
+// the Rust raw string (e.g. Left(line, 1) = "#" broke the 0.1.120 build).
+const REGISTER_TASK_PS: &str = r##"param(
     [Parameter(Mandatory=$true)][string]$BinPath,
     [Parameter(Mandatory=$true)][string]$ArgString,
     [Parameter(Mandatory=$true)][string]$UserName,
@@ -3159,7 +3161,7 @@ Function ReadStartupModel(configPath)
     line = Trim(ts.ReadLine)
     If Len(line) = 0 Then
       ' skip blank
-    ElseIf Left(line, 1) = "#" Then
+    ElseIf Left(line, 1) = Chr(35) Then
       ' skip comment
     ElseIf Left(line, 2) = "[[" Then
       inModels = (LCase(line) = "[[models]]")
@@ -3171,7 +3173,7 @@ Function ReadStartupModel(configPath)
           If Len(raw) >= 2 Then
             ch0 = Left(raw, 1)
             ch1 = Right(raw, 1)
-            If (ch0 = Chr(34) And ch1 = Chr(34)) Or (ch0 = "'" And ch1 = "'") Then
+            If (ch0 = Chr(34) And ch1 = Chr(34)) Or (ch0 = Chr(39) And ch1 = Chr(39)) Then
               raw = Mid(raw, 2, Len(raw) - 2)
             End If
           End If
@@ -3206,7 +3208,7 @@ Register-ScheduledTask -TaskName $TaskName `
     -Settings $settings `
     -Principal $principal `
     -Description 'Senda - private LLM mesh node' | Out-Null
-"#;
+"##;
 
 /// Compose the runtime CLI argument string baked into the Scheduled
 /// Task. Matches the line install.ps1 generates at install time so a
