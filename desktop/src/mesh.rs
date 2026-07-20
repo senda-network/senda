@@ -2979,6 +2979,9 @@ $logDir  = Join-Path $env:LOCALAPPDATA 'senda\logs'
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
 $logFileStdout = Join-Path $logDir 'stdout.log'
 $logFileStderr = Join-Path $logDir 'stderr.log'
+$userProfile = $env:USERPROFILE
+if (-not $userProfile) { $userProfile = $WorkingDirectory }
+$configToml = Join-Path $userProfile '.senda\config.toml'
 
 # Pin the HuggingFace Hub cache so the runtime task always finds models
 # the dashboard downloaded and vice-versa. The runtime CLI's own
@@ -3006,16 +3009,30 @@ $vbs = @"
 ' SENDA_ARGS: ${ArgString}
 ' SENDA_LOGDIR: ${logDir}
 ' SENDA_HF_HUB_CACHE: ${hfCacheDir}
+' SENDA_CONFIG: ${configToml}
 Option Explicit
 Dim sh, fso, cmd, q
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 If Not fso.FolderExists("${logDir}") Then fso.CreateFolder("${logDir}")
 If Not fso.FolderExists("${hfCacheDir}") Then fso.CreateFolder("${hfCacheDir}")
+' Pin HOME + config path. Without HOME, dirs::home_dir / config.toml
+' resolution can miss %USERPROFILE%\.senda\config.toml and the runtime
+' boots with an empty [[models]] list ("No --model specified"), then
+' --auto surprise-picks pack models (LYU / Qwen3-Coder, 2026-07-20).
+sh.Environment("PROCESS")("HOME") = "${userProfile}"
+sh.Environment("PROCESS")("USERPROFILE") = "${userProfile}"
+sh.Environment("PROCESS")("SENDA_CONFIG") = "${configToml}"
 ' Pin the HuggingFace cache for THIS process (and every child cmd/senda
 ' inherits the value). The runtime would otherwise resolve the cache from
 ' \$HOME, which Windows doesn't set, and fall back to a CWD-relative path.
 sh.Environment("PROCESS")("HF_HUB_CACHE") = "${hfCacheDir}"
+' Truncate runtime logs on every start so diagnostic reports aren't
+' stuck on a previous crash session (Coder dangling-symlink spam).
+On Error Resume Next
+If fso.FileExists("${logFileStdout}") Then fso.DeleteFile "${logFileStdout}", True
+If fso.FileExists("${logFileStderr}") Then fso.DeleteFile "${logFileStderr}", True
+On Error GoTo 0
 q = Chr(34)
 cmd = "cmd /S /c " & q & q & "${BinPath}" & q & " ${ArgString} >> " & q & "${logFileStdout}" & q & " 2>> " & q & "${logFileStderr}" & q & q
 sh.Run cmd, 0, True
@@ -3171,13 +3188,27 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
             .to_lowercase()
     };
     let bin_str = bin.display().to_string();
+    // Force rewrite when the VBS is missing HOME/SENDA_CONFIG pinning
+    // (pre-0.1.116). Args can already match while the wrapper still
+    // boots without config → empty [[models]] → --auto pack download.
+    let vbs_needs_env_pin = bin
+        .parent()
+        .map(|dir| dir.join("senda-launch.vbs"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|body| !body.contains("SENDA_CONFIG:"))
+        .unwrap_or(true);
     if let Some((existing_bin, existing_args)) = current_windows_task_args(bin) {
         if existing_bin.eq_ignore_ascii_case(&bin_str)
             && normalised(&existing_args) == normalised(&args)
+            && !vbs_needs_env_pin
         {
             return;
         }
-        if !existing_bin.eq_ignore_ascii_case(&bin_str) {
+        if vbs_needs_env_pin {
+            eprintln!(
+                "[senda] scheduled task VBS missing SENDA_CONFIG pin; re-registering ({SERVICE_NAME_WINDOWS})"
+            );
+        } else if !existing_bin.eq_ignore_ascii_case(&bin_str) {
             eprintln!(
                 "[senda] scheduled task bin path changed: {existing_bin} -> {bin_str}; re-registering ({SERVICE_NAME_WINDOWS})"
             );
