@@ -193,10 +193,7 @@ sh.Environment("PROCESS")("USERPROFILE") = "${userProfile}"
 sh.Environment("PROCESS")("SENDA_CONFIG") = "${configToml}"
 ' Pin the HuggingFace cache for THIS process; cmd / senda inherit.
 sh.Environment("PROCESS")("HF_HUB_CACHE") = "${hfCacheDir}"
-On Error Resume Next
-If fso.FileExists("${logFileStdout}") Then fso.DeleteFile "${logFileStdout}", True
-If fso.FileExists("${logFileStderr}") Then fso.DeleteFile "${logFileStderr}", True
-On Error GoTo 0
+' Keep logs across restarts so crash-loops remain diagnosable.
 q = Chr(34)
 cmd = "cmd /S /c " & q & q & "${Bin}" & q & " ${ArgString} >> " & q & "${logFileStdout}" & q & " 2>> " & q & "${logFileStderr}" & q & q
 sh.Run cmd, 0, True

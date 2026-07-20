@@ -3106,12 +3106,10 @@ sh.Environment("PROCESS")("SENDA_CONFIG") = "${configToml}"
 ' inherits the value). The runtime would otherwise resolve the cache from
 ' \$HOME, which Windows doesn't set, and fall back to a CWD-relative path.
 sh.Environment("PROCESS")("HF_HUB_CACHE") = "${hfCacheDir}"
-' Truncate runtime logs on every start so diagnostic reports aren't
-' stuck on a previous crash session (Coder dangling-symlink spam).
-On Error Resume Next
-If fso.FileExists("${logFileStdout}") Then fso.DeleteFile "${logFileStdout}", True
-If fso.FileExists("${logFileStderr}") Then fso.DeleteFile "${logFileStderr}", True
-On Error GoTo 0
+' Do NOT truncate logs here. Crash-loop restarts (RestartCount=3) would
+' wipe stderr every minute and leave diagnostic reports empty — which is
+' exactly how we lost LYU's post-0.66.95 failure evidence. Stale Coder
+' sessions are cleared once by purge_broken_windows_autopack_residue.
 q = Chr(34)
 cmd = "cmd /S /c " & q & q & "${BinPath}" & q & " ${ArgString} >> " & q & "${logFileStdout}" & q & " 2>> " & q & "${logFileStderr}" & q & q
 sh.Run cmd, 0, True
@@ -3274,7 +3272,12 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
         .parent()
         .map(|dir| dir.join("senda-launch.vbs"))
         .and_then(|p| std::fs::read_to_string(p).ok())
-        .map(|body| !body.contains("SENDA_CONFIG:"))
+        .map(|body| {
+            // Missing config pin, or still on the 0.1.116–0.1.117 VBS that
+            // deleted stderr on every start (hides crash-loop evidence).
+            !body.contains("SENDA_CONFIG:")
+                || (body.contains("DeleteFile") && body.contains("stderr.log"))
+        })
         .unwrap_or(true);
     if let Some((existing_bin, existing_args)) = current_windows_task_args(bin) {
         if existing_bin.eq_ignore_ascii_case(&bin_str)
