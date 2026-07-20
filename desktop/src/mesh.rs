@@ -922,13 +922,9 @@ fn purge_broken_windows_autopack_residue() {
         }
     }
 
-    let log_dir = PathBuf::from(&local).join("senda").join("logs");
-    for name in ["stderr.log", "stdout.log"] {
-        let path = log_dir.join(name);
-        if path.is_file() {
-            let _ = std::fs::write(&path, b"");
-        }
-    }
+    // Do NOT clear runtime logs here. The first post-upgrade launch is
+    // exactly when we need the previous crash evidence in diagnostic
+    // reports (0.1.117 wiped stderr right before LYU/MSI manual sends).
 
     if let Some(parent) = marker.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -2341,7 +2337,7 @@ const SERVICE_NAME_WINDOWS: &str = "Senda";
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ENTRY_STATUS_URL: &str = "https://entry.senda.network/api/status";
 
-/// First `model = "..."` under a `[[models]]` block in `~/.senda/config.toml`.
+/// First `model = "..."` under a `[[models]]` block in config.toml.
 ///
 /// The desktop UI writes the user's startup choice there, but the Windows
 /// Scheduled Task / macOS launchd unit historically launched
@@ -2350,8 +2346,33 @@ const ENTRY_STATUS_URL: &str = "https://entry.senda.network/api/status";
 /// pack models the user never picked (Qwen3-Coder-Next on LYU). Passing
 /// `--model` on the service command line makes the choice explicit even
 /// if config.toml is temporarily unread.
+///
+/// Path order matches the runtime (0.66.95+): `SENDA_CONFIG`, then
+/// `%USERPROFILE%\.senda\config.toml`, then `dirs::home_dir()`. On
+/// Windows the shell's HOME can disagree with USERPROFILE; checking both
+/// is what keeps `--model Gemma-…` on the Scheduled Task.
 fn config_startup_model() -> Option<String> {
-    let path = dirs::home_dir()?.join(".senda").join("config.toml");
+    let mut paths: Vec<PathBuf> = Vec::new();
+    if let Ok(explicit) = std::env::var("SENDA_CONFIG") {
+        if !explicit.trim().is_empty() {
+            paths.push(PathBuf::from(explicit));
+        }
+    }
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        paths.push(PathBuf::from(profile).join(".senda").join("config.toml"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        paths.push(home.join(".senda").join("config.toml"));
+    }
+    for path in paths {
+        if let Some(model) = read_startup_model_from_toml(&path) {
+            return Some(model);
+        }
+    }
+    None
+}
+
+fn read_startup_model_from_toml(path: &Path) -> Option<String> {
     let contents = std::fs::read_to_string(path).ok()?;
     let mut in_models = false;
     for raw in contents.lines() {

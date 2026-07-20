@@ -41,10 +41,14 @@ const DIAG_BASE = (
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-// Keep the stderr tail small: last chunk of the log, then trimmed to a
-// bounded number of lines after scrubbing.
-const STDERR_TAIL_BYTES = 16_384;
-const STDERR_TAIL_LINES = 120;
+// Keep the log bundle small: last chunk of each source, then trimmed
+// after scrubbing. We pack stderr + stdout + Windows VBS markers +
+// desktop.log into `stderrTail` so an empty runtime stderr (crash
+// before first write, or a one-shot truncate) cannot blind triage.
+const STDERR_TAIL_BYTES = 12_288;
+const STDOUT_TAIL_BYTES = 8_192;
+const DESKTOP_LOG_TAIL_BYTES = 6_144;
+const STDERR_TAIL_LINES = 160;
 
 type ClientContext = Partial<{
   runtimeVersion: string | null;
@@ -141,6 +145,79 @@ function str(v: unknown, max = 256): string | null {
   return v.length <= max ? v : v.slice(0, max);
 }
 
+/** Windows Scheduled Task launcher markers (bin + args + config pin). */
+async function readWindowsServiceMarkers(): Promise<string> {
+  if (process.platform !== "win32") return "";
+  const local =
+    process.env.LOCALAPPDATA ??
+    path.join(homedir(), "AppData", "Local");
+  const vbs = path.join(local, "senda", "bin", "senda-launch.vbs");
+  try {
+    const body = await fs.readFile(vbs, "utf-8");
+    const keep = body
+      .split(/\r?\n/)
+      .filter((line) => {
+        const t = line.trim();
+        return (
+          t.startsWith("' SENDA_BIN:") ||
+          t.startsWith("' SENDA_ARGS:") ||
+          t.startsWith("' SENDA_CONFIG:") ||
+          t.includes("SENDA_CONFIG") ||
+          t.includes("Environment(\"PROCESS\")(\"HOME\")") ||
+          t.includes("DeleteFile")
+        );
+      })
+      .slice(0, 40);
+    return keep.join("\n");
+  } catch {
+    return `(missing ${vbs})`;
+  }
+}
+
+async function readDesktopLogTail(): Promise<string> {
+  // Tauri shell log — survives even when the runtime never writes stderr.
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(
+            process.env.APPDATA ?? path.join(homedir(), "AppData", "Roaming"),
+            "senda",
+            "logs",
+            "senda.log",
+          ),
+          path.join(
+            process.env.LOCALAPPDATA ??
+              path.join(homedir(), "AppData", "Local"),
+            "senda",
+            "logs",
+            "desktop.log",
+          ),
+        ]
+      : process.platform === "darwin"
+        ? [
+            path.join(homedir(), "Library", "Logs", "senda", "senda.log"),
+            path.join(homedir(), "Library", "Logs", "com.network.senda", "senda.log"),
+          ]
+        : [
+            path.join(homedir(), ".local", "state", "senda", "desktop.log"),
+          ];
+  for (const p of candidates) {
+    const raw = await tailFile(p, DESKTOP_LOG_TAIL_BYTES);
+    if (raw.trim()) return `--- ${p} ---\n${raw}`;
+  }
+  return "";
+}
+
+/** Pack multiple local sources into one scrubbed triage blob. */
+function packLogBundle(parts: { title: string; body: string }[]): string {
+  const chunks: string[] = [];
+  for (const { title, body } of parts) {
+    const trimmed = body.trimEnd();
+    chunks.push(`===== ${title} =====\n${trimmed || "(empty)"}`);
+  }
+  return scrub(chunks.join("\n\n"));
+}
+
 // Unambiguous "the runtime crashed / aborted / hit a hard error" markers.
 // Deliberately conservative — no generic "error"/"warn" — so the crash
 // sentinel that polls this only fires on genuine faults, and dedup by the
@@ -216,10 +293,14 @@ export async function POST(req: Request) {
   }
 
   const installId = await ensureInstallId();
-  const [upgrade, stderrRaw] = await Promise.all([
-    readUpgradeState(),
-    tailFile(LOG_PATHS.stderr, STDERR_TAIL_BYTES),
-  ]);
+  const [upgrade, stderrRaw, stdoutRaw, serviceMarkers, desktopLogRaw] =
+    await Promise.all([
+      readUpgradeState(),
+      tailFile(LOG_PATHS.stderr, STDERR_TAIL_BYTES),
+      tailFile(LOG_PATHS.stdout, STDOUT_TAIL_BYTES),
+      readWindowsServiceMarkers(),
+      readDesktopLogTail(),
+    ]);
 
   // The Tauri shell injects SENDA_APP_VERSION when it spawns this
   // controller (see desktop/src/sidecar.rs). Prefer an explicit
@@ -230,6 +311,13 @@ export async function POST(req: Request) {
   const desktopVersion =
     str(ctx.desktopVersion, 64) ??
     str(process.env.SENDA_APP_VERSION?.trim() || null, 64);
+
+  const stderrTail = packLogBundle([
+    { title: "stderr", body: stderrRaw },
+    { title: "stdout", body: stdoutRaw },
+    { title: "windows-service", body: serviceMarkers },
+    { title: "desktop-log", body: desktopLogRaw },
+  ]);
 
   const payload = {
     installId,
@@ -258,7 +346,7 @@ export async function POST(req: Request) {
     runtimeReachable: ctx.runtimeReachable === true,
     phase: str(ctx.phase, 256),
     upgrade,
-    stderrTail: scrub(stderrRaw),
+    stderrTail,
     note: str(body.note, 1024),
   };
 
