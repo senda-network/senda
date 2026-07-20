@@ -2262,6 +2262,52 @@ const SERVICE_NAME_WINDOWS: &str = "Senda";
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const ENTRY_STATUS_URL: &str = "https://entry.senda.network/api/status";
 
+/// First `model = "..."` under a `[[models]]` block in `~/.senda/config.toml`.
+///
+/// The desktop UI writes the user's startup choice there, but the Windows
+/// Scheduled Task / macOS launchd unit historically launched
+/// `serve --auto` with **no** `--model`. When config failed to load (or
+/// was empty at boot), `--auto` + RAM-inflated VRAM surprise-downloaded
+/// pack models the user never picked (Qwen3-Coder-Next on LYU). Passing
+/// `--model` on the service command line makes the choice explicit even
+/// if config.toml is temporarily unread.
+fn config_startup_model() -> Option<String> {
+    let path = dirs::home_dir()?.join(".senda").join("config.toml");
+    let contents = std::fs::read_to_string(path).ok()?;
+    let mut in_models = false;
+    for raw in contents.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with("[[") {
+            in_models = line == "[[models]]";
+            continue;
+        }
+        if !in_models {
+            continue;
+        }
+        // `model = "Gemma-3-27B-it-Q4_K_M"` (optional spaces / single quotes)
+        let Some(rest) = line
+            .strip_prefix("model")
+            .map(str::trim_start)
+            .and_then(|s| s.strip_prefix('='))
+            .map(str::trim)
+        else {
+            continue;
+        };
+        let unquoted = rest
+            .trim_matches('"')
+            .trim_matches('\'')
+            .trim()
+            .to_string();
+        if !unquoted.is_empty() {
+            return Some(unquoted);
+        }
+    }
+    None
+}
+
 /// Fallback join token baked in at build time.
 ///
 /// The canonical entry node (entry.senda.network) runs in Docker on AWS
@@ -2552,6 +2598,10 @@ fn build_launchd_plist_xml(bin: &std::path::Path, join_args: &[String]) -> Strin
         "--mesh-name".to_string(),
         "senda".to_string(),
     ];
+    if let Some(model) = config_startup_model() {
+        program_args.push("--model".to_string());
+        program_args.push(model);
+    }
     program_args.extend(join_args.iter().cloned());
     for relay in DEFAULT_RELAYS {
         program_args.push("--relay".to_string());
@@ -3020,8 +3070,14 @@ fn build_windows_service_args(bin: &std::path::Path) -> String {
     // matching comment in `build_launchd_plist_xml` for the why — without it,
     // the headless runtime re-renders the full dashboard text into stderr on
     // every output event, producing ~36 MB/day of redundant frames.
+    //
+    // Pass `--model` from config.toml when set so `--auto` cannot
+    // surprise-download an opinionated pack model the user never chose.
+    let model_segment = config_startup_model()
+        .map(|m| format!(" --model {m}"))
+        .unwrap_or_default();
     format!(
-        "--log-format json serve --auto --publish --mesh-name senda{join_segment}{relays} --headless"
+        "--log-format json serve --auto --publish --mesh-name senda{model_segment}{join_segment}{relays} --headless"
     )
 }
 
