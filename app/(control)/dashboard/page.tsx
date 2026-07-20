@@ -167,11 +167,11 @@ type QuickStartPhase =
 // to /models or /settings (which unmounts DashboardPage and so a useRef
 // would reset to null on remount).
 //
-// 24 h staleness guard: if we still find a stamp from yesterday's
-// session (runtime crashed mid-load, machine slept, browser tab closed
-// before the load finished), reset rather than show "loading for 14h22m".
+// Staleness: 45 minutes covers a real cold GGUF load; past that the stamp
+// is abandoned (app quit while the runtime was parked / doomed). Never
+// paint "Loading · 5h+" as if that were progress.
 const LOAD_STARTED_KEY_PREFIX = "senda:loadingStartedAt:";
-const LOAD_STARTED_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const LOAD_STARTED_MAX_AGE_MS = 45 * 60 * 1000;
 
 function readLoadingStartedAt(modelId: string): number | null {
   if (typeof window === "undefined") return null;
@@ -859,6 +859,27 @@ export default function DashboardPage() {
   ).length;
   const localVramGb =
     selfNode?.capability.vramGb ?? selfNode?.vramGb ?? null;
+
+  // Runtime parked (WaitingForCapacity) or catalog says the model cannot
+  // fit this machine / pool: do NOT keep a climbing "Loading · Xm" clock —
+  // that is the Jul 20 MSI/LYU disaster. Clear the stamp so a later real
+  // load starts from zero.
+  const startupFit = startupMeshModel?.meshFit ?? null;
+  const startupWaitingForCapacity =
+    (!!startupFit &&
+      !startupFit.fitsOnLargestNode &&
+      !startupFit.fitsPooled) ||
+    (!startupFit &&
+      startupCatalog?.minVramGb != null &&
+      localVramGb != null &&
+      startupCatalog.minVramGb > localVramGb + 0.5 &&
+      totalVram + 0.5 < startupCatalog.minVramGb) ||
+    selfNode?.state === "standby";
+  useEffect(() => {
+    if (startupWaitingForCapacity && startupModelId) {
+      clearLoadingStartedAt(startupModelId);
+    }
+  }, [startupWaitingForCapacity, startupModelId]);
 
   // A NodeSummary view of self with `capability.loadedModels` collapsed
   // to the stable set. ThisNodeCard / ContributionCard / nodeDisplayState
@@ -2294,7 +2315,9 @@ function ModelLoadingCard({
                 (stuck ? "text-amber-300" : "text-[var(--accent)]")
               }
             >
-              Loading model · {formatElapsed(elapsed)}
+              {planner === "waiting_for_capacity"
+                ? "Waiting for capacity"
+                : `Loading model · ${formatElapsed(elapsed)}`}
             </div>
             <div className="mt-0.5 truncate font-mono text-sm text-[var(--fg)]">
               {startupModelId}
@@ -2343,10 +2366,13 @@ function ModelLoadingCard({
 }
 
 function formatElapsed(s: number): string {
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return r === 0 ? `${m}m` : `${m}m ${r}s`;
+  const maxSec = Math.floor(LOAD_STARTED_MAX_AGE_MS / 1000);
+  const capped = Math.min(Math.max(0, s), maxSec);
+  if (capped < 60) return `${capped}s`;
+  const m = Math.floor(capped / 60);
+  const r = capped % 60;
+  const base = r === 0 ? `${m}m` : `${m}m ${r}s`;
+  return s > maxSec ? `${base}+` : base;
 }
 
 /**
