@@ -864,6 +864,78 @@ fn replace_runtime_binary_windows(new_bin: &Path, dest: &Path) -> Result<(), Str
     Err(last_err)
 }
 
+/// Delete the broken Qwen3-Coder-Next HuggingFace cache left by the
+/// pre-0.66.94 `--auto` pack surprise-download, and clear stale runtime
+/// logs so the next boot isn't diagnosed from an old crash session.
+///
+/// Marker file under `%LOCALAPPDATA%\senda\` makes this one-shot per
+/// machine — safe to call on every launch afterward.
+#[cfg(target_os = "windows")]
+fn purge_broken_windows_autopack_residue() {
+    let Some(local) = std::env::var_os("LOCALAPPDATA") else {
+        return;
+    };
+    let marker = PathBuf::from(&local)
+        .join("senda")
+        .join(".purged-autopack-coder-2026-07-20");
+    if marker.is_file() {
+        return;
+    }
+
+    let mut targets: Vec<PathBuf> = Vec::new();
+    targets.push(
+        PathBuf::from(&local)
+            .join("huggingface")
+            .join("hub")
+            .join("models--Qwen--Qwen3-Coder-Next-GGUF"),
+    );
+    if let Some(home) = dirs::home_dir() {
+        targets.push(
+            home.join(".cache")
+                .join("huggingface")
+                .join("hub")
+                .join("models--Qwen--Qwen3-Coder-Next-GGUF"),
+        );
+    }
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        targets.push(
+            PathBuf::from(profile)
+                .join(".cache")
+                .join("huggingface")
+                .join("hub")
+                .join("models--Qwen--Qwen3-Coder-Next-GGUF"),
+        );
+    }
+
+    for dir in targets {
+        if dir.is_dir() {
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => eprintln!(
+                    "[senda] purged broken auto-pack cache at {}",
+                    dir.display()
+                ),
+                Err(e) => eprintln!(
+                    "[senda] could not purge {}: {e} (will retry next launch)",
+                    dir.display()
+                ),
+            }
+        }
+    }
+
+    let log_dir = PathBuf::from(&local).join("senda").join("logs");
+    for name in ["stderr.log", "stdout.log"] {
+        let path = log_dir.join(name);
+        if path.is_file() {
+            let _ = std::fs::write(&path, b"");
+        }
+    }
+
+    if let Some(parent) = marker.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&marker, b"ok\n");
+}
+
 /// One-shot migration from the legacy auto-installer location
 /// (`~/.local/bin\senda.exe`, used by 0.1.40-0.1.74) to the
 /// canonical Windows runtime path (`%LOCALAPPDATA%\senda\bin\senda.exe`,
@@ -1096,6 +1168,13 @@ pub fn start_service_if_installed() {
     // failing is fine, we just proceed.
     #[cfg(target_os = "windows")]
     stop_runtime_aggressively_windows("startup");
+
+    // Windows: one-shot cleanup of the --auto pack surprise-download
+    // that left LYU stuck on a broken Qwen3-Coder-Next cache (2026-07-20).
+    // Bosses should never need a PowerShell recovery script — install
+    // the latest desktop, open it once, done.
+    #[cfg(target_os = "windows")]
+    purge_broken_windows_autopack_residue();
 
     // Windows hygiene: the auto-installer in 0.1.40-0.1.74 dropped
     // senda.exe into `~/.local/bin\` (a Linux convention applied
