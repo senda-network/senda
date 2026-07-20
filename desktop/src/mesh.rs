@@ -3111,7 +3111,7 @@ $vbs = @"
 ' SENDA_HF_HUB_CACHE: ${hfCacheDir}
 ' SENDA_CONFIG: ${configToml}
 Option Explicit
-Dim sh, fso, cmd, q
+Dim sh, fso, cmd, q, args, model
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 If Not fso.FolderExists("${logDir}") Then fso.CreateFolder("${logDir}")
@@ -3131,11 +3131,61 @@ sh.Environment("PROCESS")("HF_HUB_CACHE") = "${hfCacheDir}"
 ' wipe stderr every minute and leave diagnostic reports empty — which is
 ' exactly how we lost LYU's post-0.66.95 failure evidence. Stale Coder
 ' sessions are cleared once by purge_broken_windows_autopack_residue.
+'
+' Inject --model from config.toml at EVERY start. Baking --model into
+' SENDA_ARGS at register time is not enough: if registration raced
+' before [[models]] existed, the task kept launching serve --auto with
+' no model forever (LYU 2026-07-20). ReadStartupModel closes that gap.
 q = Chr(34)
-cmd = "cmd /S /c " & q & q & "${BinPath}" & q & " ${ArgString} >> " & q & "${logFileStdout}" & q & " 2>> " & q & "${logFileStderr}" & q & q
+args = "${ArgString}"
+model = ReadStartupModel("${configToml}")
+If Len(model) > 0 Then
+  If InStr(1, args, "--model ", 1) = 0 Then
+    args = args & " --model " & model
+  End If
+End If
+cmd = "cmd /S /c " & q & q & "${BinPath}" & q & " " & args & " >> " & q & "${logFileStdout}" & q & " 2>> " & q & "${logFileStderr}" & q & q
 sh.Run cmd, 0, True
 Set sh = Nothing
 Set fso = Nothing
+
+Function ReadStartupModel(configPath)
+  Dim ts, line, inModels, eqPos, raw, ch0, ch1
+  ReadStartupModel = ""
+  If Not fso.FileExists(configPath) Then Exit Function
+  Set ts = fso.OpenTextFile(configPath, 1)
+  inModels = False
+  Do While Not ts.AtEndOfStream
+    line = Trim(ts.ReadLine)
+    If Len(line) = 0 Then
+      ' skip blank
+    ElseIf Left(line, 1) = "#" Then
+      ' skip comment
+    ElseIf Left(line, 2) = "[[" Then
+      inModels = (LCase(line) = "[[models]]")
+    ElseIf inModels Then
+      If LCase(Left(line, 5)) = "model" Then
+        eqPos = InStr(line, "=")
+        If eqPos > 0 Then
+          raw = Trim(Mid(line, eqPos + 1))
+          If Len(raw) >= 2 Then
+            ch0 = Left(raw, 1)
+            ch1 = Right(raw, 1)
+            If (ch0 = Chr(34) And ch1 = Chr(34)) Or (ch0 = "'" And ch1 = "'") Then
+              raw = Mid(raw, 2, Len(raw) - 2)
+            End If
+          End If
+          If Len(raw) > 0 Then
+            ReadStartupModel = raw
+            ts.Close
+            Exit Function
+          End If
+        End If
+      End If
+    End If
+  Loop
+  ts.Close
+End Function
 "@
 Set-Content -Path $vbsPath -Value $vbs -Encoding ASCII
 
@@ -3294,9 +3344,11 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
         .map(|dir| dir.join("senda-launch.vbs"))
         .and_then(|p| std::fs::read_to_string(p).ok())
         .map(|body| {
-            // Missing config pin, or still on the 0.1.116–0.1.117 VBS that
-            // deleted stderr on every start (hides crash-loop evidence).
+            // Missing config pin, still wiping logs, or missing the
+            // runtime ReadStartupModel inject (pre-0.1.120) that stops
+            // stale SENDA_ARGS from launching without --model forever.
             !body.contains("SENDA_CONFIG:")
+                || !body.contains("ReadStartupModel")
                 || (body.contains("DeleteFile") && body.contains("stderr.log"))
         })
         .unwrap_or(true);

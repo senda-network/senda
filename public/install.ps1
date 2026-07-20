@@ -182,7 +182,7 @@ function Write-LaunchVbs {
 ' SENDA_HF_HUB_CACHE: ${hfCacheDir}
 ' SENDA_CONFIG: ${configToml}
 Option Explicit
-Dim sh, fso, cmd, q
+Dim sh, fso, cmd, q, args, model
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 If Not fso.FolderExists("${LogDir}") Then fso.CreateFolder("${LogDir}")
@@ -194,11 +194,57 @@ sh.Environment("PROCESS")("SENDA_CONFIG") = "${configToml}"
 ' Pin the HuggingFace cache for THIS process; cmd / senda inherit.
 sh.Environment("PROCESS")("HF_HUB_CACHE") = "${hfCacheDir}"
 ' Keep logs across restarts so crash-loops remain diagnosable.
+' Inject --model from config.toml at every start (see desktop REGISTER_TASK_PS).
 q = Chr(34)
-cmd = "cmd /S /c " & q & q & "${Bin}" & q & " ${ArgString} >> " & q & "${logFileStdout}" & q & " 2>> " & q & "${logFileStderr}" & q & q
+args = "${ArgString}"
+model = ReadStartupModel("${configToml}")
+If Len(model) > 0 Then
+  If InStr(1, args, "--model ", 1) = 0 Then
+    args = args & " --model " & model
+  End If
+End If
+cmd = "cmd /S /c " & q & q & "${Bin}" & q & " " & args & " >> " & q & "${logFileStdout}" & q & " 2>> " & q & "${logFileStderr}" & q & q
 sh.Run cmd, 0, True
 Set sh = Nothing
 Set fso = Nothing
+
+Function ReadStartupModel(configPath)
+  Dim ts, line, inModels, eqPos, raw, ch0, ch1
+  ReadStartupModel = ""
+  If Not fso.FileExists(configPath) Then Exit Function
+  Set ts = fso.OpenTextFile(configPath, 1)
+  inModels = False
+  Do While Not ts.AtEndOfStream
+    line = Trim(ts.ReadLine)
+    If Len(line) = 0 Then
+      ' skip blank
+    ElseIf Left(line, 1) = "#" Then
+      ' skip comment
+    ElseIf Left(line, 2) = "[[" Then
+      inModels = (LCase(line) = "[[models]]")
+    ElseIf inModels Then
+      If LCase(Left(line, 5)) = "model" Then
+        eqPos = InStr(line, "=")
+        If eqPos > 0 Then
+          raw = Trim(Mid(line, eqPos + 1))
+          If Len(raw) >= 2 Then
+            ch0 = Left(raw, 1)
+            ch1 = Right(raw, 1)
+            If (ch0 = Chr(34) And ch1 = Chr(34)) Or (ch0 = "'" And ch1 = "'") Then
+              raw = Mid(raw, 2, Len(raw) - 2)
+            End If
+          End If
+          If Len(raw) > 0 Then
+            ReadStartupModel = raw
+            ts.Close
+            Exit Function
+          End If
+        End If
+      End If
+    End If
+  Loop
+  ts.Close
+End Function
 "@
 
     Set-Content -Path $vbsPath -Value $vbs -Encoding ASCII
