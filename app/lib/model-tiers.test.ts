@@ -28,6 +28,11 @@ describe("getModelTier", () => {
     expect(getModelTier("DEEPSEEK-R1-DISTILL-70B-Q4_K_M")).toBe("capacity");
   });
 
+  it("matches HF org-prefixed runtime stems to catalog tiers", () => {
+    expect(getModelTier("google_gemma-3-27b-it-Q4_K_M")).toBe("capacity");
+    expect(getModelTier("Gemma-3-27B-it-Q4_K_M")).toBe("capacity");
+  });
+
   it("falls back to experimental for unknown ids", () => {
     expect(getModelTier("some-future-model-Q4_K_M")).toBe("experimental");
     expect(getModelTier("")).toBe("experimental");
