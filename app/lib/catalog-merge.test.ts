@@ -129,4 +129,9 @@ describe("isVisionModel", () => {
       ]),
     ).toBe(true);
   });
+
+  it("matches Hugging Face org-prefixed runtime stems to catalog vision rows", () => {
+    expect(isVisionModel("google_gemma-3-27b-it-Q4_K_M")).toBe(true);
+    expect(isVisionModel("Gemma-3-27B-it-Q4_K_M")).toBe(true);
+  });
 });

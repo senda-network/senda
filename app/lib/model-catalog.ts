@@ -1,3 +1,5 @@
+import { modelIdsMatch } from "./model-id";
+
 /**
  * Curated catalog of models we know the Senda runtime can pull.
  *
@@ -182,11 +184,15 @@ export const VISION_MODEL_IDS: ReadonlySet<string> = new Set(
  * Whether `id` accepts image input. Pass the resolved catalog (from
  * `useCatalog` or `resolveCatalog`) so runtime-listed vision models are
  * recognized; omit it only for sync fallbacks that must use the bundle.
+ *
+ * Matching uses {@link modelIdsMatch} so Hugging Face stems
+ * (`google_gemma-3-27b-it-Q4_K_M`) still hit catalog vision rows
+ * (`Gemma-3-27B-it-Q4_K_M`).
  */
 export function isVisionModel(
   id: string | null | undefined,
   catalog: readonly CatalogModel[] = MODEL_CATALOG,
 ): boolean {
   if (!id) return false;
-  return catalog.some((m) => m.id === id && m.vision === true);
+  return catalog.some((m) => m.vision === true && modelIdsMatch(m.id, id));
 }

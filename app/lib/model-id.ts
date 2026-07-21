@@ -36,7 +36,15 @@ export function normalizeModelId(id: string): string {
 /**
  * `true` iff `a` and `b` refer to the same model under the
  * normalization above. Cheap; no caching needed.
+ *
+ * Also treats a single leading org/namespace segment as optional so a
+ * Hugging Face stem like `google_gemma-3-27b-it-Q4_K_M` matches the
+ * catalog id `Gemma-3-27B-it-Q4_K_M`. Without this, vision attach and
+ * other catalog gates fail for publisher-prefixed runtime names.
  */
 export function modelIdsMatch(a: string, b: string): boolean {
-  return normalizeModelId(a) === normalizeModelId(b);
+  const na = normalizeModelId(a);
+  const nb = normalizeModelId(b);
+  if (na === nb) return true;
+  return na.endsWith("-" + nb) || nb.endsWith("-" + na);
 }

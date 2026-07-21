@@ -6,7 +6,7 @@ import { PublicHeader } from "../../components/PublicHeader";
 import { MeshLiveStatus } from "../../components/MeshLiveStatus";
 import { nodeDisplayState } from "../../lib/node-display-state";
 import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
-import { normalizeModelId } from "../../lib/model-id";
+import { modelIdsMatch } from "../../lib/model-id";
 import {
   getModelTier,
   tierRank,
@@ -73,8 +73,7 @@ function backendLabel(backend: string, _vendor: string): string {
  * can't make any fit claim about, since we have no minVramGb.
  */
 function lookupCatalogModel(id: string): CatalogModel | null {
-  const target = normalizeModelId(id);
-  return MODEL_CATALOG.find((m) => normalizeModelId(m.id) === target) ?? null;
+  return MODEL_CATALOG.find((m) => modelIdsMatch(m.id, id)) ?? null;
 }
 
 /**
