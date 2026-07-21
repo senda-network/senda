@@ -297,4 +297,19 @@ describe("evaluateSla — capacity tier (TTFT <= 15000 ms, TPS >= 0.8)", () => {
     expect(result.meetsSla).toBe(false);
     expect(result.reason).toBe("tps-too-low");
   });
+
+  it("ignores hosts with null RTT (undialable from entry)", () => {
+    const result = evaluateSla(model, [
+      peer({
+        hostname: "Elevens-MacBook-Air.local",
+        hosted_models: [model],
+        rtt_ms: null,
+        measured_tps_p50_by_model: { [model]: 4 },
+        measured_ttft_ms_p50_by_model: { [model]: 2_000 },
+      }),
+    ]);
+    expect(result.meetsSla).toBe(false);
+    expect(result.reason).toBe("no-peer-with-model");
+    expect(result.candidatePeerCount).toBe(0);
+  });
 });

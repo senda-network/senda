@@ -40,6 +40,13 @@ export type SlaPeer = {
   hostname?: string | null;
   /** Peer state from `/api/status` — only `serving` peers are SLA candidates. */
   state?: string;
+  /**
+   * Measured path RTT from the status reporter (entry) to this peer.
+   * `null` means undialable / unknown path — must not count as a chat
+   * candidate (Elevens/Gemma 2026-07-21). `undefined` means the field
+   * was omitted (legacy); treat as dialable so we don't empty the mesh.
+   */
+  rtt_ms?: number | null;
   /** Models the peer claims to be currently serving. */
   serving_models?: string[];
   /** Models the peer reports `llama-server` ready for. Some runtimes only fill this. */
@@ -144,6 +151,12 @@ function isUsableState(state: string | undefined): boolean {
   );
 }
 
+/** Entry can dial this peer for HTTP proxying. See `SlaPeer.rtt_ms`. */
+function isDialablePeer(peer: SlaPeer): boolean {
+  if (peer.rtt_ms === undefined) return true;
+  return typeof peer.rtt_ms === "number" && Number.isFinite(peer.rtt_ms);
+}
+
 /** Peer id to attribute mesh credits to when the entry doesn't echo the host. */
 function pickCreditPeerId(
   modelId: string,
@@ -216,6 +229,7 @@ export function evaluateSla(
 
   const candidates = peers.filter((p) => {
     if (!isUsableState(p.state)) return false;
+    if (!isDialablePeer(p)) return false;
     return loadedModelsFor(p).includes(modelId);
   });
 

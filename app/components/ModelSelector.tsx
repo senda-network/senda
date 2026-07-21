@@ -24,13 +24,19 @@ function pretty(id: string): string {
     .replace(/-instruct$/i, " (Instruct)");
 }
 
+/** Models the chat composer is allowed to offer — never a 503-bait row. */
+function selectableModels(models: MeshModel[]): MeshModel[] {
+  return models.filter((m) => m.selectable === true);
+}
+
 /**
  * Pick a sensible default when nothing is chosen yet. Always a daily-driver —
  * never auto-select a slow capacity-tier model. See the original rationale
  * retained from the previous select implementation.
  */
 function pickDefault(models: MeshModel[]): string | undefined {
-  if (models.length === 0) return undefined;
+  const options = selectableModels(models);
+  if (options.length === 0) return undefined;
   const isDaily = (m: MeshModel) => getModelTier(m.name) === "daily_driver";
   const preferCanonical = (names: string[]): string | undefined => {
     if (names.length === 0) return undefined;
@@ -39,12 +45,10 @@ function pickDefault(models: MeshModel[]): string | undefined {
       : names[0];
   };
   const warmDaily = preferCanonical(
-    models
-      .filter((m) => isDaily(m) && m.status === "warm" && m.nodeCount > 0)
-      .map((m) => m.name),
+    options.filter(isDaily).map((m) => m.name),
   );
   if (warmDaily) return warmDaily;
-  return preferCanonical(models.filter(isDaily).map((m) => m.name));
+  return preferCanonical(options.map((m) => m.name));
 }
 
 export type ModelSelectorProps = {
@@ -59,19 +63,25 @@ export type ModelSelectorProps = {
  */
 export function ModelSelector({ value, onChange }: ModelSelectorProps) {
   const { loading, models } = useMeshModels();
+  const options = selectableModels(models);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (value !== undefined) return;
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) onChange(stored);
-  }, [value, onChange]);
+    // Only restore a stored id if it is still selectable — otherwise we
+    // would pin the composer on a model that 503s until the next effect.
+    if (stored && models.some((m) => m.name === stored && m.selectable)) {
+      onChange(stored);
+    }
+  }, [value, onChange, models]);
 
   useEffect(() => {
-    if (loading || models.length === 0) return;
-    if (value && models.some((m) => m.name === value)) return;
+    if (loading) return;
+    const available = selectableModels(models);
+    if (value && available.some((m) => m.name === value)) return;
     const next = pickDefault(models);
-    if (next && next !== value) onChange(next);
+    if (next !== value) onChange(next);
   }, [loading, models, value, onChange]);
 
   useEffect(() => {
@@ -80,7 +90,11 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
     window.localStorage.setItem(STORAGE_KEY, value);
   }, [value]);
 
-  const current = value ? pretty(value) : models.length === 0 ? "No models" : "Auto";
+  const current = value
+    ? pretty(value)
+    : options.length === 0
+      ? "No models"
+      : "Auto";
 
   return (
     <Popover
@@ -91,7 +105,7 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
         <button
           type="button"
           onClick={toggle}
-          disabled={models.length === 0}
+          disabled={options.length === 0}
           aria-label="Choose model"
           className={cn(
             "flex max-w-[180px] items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elev-2)] px-2.5 py-1.5 text-[12px] text-[var(--fg-muted)] transition-colors",
@@ -108,14 +122,13 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
     >
       {({ close }) => (
         <div className="max-h-[320px] overflow-y-auto scrollbar-thin p-1.5">
-          {models.length === 0 ? (
+          {options.length === 0 ? (
             <div className="px-3 py-4 text-center text-[12px] text-[var(--fg-muted)]">
-              No models on the mesh yet.
+              No models reachable on the mesh right now.
             </div>
           ) : (
-            models.map((m) => {
+            options.map((m) => {
               const active = m.name === value;
-              const warm = m.status === "warm" && m.nodeCount > 0;
               return (
                 <button
                   key={m.name}
@@ -132,11 +145,8 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
                   )}
                 >
                   <span
-                    className={cn(
-                      "h-1.5 w-1.5 shrink-0 rounded-full",
-                      warm ? "bg-[var(--success)]" : "bg-[var(--fg-subtle)]",
-                    )}
-                    title={warm ? "Serving now" : "Not currently served"}
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--success)]"
+                    title="Reachable on the mesh"
                   />
                   <span className="flex-1 truncate text-[var(--fg)]">
                     {pretty(m.displayName || m.name)}

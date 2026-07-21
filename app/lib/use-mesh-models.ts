@@ -33,6 +33,12 @@ type RuntimeMeshModel = {
   /** Phase A additions — older runtimes (<0.66) won't emit these. */
   split_kind?: string;
   mesh_fit?: RuntimeMeshFit;
+  /**
+   * Set by `/api/mesh-models`: true when chat may offer this model
+   * (warm + dialable host). Absent on raw runtime payloads / older
+   * website builds — treat as "warm && nodeCount > 0" for back-compat.
+   */
+  selectable?: boolean;
 };
 
 const DEFAULT_FIT: MeshFit = {
@@ -71,11 +77,19 @@ function normalizeMeshFit(raw: RuntimeMeshFit | undefined): MeshFit {
 }
 
 function normalizeMeshModel(raw: RuntimeMeshModel): MeshModel {
+  const status = raw.status ?? "cold";
+  const nodeCount = raw.node_count ?? 0;
+  // Prefer the website annotation; fall back so older proxies still hide
+  // obvious cold rows from chat even if they omit `selectable`.
+  const selectable =
+    typeof raw.selectable === "boolean"
+      ? raw.selectable
+      : status === "warm" && nodeCount > 0;
   return {
     name: raw.name,
     displayName: raw.display_name ?? raw.name,
-    status: raw.status ?? "cold",
-    nodeCount: raw.node_count ?? 0,
+    status,
+    nodeCount,
     meshVramGb: raw.mesh_vram_gb ?? 0,
     sizeGb: raw.size_gb ?? 0,
     moe: raw.moe ?? false,
@@ -84,6 +98,7 @@ function normalizeMeshModel(raw: RuntimeMeshModel): MeshModel {
     activeNodes: raw.active_nodes ?? [],
     splitKind: normalizeSplitKind(raw.split_kind),
     meshFit: normalizeMeshFit(raw.mesh_fit),
+    selectable,
   };
 }
 

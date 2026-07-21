@@ -317,6 +317,12 @@ export type MeshModel = {
   activeNodes: string[];
   splitKind: SplitKind;
   meshFit: MeshFit;
+  /**
+   * Chat may offer this model. False for cold inventory and for warm
+   * hosts the entry cannot dial (`rtt_ms` missing). Undefined means
+   * the payload predates the flag — callers should fall back.
+   */
+  selectable?: boolean;
 };
 
 export type MeshStatus = {

@@ -245,8 +245,14 @@ function friendlyChatError(error: unknown): string {
     return "The mesh is at capacity right now. Try again in a few seconds.";
   if (lower.includes("timeout") || lower.includes("timed out"))
     return "The hosting peer didn't respond in time. It may be loading the model — try again in a few seconds.";
+  if (
+    lower.includes("all ") &&
+    lower.includes("target") &&
+    lower.includes("failed")
+  )
+    return "No reachable host for this model right now — the mesh listed a peer we couldn't dial. Try another model, or wait while the mesh reconfigures.";
   if (lower.includes("503") || lower.includes("unavailable"))
-    return "The model is temporarily unavailable on the mesh. Try again in a few seconds.";
+    return "No reachable host for this model on the mesh right now. Try another model, or try again shortly.";
   return fallback;
 }
 

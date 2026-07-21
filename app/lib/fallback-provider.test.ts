@@ -55,7 +55,16 @@ describe("mapModelIdForFallback", () => {
     expect(mapModelIdForFallback("some-future-model-Q4_K_M")).toBeNull();
   });
 
-  it("returns null for capacity-tier models (intentionally unmapped)", () => {
+  it("maps Gemma capacity models used for no-host demo fallback", () => {
+    expect(mapModelIdForFallback("Gemma-3-27B-it-Q4_K_M")).toBe(
+      "google/gemma-3-27b-it",
+    );
+    expect(mapModelIdForFallback("google_gemma-3-27b-it-Q4_K_M")).toBe(
+      "google/gemma-3-27b-it",
+    );
+  });
+
+  it("returns null for unmapped capacity models", () => {
     expect(mapModelIdForFallback("DeepSeek-R1-Distill-70B-Q4_K_M")).toBeNull();
     expect(mapModelIdForFallback("Qwen3-32B-Q4_K_M")).toBeNull();
   });
@@ -65,6 +74,7 @@ describe("fallbackKeyConfigured / fallbackAvailableFor", () => {
   it("requires both a key AND a model mapping", () => {
     expect(fallbackKeyConfigured()).toBe(true);
     expect(fallbackAvailableFor("Qwen3-8B-Q4_K_M")).toBe(true);
+    expect(fallbackAvailableFor("Gemma-3-27B-it-Q4_K_M")).toBe(true);
     expect(fallbackAvailableFor("DeepSeek-R1-Distill-70B-Q4_K_M")).toBe(false);
   });
 
@@ -93,27 +103,47 @@ describe("decideFallback", () => {
     expect(d.fallbackModelSlug).toBe("qwen/qwen3-8b");
   });
 
-  it("stays on mesh for capacity-tier SLA misses (no free 70B proxy)", () => {
+  it("stays on mesh for capacity SLA misses when a dialable host exists", () => {
     const d = decideFallback(
       "DeepSeek-R1-Distill-70B-Q4_K_M",
-      sla({ meetsSla: false, tier: "capacity", reason: "tps-too-low" }),
+      sla({
+        meetsSla: false,
+        tier: "capacity",
+        reason: "tps-too-low",
+        candidatePeerCount: 1,
+      }),
     );
     expect(d.useFallback).toBe(false);
     expect(d.verdict).toBe("fallback-wrong-tier");
   });
 
-  it("stays on mesh when a daily-driver model has no fallback mapping", () => {
-    // No-such-model is treated as `experimental` by `getModelTier`,
-    // which is also a non-daily-driver tier — this test pins the
-    // "no mapping" branch via a daily-driver-tiered id that we
-    // deliberately keep out of the fallback map. None of the
-    // daily-driver-tiered ids are unmapped today, so this assertion
-    // is exercised by the wrong-tier branch instead.
+  it("falls back for capacity when no dialable host exists (demo safety net)", () => {
     const d = decideFallback(
       "Gemma-3-27B-it-Q4_K_M",
-      sla({ meetsSla: false, tier: "capacity", reason: "ttft-too-high" }),
+      sla({
+        meetsSla: false,
+        tier: "capacity",
+        reason: "no-peer-with-model",
+        candidatePeerCount: 0,
+      }),
+    );
+    expect(d.useFallback).toBe(true);
+    expect(d.verdict).toBe("fallback-capacity-no-host");
+    expect(d.fallbackModelSlug).toBe("google/gemma-3-27b-it");
+  });
+
+  it("stays on mesh for unmapped capacity even with zero hosts", () => {
+    const d = decideFallback(
+      "DeepSeek-R1-Distill-70B-Q4_K_M",
+      sla({
+        meetsSla: false,
+        tier: "capacity",
+        reason: "no-peer-with-model",
+        candidatePeerCount: 0,
+      }),
     );
     expect(d.useFallback).toBe(false);
+    expect(d.verdict).toBe("fallback-no-mapping");
   });
 
   it("stays on mesh when the OpenRouter key is not configured", () => {

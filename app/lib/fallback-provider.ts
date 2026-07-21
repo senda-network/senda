@@ -16,22 +16,18 @@
  * surface (Phase 5) — what changes between the two is the billing
  * layer wrapping this module, not this module itself.
  *
- * Three policy knobs scope when external supply fires today on the
- * free `/chat` testbed:
+ * Policy knobs for external supply on the free `/chat` testbed:
  *
- *   1. **Tier allowlist.** External supply is enabled for
- *      daily-driver-tier models only. Capacity-tier requests stay
- *      on the mesh — the network is the demo for those models, and
- *      the catalog row says so before the user clicks through.
+ *   1. **Tier allowlist.** Daily-driver models may fall back on any
+ *      SLA miss. Capacity-tier models stay mesh-preferred when a
+ *      dialable host exists, but when `candidatePeerCount === 0`
+ *      (no dialable host) they may fall back too — otherwise public
+ *      demos hard-miss (Gemma/Elevens 2026-07-21). That is
+ *      mesh_preferred, not mesh_or_die.
  *   2. **Mapping required.** External supply fires only for models
- *      with a concrete entry in `FALLBACK_MODEL_MAP`. The mapping
- *      is hand-maintained against the external provider's catalog.
+ *      with a concrete entry in `FALLBACK_MODEL_MAP`.
  *   3. **Per-IP per-hour budget.** Bounded usage on the free
- *      testbed (default 20/hour/IP, override via env) so
- *      external-provider cost is predictable while we're not yet
- *      billing. Phase 5's paid API replaces this with the
- *      customer's credit balance — the rate card is constructed so
- *      the customer's payment covers both supply paths plus margin.
+ *      testbed (default 20/hour/IP, override via env).
  *
  * The provider activates only when `OPENROUTER_API_KEY` is set in
  * the environment. Without it, the route stays on the mesh-only
@@ -63,6 +59,9 @@ const FALLBACK_MODEL_MAP: Record<string, string> = {
   "Qwen2.5-Coder-7B-Instruct-Q4_K_M": "qwen/qwen-2.5-coder-7b-instruct",
   "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M": "deepseek/deepseek-r1-distill-qwen-14b",
   "Llama-3.2-3B-Instruct-Q4_K_M": "meta-llama/llama-3.2-3b-instruct",
+  // Capacity: only used when no dialable mesh host (see decideFallback).
+  "Gemma-3-27B-it-Q4_K_M": "google/gemma-3-27b-it",
+  "Gemma-3-12B-it-Q4_K_M": "google/gemma-3-12b-it",
 };
 
 const NORMALIZED_FALLBACK_MAP: Map<string, string> = new Map(
@@ -74,7 +73,14 @@ const NORMALIZED_FALLBACK_MAP: Map<string, string> = new Map(
 
 /** Resolve a mesh model id to its OpenRouter slug, or null. */
 export function mapModelIdForFallback(modelId: string): string | null {
-  return NORMALIZED_FALLBACK_MAP.get(normalizeModelId(modelId)) ?? null;
+  const n = normalizeModelId(modelId);
+  const direct = NORMALIZED_FALLBACK_MAP.get(n);
+  if (direct) return direct;
+  // HF org-prefixed stems (`google_gemma-3-27b-it-…`) must hit catalog keys.
+  for (const [key, slug] of NORMALIZED_FALLBACK_MAP) {
+    if (n.endsWith("-" + key) || key.endsWith("-" + n)) return slug;
+  }
+  return null;
 }
 
 export function fallbackKeyConfigured(): boolean {
@@ -103,7 +109,8 @@ export type FallbackVerdict =
   | "fallback-wrong-tier"
   | "fallback-rate-limited"
   | "vision-mesh-only"
-  | "fallback-fired";
+  | "fallback-fired"
+  | "fallback-capacity-no-host";
 
 export type FallbackDecision = {
   /** True iff the chat route should send the request to the fallback provider. */
@@ -120,14 +127,11 @@ export type FallbackDecision = {
  *
  * Decision precedence:
  *  1. If the SLA gate passes, the request streams from the mesh.
- *  2. If the requested model is not daily-driver tier, the request
- *     streams from the mesh — the network is the demo for capacity-
- *     tier models, and the catalog row carries that expectation.
- *  3. If we have no external-provider key or no model mapping, the
- *     request streams from the mesh.
- *  4. Otherwise the request streams from the external provider
- *     (subject to the testbed budget check the route makes against
- *     `consumeFallbackBudget`).
+ *  2. Daily-driver SLA miss → fallback when mapped + keyed.
+ *  3. Capacity (or other) with **zero dialable candidates** → fallback
+ *     when mapped + keyed (`fallback-capacity-no-host`). Mesh stays
+ *     preferred when any dialable host exists.
+ *  4. Otherwise stay on mesh (wrong tier / no mapping / no key).
  */
 export function decideFallback(
   modelId: string,
@@ -140,7 +144,11 @@ export function decideFallback(
       fallbackModelSlug: null,
     };
   }
-  if (getModelTier(modelId) !== "daily_driver") {
+  const tier = getModelTier(modelId);
+  const noDialableHost = sla.candidatePeerCount === 0;
+  const tierAllowsFallback =
+    tier === "daily_driver" || (tier === "capacity" && noDialableHost);
+  if (!tierAllowsFallback) {
     return {
       useFallback: false,
       verdict: "fallback-wrong-tier",
@@ -164,7 +172,8 @@ export function decideFallback(
   }
   return {
     useFallback: true,
-    verdict: "fallback-fired",
+    verdict:
+      tier === "capacity" ? "fallback-capacity-no-host" : "fallback-fired",
     fallbackModelSlug: slug,
   };
 }
