@@ -324,11 +324,18 @@ export type MeshModel = {
   splitKind: SplitKind;
   meshFit: MeshFit;
   /**
-   * Chat may offer this model. False for cold inventory and for warm
-   * hosts the entry cannot dial (`rtt_ms` missing). Undefined means
-   * the payload predates the flag — callers should fall back.
+   * Reachable inventory: warm + dialable host. False for cold rows and
+   * for warm hosts the entry cannot dial (`rtt_ms` missing). Undefined
+   * means the payload predates the flag — callers should fall back.
    */
   selectable?: boolean;
+  /**
+   * Ready supply for the chat composer: dialable AND at least one
+   * serving peer with enough VRAM to solo. Stricter than `selectable`
+   * (loading / undersized hosts don't count). Undefined on older
+   * payloads — fall back to `selectable`.
+   */
+  chatViable?: boolean;
 };
 
 export type MeshStatus = {

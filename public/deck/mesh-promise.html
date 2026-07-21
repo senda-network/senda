@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Senda — The mesh promise</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #1a1f1c;
+      --muted: #5c6560;
+      --faint: #8a938d;
+      --line: #d5dbd6;
+      --paper: #f7f5f0;
+      --paper-2: #efeae2;
+      --accent: #0f6b4c;
+      --accent-soft: #d7ebe2;
+      --warn: #8a5a12;
+      --warn-soft: #f3e6cf;
+      --slide-pad: clamp(2rem, 6vw, 5rem);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #e4efe8 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #ebe4d8 0%, transparent 50%),
+        var(--paper);
+      color: var(--ink);
+      font-family: "DM Sans", sans-serif;
+      font-optical-sizing: auto;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .deck {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 1.25rem;
+    }
+
+    .stage {
+      width: min(1080px, 100%);
+      aspect-ratio: 16 / 10;
+      max-height: min(90vh, 720px);
+      position: relative;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #fffcf7 0%, var(--paper) 100%);
+      box-shadow: 0 24px 60px rgba(26, 31, 28, 0.08);
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: var(--slide-pad);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1.25rem;
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    .slide.active {
+      display: flex;
+      opacity: 1;
+      transform: none;
+      animation: in 280ms ease-out;
+    }
+
+    @keyframes in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .eyebrow {
+      font-size: 0.78rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    h1, h2 {
+      font-family: "Fraunces", serif;
+      font-weight: 550;
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+    }
+
+    h1 { font-size: clamp(2.4rem, 5.5vw, 4rem); max-width: 14ch; }
+    h2 { font-size: clamp(1.7rem, 3.6vw, 2.6rem); max-width: 22ch; }
+
+    .lede {
+      font-size: clamp(1.05rem, 2vw, 1.3rem);
+      line-height: 1.45;
+      color: var(--muted);
+      max-width: 38ch;
+    }
+
+    .body {
+      font-size: clamp(1rem, 1.7vw, 1.2rem);
+      line-height: 1.5;
+      color: var(--muted);
+      max-width: 46ch;
+    }
+
+    .brand {
+      font-family: "Fraunces", serif;
+      font-size: clamp(3rem, 8vw, 5.5rem);
+      letter-spacing: -0.03em;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 0.35rem;
+      width: min(100%, 820px);
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.55);
+      padding: 1rem 1.1rem;
+      min-height: 8.5rem;
+    }
+
+    .card h3 {
+      font-family: "Fraunces", serif;
+      font-size: 1.15rem;
+      font-weight: 550;
+      margin-bottom: 0.45rem;
+    }
+
+    .card p {
+      font-size: 0.92rem;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+
+    .list {
+      list-style: none;
+      display: grid;
+      gap: 0.65rem;
+      max-width: 48ch;
+    }
+
+    .list li {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.7rem;
+      align-items: start;
+      font-size: clamp(0.98rem, 1.6vw, 1.15rem);
+      line-height: 1.4;
+      color: var(--muted);
+    }
+
+    .list li::before {
+      content: "";
+      width: 0.45rem;
+      height: 0.45rem;
+      margin-top: 0.55rem;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--paper-2);
+      color: var(--ink);
+      font-size: 0.85rem;
+      padding: 0.35rem 0.7rem;
+    }
+
+    .pill.good {
+      background: var(--accent-soft);
+      border-color: #b7d5c7;
+      color: #0b4d37;
+    }
+
+    .pill.warn {
+      background: var(--warn-soft);
+      border-color: #e2cfaa;
+      color: var(--warn);
+    }
+
+    .quote {
+      font-family: "Fraunces", serif;
+      font-size: clamp(1.35rem, 2.8vw, 1.9rem);
+      line-height: 1.35;
+      max-width: 24ch;
+      font-weight: 500;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 2rem;
+      align-items: center;
+      width: 100%;
+    }
+
+    .metric {
+      border-left: 2px solid var(--accent);
+      padding-left: 1rem;
+    }
+
+    .metric strong {
+      display: block;
+      font-family: "Fraunces", serif;
+      font-size: 1.8rem;
+      font-weight: 550;
+      line-height: 1.1;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .footer-bar {
+      position: absolute;
+      left: var(--slide-pad);
+      right: var(--slide-pad);
+      bottom: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      color: var(--faint);
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+    }
+
+    .dots {
+      display: flex;
+      gap: 0.35rem;
+      pointer-events: auto;
+    }
+
+    .dot {
+      width: 0.4rem;
+      height: 0.4rem;
+      border-radius: 50%;
+      border: 0;
+      background: var(--line);
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .dot.on { background: var(--accent); }
+
+    .hint {
+      pointer-events: none;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 0.35rem;
+    }
+
+    .no {
+      text-decoration: line-through;
+      color: var(--faint);
+    }
+
+    .yes {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    @media (max-width: 800px) {
+      .stage {
+        aspect-ratio: auto;
+        min-height: 78vh;
+        max-height: none;
+      }
+      .grid-3, .grid-2, .split {
+        grid-template-columns: 1fr;
+      }
+      .card { min-height: 0; }
+      h1 { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <div class="stage" id="stage" tabindex="0" aria-live="polite">
+
+      <!-- 1 -->
+      <section class="slide active" data-title="Title">
+        <p class="eyebrow">Senda Network</p>
+        <p class="brand">Senda</p>
+        <p class="lede">Open-weight inference on contributor machines. What you select is what runs — and we publish the speed we actually measure.</p>
+      </section>
+
+      <!-- 2 -->
+      <section class="slide" data-title="One room">
+        <p class="eyebrow">Same product, three jobs</p>
+        <h2>Users chat. Peers serve. The business is mesh share.</h2>
+        <div class="grid-3">
+          <article class="card">
+            <p class="tag">Users</p>
+            <h3>Pick a model id</h3>
+            <p>That checkpoint should answer. If it’s slow, you should see that before you wait.</p>
+          </article>
+          <article class="card">
+            <p class="tag">Node runners</p>
+            <h3>Run weights, get credited</h3>
+            <p>One peer, full model, end-to-end session. Credits track tokens you actually served.</p>
+          </article>
+          <article class="card">
+            <p class="tag">Investors</p>
+            <h3>Mesh is the supply</h3>
+            <p>Headline lever is mesh_share_pct. Cloud backup is COGS later — not the brand.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- 3 -->
+      <section class="slide" data-title="Promise">
+        <p class="eyebrow">What we’re aiming for</p>
+        <p class="quote">Same model id you selected. A dialable peer running it. tok/s and TTFT visible up front.</p>
+        <p class="body">We are not competing on median latency with datacenter APIs. The bet is privacy, cost, and capacity you can verify on /status.</p>
+      </section>
+
+      <!-- 4 -->
+      <section class="slide" data-title="Have product">
+        <p class="eyebrow">What we have · product</p>
+        <h2>Live today on senda.network</h2>
+        <ul class="list">
+          <li>Free chat — no signup — defaulted to daily-driver models</li>
+          <li>Desktop app so contributors join the mesh in minutes</li>
+          <li>Public status: who’s online, what they serve, measured tok/s &amp; TTFT</li>
+          <li>Credits ledger (illustrative) tying sessions to peers</li>
+        </ul>
+      </section>
+
+      <!-- 5 -->
+      <section class="slide" data-title="Have mesh">
+        <p class="eyebrow">What we have · mesh</p>
+        <div class="split">
+          <div>
+            <h2>Heterogeneous mesh, already live</h2>
+            <ul class="list">
+              <li>Solo replication first — one capable peer, full model</li>
+              <li>Metal and CUDA peers on the same network today</li>
+              <li>SLA gate + daily-driver / capacity tiers in code</li>
+              <li>Native vs through-mesh measurements on the status page</li>
+            </ul>
+          </div>
+          <div style="display:grid;gap:1.25rem;">
+            <div class="metric">
+              <strong>Daily driver</strong>
+              <span>Chat-viable · e.g. 8B class</span>
+            </div>
+            <div class="metric">
+              <strong>Capacity</strong>
+              <span>Bigger models · proof, not default</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 -->
+      <section class="slide" data-title="Tension">
+        <p class="eyebrow">Current gap</p>
+        <h2>Routable is not the same as pleasant.</h2>
+        <p class="body">Example from the live mesh: Gemma-27B on a MacBook Air over ~140ms WAN sits around 1–3 tok/s. The serve is genuine. Showing it as everyday chat is the mistake.</p>
+        <div class="pill-row">
+          <span class="pill warn">Dialable ≠ chat-viable</span>
+          <span class="pill good">Publish the measurement, don’t dress it up</span>
+        </div>
+      </section>
+
+      <!-- 7 -->
+      <section class="slide" data-title="Principles">
+        <p class="eyebrow">Rules we are locking</p>
+        <h2>How routing and UI should behave</h2>
+        <ul class="list">
+          <li><strong style="color:var(--ink)">No silent model swap</strong> — if you pick Gemma, you get Gemma (or an explicit, labeled backup choice later)</li>
+          <li><strong style="color:var(--ink)">Say who served it</strong> — mesh peer vs cloud backup is not a hidden detail</li>
+          <li><strong style="color:var(--ink)">Show speed before send</strong> — best-peer TTFT / tok/s in the picker, not only on /status</li>
+          <li><strong style="color:var(--ink)">Don’t elect unfit hosts</strong> — undersized / ~1 tok/s capacity shouldn’t look “ready”</li>
+        </ul>
+      </section>
+
+      <!-- 8 -->
+      <section class="slide" data-title="Two contracts">
+        <p class="eyebrow">Two clear contracts</p>
+        <div class="grid-2">
+          <article class="card">
+            <p class="tag">Interactive chat</p>
+            <h3>Daily drivers</h3>
+            <p>Default experience. Target: quick first token, usable decode. What most people should feel on day one.</p>
+          </article>
+          <article class="card">
+            <p class="tag">Opt-in power</p>
+            <h3>Capacity models</h3>
+            <p>Bigger open weights on the mesh. Eyes open: live TTFT / tok/s, confirm if slow, still the model you picked.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- 9 -->
+      <section class="slide" data-title="Adding users">
+        <p class="eyebrow">What we’re adding · for users</p>
+        <h2>Chat picker shows the same facts as /status</h2>
+        <ul class="list">
+          <li>Tier + live TTFT / tok/s beside each model</li>
+          <li>Capacity models behind an explicit “bigger / slower” section</li>
+          <li>Confirm if best peer is below the interactive bar</li>
+          <li>If we can’t host it well: say so — don’t substitute quietly</li>
+        </ul>
+      </section>
+
+      <!-- 10 -->
+      <section class="slide" data-title="Adding runners">
+        <p class="eyebrow">What we’re adding · for node runners</p>
+        <h2>Fit the model to the machine</h2>
+        <ul class="list">
+          <li>Election prefers peers that can actually run the weights well</li>
+          <li>“Loading” on undersized VRAM stops counting as ready supply</li>
+          <li>Credits and reputation weight healthy sessions, not just presence</li>
+          <li>Status stays the public proof of what you contribute</li>
+        </ul>
+      </section>
+
+      <!-- 11 -->
+      <section class="slide" data-title="Adding market">
+        <p class="eyebrow">What we’re adding · for the marketplace</p>
+        <h2>Grow mesh share without faking quality</h2>
+        <ul class="list">
+          <li>Track mesh_share_pct — traffic actually served by peers</li>
+          <li>Report daily-driver UX separately from capacity demos</li>
+          <li>Cloud backup later, only as a labeled uptime option with billing</li>
+          <li>Paid API path: customers pay; peers earn on verified sessions</li>
+        </ul>
+      </section>
+
+      <!-- 12 -->
+      <section class="slide" data-title="Wont">
+        <p class="eyebrow">Out of bounds</p>
+        <h2>Things we are not shipping</h2>
+        <ul class="list">
+          <li><span class="no">Auto-route capacity SLA misses to OpenRouter under the same model name</span></li>
+          <li><span class="no">Green “online” for hosts stuck at ~1 tok/s with no warning</span></li>
+          <li><span class="no">Counting bad routes as mesh-share wins</span></li>
+          <li><span class="yes">Keep the slow serve if the user opted in with the numbers visible</span></li>
+        </ul>
+      </section>
+
+      <!-- 13 -->
+      <section class="slide" data-title="Now next">
+        <p class="eyebrow">Now → next</p>
+        <div class="grid-3">
+          <article class="card">
+            <p class="tag">Now</p>
+            <h3>Live mesh</h3>
+            <p>Chat, contribute, measure. Daily drivers work. Capacity is real and uneven.</p>
+          </article>
+          <article class="card">
+            <p class="tag">Next</p>
+            <h3>Honest surfaces</h3>
+            <p>Picker warnings, fitness gates, better host placement for big models.</p>
+          </article>
+          <article class="card">
+            <p class="tag">Then</p>
+            <h3>Marketplace</h3>
+            <p>Paid API, verified earnings, optional labeled backup for uptime buyers.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- 14 -->
+      <section class="slide" data-title="Close">
+        <p class="eyebrow">Senda</p>
+        <h1>Ask for a model. See the speed. Get that model.</h1>
+        <p class="lede">If the mesh can’t do it well, we say so. senda.network — chat, contribute, /status.</p>
+      </section>
+
+      <div class="footer-bar">
+        <span id="label">Senda</span>
+        <div class="dots" id="dots" aria-hidden="true"></div>
+        <span class="hint">← → · space · click</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    const dots = document.getElementById("dots");
+    const label = document.getElementById("label");
+    const stage = document.getElementById("stage");
+    let i = 0;
+
+    slides.forEach((_, idx) => {
+      const b = document.createElement("button");
+      b.className = "dot" + (idx === 0 ? " on" : "");
+      b.type = "button";
+      b.setAttribute("aria-label", "Go to slide " + (idx + 1));
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        go(idx);
+      });
+      dots.appendChild(b);
+    });
+
+    function go(n) {
+      i = (n + slides.length) % slides.length;
+      slides.forEach((s, idx) => s.classList.toggle("active", idx === i));
+      [...dots.children].forEach((d, idx) => d.classList.toggle("on", idx === i));
+      label.textContent = `${i + 1} / ${slides.length}`;
+    }
+
+    function next() { go(i + 1); }
+    function prev() { go(i - 1); }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        e.preventDefault();
+        next();
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        prev();
+      } else if (e.key === "Home") {
+        go(0);
+      } else if (e.key === "End") {
+        go(slides.length - 1);
+      }
+    });
+
+    stage.addEventListener("click", (e) => {
+      if (e.target.closest(".dot")) return;
+      const rect = stage.getBoundingClientRect();
+      if (e.clientX - rect.left < rect.width * 0.28) prev();
+      else next();
+    });
+
+    go(0);
+    stage.focus();
+  </script>
+</body>
+</html>

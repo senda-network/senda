@@ -34,11 +34,16 @@ type RuntimeMeshModel = {
   split_kind?: string;
   mesh_fit?: RuntimeMeshFit;
   /**
-   * Set by `/api/mesh-models`: true when chat may offer this model
-   * (warm + dialable host). Absent on raw runtime payloads / older
-   * website builds — treat as "warm && nodeCount > 0" for back-compat.
+   * Set by `/api/mesh-models`: warm + dialable host. Absent on raw
+   * runtime payloads / older website builds — treat as
+   * "warm && nodeCount > 0" for back-compat.
    */
   selectable?: boolean;
+  /**
+   * Set by `/api/mesh-models`: serving + capable VRAM host. Composer
+   * filters on this. Absent → fall back to `selectable`.
+   */
+  chat_viable?: boolean;
 };
 
 const DEFAULT_FIT: MeshFit = {
@@ -85,6 +90,8 @@ function normalizeMeshModel(raw: RuntimeMeshModel): MeshModel {
     typeof raw.selectable === "boolean"
       ? raw.selectable
       : status === "warm" && nodeCount > 0;
+  const chatViable =
+    typeof raw.chat_viable === "boolean" ? raw.chat_viable : selectable;
   return {
     name: raw.name,
     displayName: raw.display_name ?? raw.name,
@@ -99,6 +106,7 @@ function normalizeMeshModel(raw: RuntimeMeshModel): MeshModel {
     splitKind: normalizeSplitKind(raw.split_kind),
     meshFit: normalizeMeshFit(raw.mesh_fit),
     selectable,
+    chatViable,
   };
 }
 

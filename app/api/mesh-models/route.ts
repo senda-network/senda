@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { applyCors, preflightResponse } from "../_cors";
-import { withSelectableFlags } from "../../lib/selectable-mesh-models";
+import {
+  peersWithSelf,
+  withMeshOfferFlags,
+  type ChatViablePeer,
+} from "../../lib/chat-viable-mesh-models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +19,9 @@ export const dynamic = "force-dynamic";
 // endpoint name that signals "this is the rich mesh inventory, not the
 // thin OpenAI list."
 //
-// Each row is annotated with `selectable` — true only when the chat
-// composer may offer the model (warm + dialable host). Cold inventory
-// stays in the payload for /models and dashboard surfaces.
+// Each row is annotated with:
+//   - `selectable`  — warm + dialable host (inventory / reachability)
+//   - `chat_viable` — serving + capable VRAM host (composer may offer)
 function trimmedEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
     const raw = process.env[key];
@@ -43,12 +47,22 @@ type RuntimeMeshModel = {
   status?: string;
   node_count?: number;
   active_nodes?: string[] | null;
+  size_gb?: number | null;
+  mesh_fit?: {
+    needed_vram_gb?: number | null;
+    fits_on_largest_node?: boolean | null;
+  } | null;
   [key: string]: unknown;
 };
 
 type AdminStatus = {
   my_hostname?: string | null;
-  peers?: Array<{ hostname?: string | null; rtt_ms?: number | null }>;
+  node_state?: string | null;
+  serving_models?: string[] | null;
+  hosted_models?: string[] | null;
+  my_vram_gb?: number | null;
+  capability?: ChatViablePeer["capability"];
+  peers?: ChatViablePeer[] | null;
 };
 
 export async function OPTIONS(req: Request) {
@@ -76,15 +90,15 @@ export async function GET(req: Request) {
     const data = (await modelsRes.json()) as { mesh_models?: RuntimeMeshModel[] };
     const models = data.mesh_models ?? [];
 
-    let peers: AdminStatus["peers"] = [];
+    let peers: ChatViablePeer[] = [];
     let selfHostname: string | null = null;
     if (statusRes.ok) {
       const status = (await statusRes.json()) as AdminStatus;
-      peers = status.peers ?? [];
       selfHostname = status.my_hostname ?? null;
+      peers = peersWithSelf(status.peers ?? [], status);
     }
 
-    const mesh_models = withSelectableFlags(models, peers ?? [], selfHostname);
+    const mesh_models = withMeshOfferFlags(models, peers, selfHostname);
     return applyCors(req, NextResponse.json({ mesh_models }));
   } catch {
     // Best-effort — desktop app's local runtime might be paused, the
