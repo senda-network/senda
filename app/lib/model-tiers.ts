@@ -131,7 +131,14 @@ const NORMALIZED_TIER_BY_MODEL: Map<string, ModelTier> = new Map(
 );
 
 export function getModelTier(modelId: string): ModelTier {
-  return NORMALIZED_TIER_BY_MODEL.get(normalizeModelId(modelId)) ?? "experimental";
+  const n = normalizeModelId(modelId);
+  const direct = NORMALIZED_TIER_BY_MODEL.get(n);
+  if (direct) return direct;
+  // HF org-prefixed stems (`google_gemma-3-27b-it-…`) must hit catalog tiers.
+  for (const [key, tier] of NORMALIZED_TIER_BY_MODEL) {
+    if (n.endsWith("-" + key) || key.endsWith("-" + n)) return tier;
+  }
+  return "experimental";
 }
 
 /**
