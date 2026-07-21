@@ -248,17 +248,17 @@ function ModelAdBadge({ ad }: { ad: ModelAd }) {
     const owner = ad.ownerId ? `${ad.ownerId.slice(0, 12)}…` : "unknown owner";
     return (
       <span
-        className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+        className="whitespace-nowrap rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
         title={`Owner-signed metrics verified — Ed25519 signature checks out, bound to this node id, and fresh. Owner ${owner}, ${ad.modelCount} model${ad.modelCount === 1 ? "" : "s"}. The advertised numbers are cryptographically attributable to a real owner and revocable if they ever lie.`}
       >
-        ✓ signed metrics
+        ✓ signed
       </span>
     );
   }
   const label = MODEL_AD_FAIL_LABELS[ad.status] ?? ad.status;
   return (
     <span
-      className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300"
+      className="whitespace-nowrap rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300"
       title={`This peer is advertising signed model metrics, but they did not verify (${ad.status}). Treat its advertised throughput as untrusted.`}
     >
       ⚠ {label}
@@ -286,10 +286,10 @@ function VerifyBadge({ verifyByModel }: { verifyByModel: Record<string, VerifyVe
     const models = mismatched.map(([m]) => m).join(", ");
     return (
       <span
-        className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-300"
+        className="whitespace-nowrap rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-300"
         title={`Independent verification FAILED for ${models}. The entry node re-ran a byte-identical probe against this peer's live model and the returned logits diverged from an independently-generated reference — the peer is not running the model it advertises. Treat its claims for ${models} as untrusted.`}
       >
-        ⚠ failed verification
+        ⚠ verify failed
       </span>
     );
   }
@@ -299,10 +299,10 @@ function VerifyBadge({ verifyByModel }: { verifyByModel: Record<string, VerifyVe
   const models = matched.map(([m]) => m).join(", ");
   return (
     <span
-      className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+      className="whitespace-nowrap rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
       title={`Independently verified — the entry node re-ran a byte-identical probe against this peer's live model${matched.length === 1 ? "" : "s"} (${models}) and the returned logits reproduced an independently-generated reference. This peer is genuinely running what it advertises, not a smaller/different model or canned output.`}
     >
-      ✓ independently verified
+      ✓ verified
     </span>
   );
 }
@@ -345,10 +345,10 @@ function ReputationBadge({
   if (watch.length > 0) {
     return (
       <span
-        className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300"
+        className="whitespace-nowrap rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300"
         title={`Reputation: WATCH. This peer has at least one mismatch on its accumulated record and hasn't recovered above the trust threshold. The score is an EWMA over every probe (survives entry restarts), so a single bad probe doesn't flip it — but a pattern does. Per model — ${perModel}.`}
       >
-        ⚠ reputation: watch
+        ⚠ rep watch
       </span>
     );
   }
@@ -357,20 +357,20 @@ function ReputationBadge({
   if (trusted.length > 0) {
     return (
       <span
-        className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
+        className="whitespace-nowrap rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
         title={`Reputation: TRUSTED. Accumulated trust score ${avg.toFixed(2)} over ${probeLabel} — the entry has independently reproduced this peer's model(s) consistently across many probes, not just once. This is the durable track record (persists across restarts), unlike the instantaneous "independently verified" badge. Per model — ${perModel}.`}
       >
-        ★ reputation {avg.toFixed(2)} · {probeLabel}
+        ★ rep {avg.toFixed(2)} · {probeLabel}
       </span>
     );
   }
 
   return (
     <span
-      className="rounded-full border border-[var(--border)] bg-[var(--bg-elev)] px-2 py-0.5 text-[11px] font-medium text-[var(--fg-muted)]"
+      className="whitespace-nowrap rounded-md border border-[var(--border)] bg-[var(--bg-elev)] px-2 py-0.5 text-[11px] font-medium text-[var(--fg-muted)]"
       title={`Reputation: building. The entry has probed this peer ${probeLabel} but not enough conclusive samples to mint trust yet (accumulated score ${avg.toFixed(2)}). Per model — ${perModel}.`}
     >
-      reputation: building · {probeLabel}
+      rep building · {probeLabel}
     </span>
   );
 }
@@ -529,7 +529,7 @@ function TierBadge({ tier }: { tier: ModelTier }) {
   };
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] ${styles[tier]}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] ${styles[tier]}`}
     >
       {TIER_LABELS[tier]}
     </span>
@@ -955,7 +955,7 @@ function NodeCard({
         {/* Backend chip */}
         {!isEntryNode && (
           <span
-            className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${backendColor(cap.backend)}`}
+            className={`flex-shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium ${backendColor(cap.backend)}`}
           >
             {backendLabel(cap.backend, cap.vendor)}
           </span>
@@ -964,9 +964,9 @@ function NodeCard({
 
       {/* Hardware row */}
       {!isEntryNode && (
-        <div className="flex items-center gap-4 text-[12px] text-[var(--fg-muted)]">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-[var(--fg-muted)]">
           {cap.vramGb > 0 && (
-            <span>
+            <span className="whitespace-nowrap">
               <span className="font-medium text-[var(--fg)]">{cap.vramGb} GB</span> VRAM
             </span>
           )}
@@ -977,7 +977,10 @@ function NodeCard({
               (systemRamBytes undefined or 0) so we don't claim a peer
               "has 0 GB RAM" when it just hasn't gossiped the field. */}
           {!!node.systemRamBytes && node.systemRamBytes > 0 && (
-            <span title="Total system RAM (used by RAM-aware host election)">
+            <span
+              className="whitespace-nowrap"
+              title="Total system RAM (used by RAM-aware host election)"
+            >
               <span className="font-medium text-[var(--fg)]">
                 {Math.round(node.systemRamBytes / 1e9)} GB
               </span>{" "}
@@ -985,7 +988,7 @@ function NodeCard({
             </span>
           )}
           <span
-            className={`rounded-full border px-2 py-0.5 text-[11px] ${
+            className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] ${
               inflightRequests > 0
                 ? "border-sky-400/40 bg-sky-400/10 text-sky-200"
                 : "border-[var(--border)] text-[var(--fg-muted)]"
@@ -1084,25 +1087,28 @@ function NodeCard({
           in the same green pill as a fully serving node, which was the
           original "the page is lying" complaint. */}
       {node.servingModels.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {node.servingModels.map((m) => (
-            <span
-              key={m}
-              className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium ${
-                node.state === "loading"
-                  ? "border-amber-400/30 bg-amber-400/5 text-amber-300"
-                  : "border-[var(--border)] bg-[var(--bg)] text-[var(--fg)]"
-              }`}
-              title={
-                node.state === "loading"
-                  ? "Model is being loaded into VRAM, not serveable yet"
-                  : undefined
-              }
-            >
-              {node.state === "loading" ? "loading: " : ""}
-              {prettyModelName(m)}
-            </span>
-          ))}
+        <div className="flex flex-wrap gap-1.5">
+          {node.servingModels.map((m) => {
+            const name = prettyModelName(m);
+            const loading = node.state === "loading";
+            return (
+              <span
+                key={m}
+                className={`inline-flex max-w-full items-center truncate whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                  loading
+                    ? "border-amber-400/30 bg-amber-400/5 text-amber-300"
+                    : "border-[var(--border)] bg-[var(--bg)] text-[var(--fg)]"
+                }`}
+                title={
+                  loading
+                    ? `${name} — loading into VRAM, not serveable yet`
+                    : name
+                }
+              >
+                {loading ? `loading ${name}` : name}
+              </span>
+            );
+          })}
         </div>
       ) : (
         <div className="text-[12px] text-[var(--fg-muted)]">

@@ -158,7 +158,7 @@ function NodeRow({ node }: { node: NodeSummary }) {
             {isEntry ? "Entry node" : (node.hostname ?? node.id.slice(0, 10))}
           </span>
           {node.isSelf && (
-            <span className="rounded-full border border-[var(--border)] bg-[var(--bg-elev-2)] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-[var(--fg-muted)]">
+            <span className="whitespace-nowrap rounded-md border border-[var(--border)] bg-[var(--bg-elev-2)] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-[var(--fg-muted)]">
               this Mac
             </span>
           )}
@@ -183,7 +183,7 @@ function NodeRow({ node }: { node: NodeSummary }) {
       </div>
       <span
         className={
-          "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium " +
+          "shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-medium " +
           stateColor
         }
       >
@@ -200,7 +200,7 @@ function SplitRoleBadge({ node }: { node: NodeSummary }) {
   return (
     <span
       className={
-        "rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-wider " +
+        "whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[9px] uppercase tracking-wider " +
         cls
       }
     >
@@ -310,7 +310,7 @@ function ModelsServedSection({ models }: { models: MeshModel[] }) {
             </div>
             <span
               className={
-                "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium " +
+                "shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-medium " +
                 splitKindBadgeClasses(m.splitKind)
               }
             >
