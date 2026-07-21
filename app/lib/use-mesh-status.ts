@@ -266,6 +266,12 @@ export type NodeSummary = {
    * for peers awaiting their first probe. Survives entry restarts.
    */
   reputationByModel?: Record<string, Reputation>;
+  /**
+   * RTT from the mesh entry/admin view to this peer (ms). `null` means
+   * the entry cannot dial this host for HTTP proxying; undefined means
+   * the payload predates the field.
+   */
+  rttMs?: number | null;
 };
 
 /**

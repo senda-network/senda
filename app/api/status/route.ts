@@ -256,6 +256,11 @@ export type NodeSummary = {
    * runtimes. The accumulator survives restarts, unlike `verifyByModel`.
    */
   reputationByModel?: Record<string, Reputation>;
+  /**
+   * RTT from the mesh entry/admin view to this peer (ms). `null` means
+   * undialable; undefined means the payload predates the field.
+   */
+  rttMs?: number | null;
 };
 
 export type MeshVisibility = {
@@ -424,6 +429,12 @@ type RuntimePeer = {
    * `normalizeReputationByModel` maps that to undefined.
    */
   reputation_by_model?: Record<string, RuntimeReputation>;
+  /**
+   * Round-trip time from the admin/entry view to this peer (ms).
+   * `null` means the entry sees the peer in gossip but has no dial path;
+   * absent on older runtimes that predated the field.
+   */
+  rtt_ms?: number | null;
 };
 
 type RuntimeModelAd = {
@@ -857,6 +868,7 @@ function peerToNode(peer: RuntimePeer): NodeSummary {
     // Phase 3.2 — persistent reputation accumulator. Undefined on
     // pre-v0.66.80 peers and peers the entry hasn't probed.
     reputationByModel: normalizeReputationByModel(peer.reputation_by_model),
+    rttMs: peer.rtt_ms,
   };
 }
 

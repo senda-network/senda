@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { PublicHeader } from "../../components/PublicHeader";
 import { MeshLiveStatus } from "../../components/MeshLiveStatus";
 import { nodeDisplayState } from "../../lib/node-display-state";
+import { nodeLooksServingButUndialable } from "../../lib/node-entry-dialability";
 import { MODEL_CATALOG, type CatalogModel } from "../../lib/model-catalog";
 import { modelIdsMatch } from "../../lib/model-id";
 import {
@@ -896,6 +897,8 @@ function NodeCard({
       ? formatDuration(Date.now() - history.firstSeen)
       : null;
 
+  const undialableFromEntry = nodeLooksServingButUndialable(node);
+
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elev)] p-5 flex flex-col gap-4">
       {/* Header row */}
@@ -1047,6 +1050,15 @@ function NodeCard({
              This is the May 13 split-brain mode: nothing is going to
              come up without operator intervention. Don't pretend a
              host exists; describe the deadlock honestly. */}
+      {undialableFromEntry && (
+        <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[11px] text-amber-200">
+          <span className="font-medium text-amber-300">Not reachable for chat.</span>{" "}
+          This peer advertises a loaded model, but the entry node has no dial
+          path to it (RTT unknown). Requests routed here will fail until
+          connectivity is restored.
+        </div>
+      )}
+
       {node.pipelineDegraded && node.splitGroup && (
         <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[11px] text-amber-200">
           {node.splitRole === "pipeline_host" ? (
