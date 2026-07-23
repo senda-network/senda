@@ -33,9 +33,6 @@ const BACKEND_LABEL: Record<Backend, string> = {
 export default function SettingsPage() {
   const { catalog } = useCatalog();
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [autostart, setAutostart] = useState<boolean | null>(null);
-  const [autostartBusy, setAutostartBusy] = useState(false);
-  const [autostartError, setAutostartError] = useState<string | null>(null);
   const [localModels, setLocalModels] = useState<LocalModel[]>([]);
   const [save, setSave] = useState<Save>("idle");
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -45,19 +42,16 @@ export default function SettingsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [sRes, aRes, mRes] = await Promise.all([
+        const [sRes, mRes] = await Promise.all([
           fetch("/api/control/settings", { cache: "no-store" }),
-          fetch("/api/control/service/status", { cache: "no-store" }),
           fetch("/api/control/models/list", { cache: "no-store" }),
         ]);
         const sData = (await sRes.json()) as { ok: boolean; settings?: Settings };
-        const aData = (await aRes.json()) as { ok: boolean; autostart?: boolean };
         const mData = (await mRes.json()) as {
           ok: boolean;
           models: { id: string }[];
         };
         if (sData.ok && sData.settings) setSettings(sData.settings);
-        if (aData.ok) setAutostart(Boolean(aData.autostart));
         if (mData.models) setLocalModels(mData.models);
       } catch (e) {
         setSaveMsg(e instanceof Error ? e.message : "couldn't load settings");
@@ -105,30 +99,6 @@ export default function SettingsPage() {
     }
   }, [settings]);
 
-  const toggleAutostart = useCallback(
-    async (next: boolean) => {
-      setAutostartBusy(true);
-      setAutostartError(null);
-      const endpoint = next
-        ? "/api/control/service/install"
-        : "/api/control/service/uninstall";
-      try {
-        const res = await fetch(endpoint, { method: "POST" });
-        const data = (await res.json()) as { ok: boolean; message?: string };
-        if (data.ok) {
-          setAutostart(next);
-        } else {
-          setAutostartError(data.message ?? "couldn't change setting");
-        }
-      } catch (e) {
-        setAutostartError(e instanceof Error ? e.message : "request failed");
-      } finally {
-        setAutostartBusy(false);
-      }
-    },
-    [],
-  );
-
   const downloadedIds = new Set(localModels.map((m) => m.id));
   const downloadedCatalog = catalog.filter((m) => downloadedIds.has(m.id));
 
@@ -150,47 +120,19 @@ export default function SettingsPage() {
           </Card>
 
           <Card
-            eyebrow="Startup"
-            title="Start automatically when I log in"
-            hint="Senda will be running in the background, ready to share your machine and answer chat requests."
+            eyebrow="Background"
+            title="Keep running after I quit Senda"
+            hint="Off by default: quit stops the runtime and clears login autostart — nothing runs unless Senda is open. Turn on only if you want a headless always-on node (stays up after quit and at login)."
           >
             <div className="flex items-center justify-between gap-4">
               <Switch
-                checked={autostart ?? false}
-                disabled={autostart === null || autostartBusy}
-                onChange={toggleAutostart}
-              />
-              <span className="text-[12px] text-[var(--fg-muted)]">
-                {autostart === null
-                  ? "checking…"
-                  : autostartBusy
-                    ? "applying…"
-                    : autostart
-                      ? "On — starts at login"
-                      : "Off"}
-              </span>
-            </div>
-            {autostartError && (
-              <div className="mt-3 text-[11px] text-[var(--danger)]">
-                {autostartError}
-              </div>
-            )}
-          </Card>
-
-          <Card
-            eyebrow="Quitting"
-            title="Stay in the mesh after I quit Senda"
-            hint="On by default: closing the app leaves the runtime serving in the background — that is the product. Turn off only if you want quit to leave the mesh."
-          >
-            <div className="flex items-center justify-between gap-4">
-              <Switch
-                checked={settings?.keepMeshRunningAfterQuit ?? true}
+                checked={settings?.keepMeshRunningAfterQuit ?? false}
                 disabled={!settings}
                 onChange={(v) => update("keepMeshRunningAfterQuit", v)}
               />
               <span className="text-[12px] text-[var(--fg-muted)]">
-                {settings?.keepMeshRunningAfterQuit ?? true
-                  ? "On — quitting leaves the runtime up"
+                {settings?.keepMeshRunningAfterQuit ?? false
+                  ? "On — quitting leaves the runtime up (and at login)"
                   : "Off — quitting stops the runtime"}
               </span>
             </div>

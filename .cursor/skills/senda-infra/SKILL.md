@@ -64,7 +64,7 @@ Specifically, you have direct access to:
 - `~/.cache/senda/splits/<model>/<n>-nodes/node-*.gguf` — per-node split shards, sized by the planner.
 - `~/.cache/senda/...` and `~/Library/Application Support/senda/...` — caches and config.
 - `ps -axo pid,etime,command | grep senda` — full argv of the currently running runtime, llama-server, and rpc-server processes.
-- `~/Library/LaunchAgents/network.senda.*.plist` — the launchd plist that autostarts the runtime; this is where service-level CLI flags live (e.g. `--max-vram`).
+- `~/Library/LaunchAgents/network.senda.*.plist` — launchd unit the desktop uses while the app is open. Default is app-scoped (`RunAtLoad=false`; quit removes the plist). Login autostart only if Settings → "Keep running after I quit" is on. Service CLI flags (e.g. `--max-vram`) live here when the unit exists.
 
 The single exception: when the user is reporting visible behavior in the desktop UI ("the Models page shows X, the dot is yellow"), trust their description rather than re-deriving it from filesystem state. That is faster.
 
@@ -75,7 +75,7 @@ Manual edits to `~/Library/LaunchAgents/network.senda.runtime.plist` get reverte
 1. `pkill -9 -f /Applications/Senda.app/Contents/MacOS/senda` — kill the GUI app first; otherwise it rewrites the plist mid-edit.
 2. `launchctl bootout gui/$(id -u)/network.senda.runtime` — accept that this may fail with EIO, just inspect `launchctl list | grep senda` to see if the agent is still loaded.
 3. If still loaded, `kill -TERM <pid>` the running `senda serve` — KeepAlive fails to respawn (because we just booted out) and the agent unloads.
-4. Edit the plist, then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/network.senda.runtime.plist`.
+4. Edit the plist, then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/network.senda.runtime.plist` (and `launchctl kickstart -k gui/$(id -u)/network.senda.runtime` if `RunAtLoad` is false).
 5. Verify with `ps -axo command | grep "/senda serve"` that the new flag is in argv.
 
 For one-off llama-server-level fixes (per-launch CLI flag overrides), the saner path is a shell-script shim at `~/.local/bin/llama-server-metal` (rename the real binary to `.real` and exec through the shim). Survives the desktop GUI's self-heal because the GUI doesn't touch `~/.local/bin/`. **But** the auto-upgrader replaces `~/.local/bin/llama-server-metal` on every runtime release, so any shim is a strictly temporary workaround until the underlying issue is fixed in the runtime.

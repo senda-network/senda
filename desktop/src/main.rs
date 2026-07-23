@@ -243,13 +243,15 @@ fn main() {
                 // serving inference long after the user thought they'd
                 // left the mesh. This block is the load-bearing fix.
                 RunEvent::Exit => {
-                    // Stop the runtime first. If the user opted into
-                    // "Stay in mesh after I quit" on the Settings page,
-                    // skip this and the launchd-supervised daemon keeps
-                    // serving — that's the explicit "headless always-on
-                    // node" mode for users who want it.
-                    if !mesh::keep_running_after_quit() {
+                    // Default: stop the runtime and remove the login
+                    // autostart unit — nothing should stay loaded when
+                    // Senda isn't open. Opt-in "Keep running after I
+                    // quit" leaves the headless daemon + login unit up.
+                    if mesh::keep_running_after_quit() {
+                        mesh::ensure_login_autostart();
+                    } else {
                         mesh::stop_service();
+                        mesh::uninstall_login_unit();
                     }
 
                     // Then tear down the bundled controller. macOS will

@@ -23,15 +23,17 @@ export type ControllerSettings = {
   backend: Backend;
   publicOrigins: string[];
   /**
-   * When true (the default), quitting the desktop app leaves the runtime
-   * daemon running — you stay on the mesh. When false, quit stops the
-   * service and leaves the mesh. The desktop shell reads this file on
-   * quit. Opt-out only: the product is the mesh.
+   * When true, quitting the desktop app leaves the runtime daemon
+   * running and keeps the login autostart unit installed. When false
+   * (the default), quit stops the runtime and removes login autostart —
+   * the mesh only runs while Senda is open. The desktop shell reads
+   * this file on quit.
    */
   keepMeshRunningAfterQuit: boolean;
   /**
    * Bumped when defaults change in a way that should rewrite existing
-   * installs. Schema 2 flipped `keepMeshRunningAfterQuit` to true.
+   * installs. Schema 3 flipped `keepMeshRunningAfterQuit` back to false
+   * (app-scoped lifecycle; no login autostart by default).
    */
   settingsSchema?: number;
   /**
@@ -53,13 +55,13 @@ export type ControllerSettings = {
 };
 
 /** Current settings schema — bump when migrating stored defaults. */
-export const CONTROLLER_SETTINGS_SCHEMA = 2;
+export const CONTROLLER_SETTINGS_SCHEMA = 3;
 
 export const DEFAULT_CONTROLLER_SETTINGS: ControllerSettings = {
   defaultModel: null,
   backend: "auto",
   publicOrigins: ["https://senda.network"],
-  keepMeshRunningAfterQuit: true,
+  keepMeshRunningAfterQuit: false,
   shareDiagnostics: false,
   installId: null,
   settingsSchema: CONTROLLER_SETTINGS_SCHEMA,
@@ -88,10 +90,11 @@ export async function readControllerSettings(): Promise<ControllerSettings> {
     const parsed = JSON.parse(raw) as Partial<ControllerSettings>;
     const schema =
       typeof parsed.settingsSchema === "number" ? parsed.settingsSchema : 1;
-    // Schema 2: mesh stays up after quit by default. Older installs wrote
-    // keepMeshRunningAfterQuit:false as the product default — rewrite that
-    // once so existing boxes stop dropping off the mesh on CMD+Q.
-    const migrateKeepMesh = schema < 2;
+    // Schema 3: runtime is app-scoped by default. Schema 2 had forced
+    // keepMeshRunningAfterQuit:true (login + after-quit always-on); flip
+    // existing installs once so quit tears the runtime down and removes
+    // the login unit unless the user opts back in after this migration.
+    const migrateKeepMesh = schema < 3;
     const settings: ControllerSettings = {
       defaultModel:
         typeof parsed.defaultModel === "string" || parsed.defaultModel === null
@@ -106,7 +109,7 @@ export async function readControllerSettings(): Promise<ControllerSettings> {
           )
         : DEFAULT_CONTROLLER_SETTINGS.publicOrigins,
       keepMeshRunningAfterQuit: migrateKeepMesh
-        ? true
+        ? false
         : typeof parsed.keepMeshRunningAfterQuit === "boolean"
           ? parsed.keepMeshRunningAfterQuit
           : DEFAULT_CONTROLLER_SETTINGS.keepMeshRunningAfterQuit,

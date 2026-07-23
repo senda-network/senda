@@ -48,8 +48,10 @@ export function Setup({ onInstalled }: { onInstalled: () => void }) {
       res = await fetch("/api/control/install", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        // Always install the OS autostart unit — the product is the mesh.
-        body: JSON.stringify({ autoStart: true }),
+        // Runtime starts when the desktop app opens; do not register a
+        // login autostart unit. Users who want always-on can opt in via
+        // Settings → Keep running after I quit.
+        body: JSON.stringify({ autoStart: false }),
       });
     } catch (e) {
       setPhase("failed");
@@ -200,9 +202,9 @@ function Hero({
       </h1>
       <p className="mt-5 max-w-xl text-pretty text-[15px] leading-relaxed text-[var(--fg-muted)] sm:text-base">
         Installing Senda puts this machine on the open peer-to-peer mesh.
-        It serves the models it can hold, stays in the mesh when you log in,
-        and you chat with everything the mesh serves in return. That is the
-        product — not an optional toggle.
+        While the app is open it serves the models it can hold, and you chat
+        with everything the mesh serves in return. Quit Senda and the runtime
+        stops — nothing stays loaded in the background unless you opt in.
       </p>
 
       <div className="mt-7 flex flex-wrap justify-center gap-2 text-[11px]">
@@ -222,7 +224,7 @@ function Hero({
           Install and join the mesh
         </Button>
         <p className="text-[12px] text-[var(--fg-muted)]">
-          Autostarts with your login so you stay on the mesh.
+          Starts when you open Senda. Quits with the app.
         </p>
 
         <label className="flex cursor-pointer items-start gap-2.5 text-left text-[13px] text-[var(--fg-muted)]">

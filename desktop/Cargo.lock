@@ -3233,7 +3233,7 @@ dependencies = [
 
 [[package]]
 name = "senda-desktop"
-version = "0.1.122"
+version = "0.1.123"
 dependencies = [
  "dirs 5.0.1",
  "libc",

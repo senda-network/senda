@@ -35,17 +35,17 @@ export async function POST(req: Request) {
     );
   }
 
-  // The Setup component sends { autoStart: boolean } so the user can
-  // turn off "Start automatically when I log in" before installing.
-  // Default is true — that's the right answer for almost everyone.
-  let autoStart = true;
+  // The Setup component sends { autoStart: boolean }. Default is false —
+  // the runtime should only run while the desktop app is open unless the
+  // user explicitly opts into login/background always-on.
+  let autoStart = false;
   try {
     const body = (await req.json()) as { autoStart?: boolean };
     if (body && typeof body.autoStart === "boolean") {
       autoStart = body.autoStart;
     }
   } catch {
-    // No body / not JSON — keep default (autoStart = true).
+    // No body / not JSON — keep default (autoStart = false).
   }
 
   // We avoid `curl | sh` to keep the supply chain visible: the install

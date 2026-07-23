@@ -1246,14 +1246,11 @@ pub fn start_service_if_installed() {
         #[cfg(not(target_os = "macos"))]
         let _ = helpers_repaired;
 
-        // Windows: register (or refresh) the Scheduled Task that turns
-        // `senda.exe serve --auto …` into a logon-triggered, restart-
-        // on-failure background service. Mirrors what install.ps1 does
-        // for users who came in through the PowerShell installer, and
-        // makes the .msi → first-launch path single-click — no terminal
-        // command, no manual install.ps1. Idempotent: if the task is
-        // already registered with matching args it short-circuits, so
-        // an in-flight `serve` isn't killed by a delete+create cycle.
+        // Windows: register (or refresh) the Scheduled Task used to run
+        // `senda.exe serve --auto …`. AtLogOn is only attached when the
+        // user opted into always-on background mode; otherwise the task
+        // is on-demand so the desktop can start/stop it for this session
+        // without resurrecting the runtime at the next login.
         #[cfg(target_os = "windows")]
         register_windows_scheduled_task(&bin);
 
@@ -1323,10 +1320,121 @@ fn spawn_self_heal_retry_loop(bin: PathBuf) {
 
 pub fn start_service() {
     run_cli(&["service", "start"]);
+    // `senda service start` only bootstraps the LaunchAgent. When
+    // RunAtLoad is false (app-scoped mode), bootstrap loads the job
+    // but does not execute it — kickstart so this session actually runs.
+    #[cfg(target_os = "macos")]
+    if !keep_running_after_quit() {
+        let uid = current_uid();
+        let label_target = format!("gui/{uid}/{SERVICE_LABEL}");
+        let kick = Command::new("launchctl")
+            .args(["kickstart", "-k", &label_target])
+            .hide_console()
+            .output();
+        match kick {
+            Ok(k) if k.status.success() => {}
+            Ok(k) => eprintln!(
+                "[senda] kickstart after service start failed (exit {:?}): {}",
+                k.status.code(),
+                String::from_utf8_lossy(&k.stderr).trim()
+            ),
+            Err(e) => eprintln!("[senda] kickstart after service start spawn failed: {e}"),
+        }
+    }
 }
 
 pub fn stop_service() {
     run_cli(&["service", "stop"]);
+}
+
+/// Remove the OS login-autostart unit (LaunchAgent / systemd-user unit /
+/// Scheduled Task). Does not itself stop a running runtime — call
+/// [`stop_service`] first when tearing down on quit.
+///
+/// Used when the user has not opted into "Keep running after I quit", so
+/// a later login cannot resurrect the headless node without opening the
+/// desktop app.
+pub fn uninstall_login_unit() {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(plist) = launchd_plist_path() {
+            let uid = current_uid();
+            let label_target = format!("gui/{uid}/{SERVICE_LABEL}");
+            let _ = Command::new("launchctl")
+                .args(["bootout", &label_target])
+                .hide_console()
+                .output();
+            match std::fs::remove_file(&plist) {
+                Ok(()) => eprintln!(
+                    "[senda] removed login LaunchAgent {}",
+                    plist.display()
+                ),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => eprintln!(
+                    "[senda] failed to remove {}: {e}",
+                    plist.display()
+                ),
+            }
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = Command::new("systemctl")
+            .args(["--user", "disable", "--now", "senda.service"])
+            .hide_console()
+            .output();
+        if let Some(home) = dirs::home_dir() {
+            let unit = home
+                .join(".config")
+                .join("systemd")
+                .join("user")
+                .join("senda.service");
+            match std::fs::remove_file(&unit) {
+                Ok(()) => {
+                    eprintln!("[senda] removed login unit {}", unit.display());
+                    let _ = Command::new("systemctl")
+                        .args(["--user", "daemon-reload"])
+                        .hide_console()
+                        .output();
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => eprintln!("[senda] failed to remove {}: {e}", unit.display()),
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("schtasks")
+            .args(["/Delete", "/TN", SERVICE_NAME_WINDOWS, "/F"])
+            .hide_console()
+            .output();
+        eprintln!("[senda] removed Scheduled Task '{SERVICE_NAME_WINDOWS}'");
+    }
+}
+
+/// Ensure a login-autostart unit exists for users who opted into
+/// always-on background mode. Best-effort: if the binary is missing we
+/// leave whatever unit is already on disk.
+pub fn ensure_login_autostart() {
+    let Some(bin) = locate_binary() else {
+        return;
+    };
+    #[cfg(target_os = "macos")]
+    {
+        repair_launchd_plist(&bin);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        register_windows_scheduled_task(&bin);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = bin;
+        let _ = Command::new("systemctl")
+            .args(["--user", "enable", "senda.service"])
+            .hide_console()
+            .output();
+    }
 }
 
 // ---------- Runtime auto-upgrade ----------------------------------------
@@ -2715,6 +2823,11 @@ fn build_launchd_plist_xml(bin: &std::path::Path, join_args: &[String]) -> Strin
         .collect::<Vec<_>>()
         .join("\n");
 
+    // RunAtLoad only when the user opted into always-on background mode.
+    // Otherwise the agent is loaded for this session and kicked via
+    // `launchctl kickstart` — a later login must not resurrect it.
+    let run_at_load = keep_running_after_quit();
+
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -2729,7 +2842,7 @@ fn build_launchd_plist_xml(bin: &std::path::Path, join_args: &[String]) -> Strin
     <key>WorkingDirectory</key>
     <string>{home}</string>
     <key>RunAtLoad</key>
-    <true/>
+    <{run_at_load}/>
     <key>KeepAlive</key>
     <dict>
         <key>SuccessfulExit</key>
@@ -2748,6 +2861,7 @@ fn build_launchd_plist_xml(bin: &std::path::Path, join_args: &[String]) -> Strin
         args = args_xml,
         home = xml_escape(&home),
         log_dir = xml_escape(&log_dir),
+        run_at_load = if run_at_load { "true" } else { "false" },
     )
 }
 
@@ -2828,6 +2942,30 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
                     "[senda] launchctl bootstrap succeeded (attempt {})",
                     i + 1
                 );
+                // With RunAtLoad=false, bootstrap only loads the job —
+                // kickstart it so the runtime actually comes up for this
+                // app session.
+                if !keep_running_after_quit() {
+                    let kick = Command::new("launchctl")
+                        .args(["kickstart", "-k", &label_target])
+                        .hide_console()
+                        .output();
+                    match kick {
+                        Ok(k) if k.status.success() => {
+                            eprintln!("[senda] launchctl kickstart succeeded");
+                        }
+                        Ok(k) => {
+                            eprintln!(
+                                "[senda] launchctl kickstart failed (exit {:?}): {}",
+                                k.status.code(),
+                                String::from_utf8_lossy(&k.stderr).trim()
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[senda] launchctl kickstart spawn failed: {e}");
+                        }
+                    }
+                }
                 succeeded = true;
                 break;
             }
@@ -2963,28 +3101,49 @@ fn current_uid() -> u32 {
 /// settings file. The Settings page writes to this same JSON, so the
 /// preference is shared without any IPC.
 ///
-/// Default is `true` (stay on the mesh after quit) — the product is the
-/// mesh. Only an explicit `"keepMeshRunningAfterQuit": false` leaves the
-/// mesh on quit. Missing file / missing field / unparseable → stay up.
-/// We deliberately don't depend on `serde_json` for this one bool.
+/// Default is `false` (stop runtime + remove login unit on quit) — the
+/// mesh only runs while the desktop app is open. Schema &lt; 3 installs
+/// that still have the old always-on default are treated as `false`
+/// until the controller migrates the file. Only an explicit
+/// `"keepMeshRunningAfterQuit": true` under schema ≥ 3 keeps the
+/// headless node up. We deliberately don't depend on `serde_json` for
+/// this one bool.
 pub fn keep_running_after_quit() -> bool {
     let Some(home) = dirs::home_dir() else {
-        return true;
+        return false;
     };
     let path = home.join(".senda").join("controller-settings.json");
     let Ok(raw) = std::fs::read_to_string(&path) else {
-        return true;
+        return false;
     };
+
+    // Schema 3 flipped the product default to app-scoped lifecycle.
+    // Older files (schema missing / &lt; 3) still say `true` from the
+    // schema-2 migration — ignore that and treat them as off until the
+    // controller rewrites the file.
+    let schema = {
+        let needle = "\"settingsSchema\"";
+        raw.find(needle).and_then(|idx| {
+            let after = &raw[idx + needle.len()..];
+            let trimmed = after.trim_start_matches([':', ' ', '\t', '\n', '\r']);
+            let digits: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
+            digits.parse::<u32>().ok()
+        })
+    };
+    if schema.unwrap_or(0) < 3 {
+        return false;
+    }
+
     // Tolerant scan — handles `"keepMeshRunningAfterQuit":true` and
     // `"keepMeshRunningAfterQuit": true` and trailing comma variants.
     let needle = "\"keepMeshRunningAfterQuit\"";
     let Some(idx) = raw.find(needle) else {
-        return true;
+        return false;
     };
     let after = &raw[idx + needle.len()..];
     let trimmed = after.trim_start_matches([':', ' ', '\t', '\n', '\r']);
-    // Opt-out only: explicit false leaves the mesh; everything else stays.
-    !trimmed.starts_with("false")
+    // Opt-in only: explicit true keeps the mesh; everything else stops.
+    trimmed.starts_with("true")
 }
 
 // ---------- Windows / Task Scheduler ------------------------------------
@@ -3018,7 +3177,8 @@ const REGISTER_TASK_PS: &str = r##"param(
     [Parameter(Mandatory=$true)][string]$ArgString,
     [Parameter(Mandatory=$true)][string]$UserName,
     [Parameter(Mandatory=$true)][string]$WorkingDirectory,
-    [Parameter(Mandatory=$true)][string]$TaskName
+    [Parameter(Mandatory=$true)][string]$TaskName,
+    [Parameter(Mandatory=$false)][bool]$StartAtLogon = $false
 )
 $ErrorActionPreference = 'Stop'
 
@@ -3193,7 +3353,6 @@ Set-Content -Path $vbsPath -Value $vbs -Encoding ASCII
 
 $wscriptArgs = "//B //Nologo `"$vbsPath`""
 $action    = New-ScheduledTaskAction    -Execute 'wscript.exe' -Argument $wscriptArgs -WorkingDirectory $WorkingDirectory
-$trigger   = New-ScheduledTaskTrigger   -AtLogOn -User $UserName
 $settings  = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
@@ -3202,12 +3361,22 @@ $settings  = New-ScheduledTaskSettingsSet `
     -RestartCount 3 `
     -ExecutionTimeLimit (New-TimeSpan -Days 0)
 $principal = New-ScheduledTaskPrincipal -UserId $UserName -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask -TaskName $TaskName `
-    -Action $action `
-    -Trigger $trigger `
-    -Settings $settings `
-    -Principal $principal `
-    -Description 'Senda - private LLM mesh node' | Out-Null
+# AtLogOn only when the user opted into always-on background mode.
+# Otherwise the task is on-demand so `service start` / the desktop app
+# can run it, but a later login cannot resurrect the runtime alone.
+if ($StartAtLogon) {
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserName
+    Register-ScheduledTask -TaskName $TaskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Settings $settings `
+        -Principal $principal `
+        -Description 'Senda - private LLM mesh node' | Out-Null
+} else {
+    $task = New-ScheduledTask -Action $action -Settings $settings -Principal $principal
+    Register-ScheduledTask -TaskName $TaskName -InputObject $task `
+        -Description 'Senda - private LLM mesh node' | Out-Null
+}
 "##;
 
 /// Compose the runtime CLI argument string baked into the Scheduled
@@ -3322,6 +3491,7 @@ fn current_windows_task_args(bin: &std::path::Path) -> Option<(String, String)> 
 #[cfg(target_os = "windows")]
 fn register_windows_scheduled_task(bin: &std::path::Path) {
     let args = build_windows_service_args(bin);
+    let want_logon = keep_running_after_quit();
 
     // Skip the re-register if both the bin path AND the args match
     // what's already on disk. PowerShell canonicalizes the Arguments
@@ -3354,16 +3524,23 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
                 || (body.contains("DeleteFile") && body.contains("stderr.log"))
         })
         .unwrap_or(true);
+    let logon_matches = windows_task_starts_at_logon() == want_logon;
     if let Some((existing_bin, existing_args)) = current_windows_task_args(bin) {
         if existing_bin.eq_ignore_ascii_case(&bin_str)
             && normalised(&existing_args) == normalised(&args)
             && !vbs_needs_env_pin
+            && logon_matches
         {
             return;
         }
         if vbs_needs_env_pin {
             eprintln!(
                 "[senda] scheduled task VBS missing SENDA_CONFIG pin; re-registering ({SERVICE_NAME_WINDOWS})"
+            );
+        } else if !logon_matches {
+            eprintln!(
+                "[senda] scheduled task AtLogOn={} but want {}; re-registering ({SERVICE_NAME_WINDOWS})",
+                !want_logon, want_logon
             );
         } else if !existing_bin.eq_ignore_ascii_case(&bin_str) {
             eprintln!(
@@ -3414,6 +3591,11 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
         .arg(&working_dir)
         .arg("-TaskName")
         .arg(SERVICE_NAME_WINDOWS)
+        .arg(if want_logon {
+            "-StartAtLogon:$true"
+        } else {
+            "-StartAtLogon:$false"
+        })
         .hide_console()
         .output()
     {
@@ -3435,9 +3617,36 @@ fn register_windows_scheduled_task(bin: &std::path::Path) {
         return;
     }
     eprintln!(
-        "[senda] scheduled task '{SERVICE_NAME_WINDOWS}' registered for {} (user {user_name})",
+        "[senda] scheduled task '{SERVICE_NAME_WINDOWS}' registered for {} (user {user_name}, AtLogOn={want_logon})",
         bin.display()
     );
+}
+
+/// Whether the existing Senda Scheduled Task has an AtLogOn trigger.
+/// Missing task → `false` (so a first-time register with want_logon=false
+/// is not forced into a no-op skip).
+#[cfg(target_os = "windows")]
+fn windows_task_starts_at_logon() -> bool {
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &format!(
+                "$t = Get-ScheduledTask -TaskName '{SERVICE_NAME_WINDOWS}' -ErrorAction SilentlyContinue; \
+                 if (-not $t) {{ '0'; exit }}; \
+                 if ($t.Triggers | Where-Object {{ $_.CimClass.CimClassName -like '*Logon*' }}) {{ '1' }} else {{ '0' }}"
+            ),
+        ])
+        .hide_console()
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            String::from_utf8_lossy(&o.stdout).contains('1')
+        }
+        _ => false,
+    }
 }
 
 // ---------- Runtime auto-install ----------------------------------------
