@@ -2679,7 +2679,51 @@ function EarningsPreviewCard({
   running: boolean;
 }) {
   const estimate = estimateContribution(self.servingTokens7dByModel);
-  const hasData = estimate.totalTokens > 0;
+  const hasLocal = estimate.totalTokens > 0;
+  const [ledger, setLedger] = useState<
+    | { phase: "loading" }
+    | { phase: "ready"; credits: number; storeReady: boolean }
+    | { phase: "unavailable" }
+  >({ phase: "loading" });
+
+  useEffect(() => {
+    const peerId = self.id?.trim();
+    if (!peerId) {
+      setLedger({ phase: "unavailable" });
+      return;
+    }
+    let cancelled = false;
+    setLedger({ phase: "loading" });
+    void (async () => {
+      try {
+        // Sidecar proxies to senda.network — local Next has no Upstash.
+        const res = await fetch(
+          `/api/control/credits?peer=${encodeURIComponent(peerId)}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) throw new Error(String(res.status));
+        const json = (await res.json()) as {
+          storeReady?: boolean;
+          peer?: { credits?: number } | null;
+        };
+        if (cancelled) return;
+        setLedger({
+          phase: "ready",
+          storeReady: Boolean(json.storeReady),
+          credits: Number(json.peer?.credits ?? 0) || 0,
+        });
+      } catch {
+        if (!cancelled) setLedger({ phase: "unavailable" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [self.id]);
+
+  const ledgerCredits =
+    ledger.phase === "ready" && ledger.storeReady ? ledger.credits : null;
+  const hasLedger = ledgerCredits != null && ledgerCredits > 0;
 
   return (
     <section className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-elev)] p-6">
@@ -2698,31 +2742,50 @@ function EarningsPreviewCard({
           </span>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-3xl font-semibold tracking-tight tabular-nums text-[var(--fg)]">
-              {hasData ? formatTokenCount(estimate.totalTokens) : "—"}
+              {hasLedger
+                ? ledgerCredits.toLocaleString()
+                : hasLocal
+                  ? formatTokenCount(estimate.totalTokens)
+                  : "—"}
             </span>
             <span className="text-[13px] font-medium text-[var(--fg)]">
-              tokens served
+              {hasLedger ? "credits earned" : "tokens served"}
             </span>
             <span className="text-[12px] text-[var(--fg-muted)]">
-              · last 7 days
+              {hasLedger ? "· mesh ledger" : "· last 7 days · local"}
             </span>
           </div>
           <div className="mt-1 text-[12px] text-[var(--fg-muted)]">
-            {hasData ? (
+            {hasLedger ? (
+              <>
+                Tier-weighted tokens attributed to this node on the public
+                mesh. Not a payout — instrumented contribution.
+                {hasLocal ? (
+                  <>
+                    {" "}
+                    Local tally this week:{" "}
+                    {formatTokenCount(estimate.totalTokens)} tok.
+                  </>
+                ) : null}
+              </>
+            ) : hasLocal ? (
               <>
                 Across {estimate.perModel.length} model
-                {estimate.perModel.length === 1 ? "" : "s"}.
+                {estimate.perModel.length === 1 ? "" : "s"} locally.
+                {ledger.phase === "ready" && ledger.storeReady
+                  ? " No ledger credits yet — mesh chat attribution lands here once this node serves a public request."
+                  : ""}
               </>
             ) : running ? (
-              "Nothing served yet this week. When your machine answers mesh requests, your token tally shows up here."
+              "Nothing recorded yet. When your machine answers mesh requests, credits show up here."
             ) : (
-              "Once this machine is on the mesh and serving, your weekly token tally will appear here."
+              "Once this machine is on the mesh and serving, your credits will appear here."
             )}
           </div>
         </div>
       </div>
 
-      {hasData && (
+      {hasLocal && (
         <ul className="relative mt-4 space-y-1.5">
           {estimate.perModel.map((row) => (
             <li

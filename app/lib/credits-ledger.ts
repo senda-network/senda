@@ -1,13 +1,12 @@
 /**
  * Early-access credits ledger — mesh completion tokens → credit balance.
  *
- * Records attributable mesh serves from `/api/chat` into Upstash Redis.
+ * Phase 5.A Sprint 1: Upstash Redis (already production) is the ledger.
  * A credit is a tier-weighted token (see {@link TIER_WEIGHT}): the tokens a
  * peer served, scaled by how hard the model is to serve. Not cash, not
- * on-chain, not a currency — a measure of contribution.
+ * on-chain — instrumented contribution until payout rails ship.
  *
- * Attribution uses `SlaEvaluation.creditPeerId` until the runtime echoes
- * the serving host on the response path.
+ * Prefer runtime `x-senda-serving-peer`; fall back to SLA `creditPeerId`.
  */
 
 import {

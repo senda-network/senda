@@ -120,9 +120,8 @@ export default function ContributePage() {
                 Credits are a measure of contribution — not a payout.
               </span>{" "}
               They accrue on the public ledger when your peer serves mesh chat
-              traffic, tracked in tokens until the network defines its own
-              reward unit. Early-node multipliers for the first ~100 peers are
-              planned.
+              traffic, attributed to the serving host and weighted by model
+              tier. Payout rails come later — this sprint instruments earnings.
             </div>
 
             <div className="mt-8 grid gap-4 lg:grid-cols-2">

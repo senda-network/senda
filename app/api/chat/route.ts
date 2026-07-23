@@ -15,6 +15,7 @@ import { isVisionModel } from "../../lib/model-catalog";
 import { resolveCatalog } from "../../lib/resolve-catalog";
 import { recordServedByDecision } from "../../lib/mesh-share";
 import { recordMeshCredits } from "../../lib/credits-ledger";
+import { appendSessionReceipt } from "../../lib/session-receipts";
 import type { SlaEvaluation } from "../../lib/routing-sla";
 
 export const runtime = "nodejs";
@@ -48,21 +49,38 @@ const runtimeHeaders: Record<string, string> = RUNTIME_TOKEN
   ? { Authorization: `Bearer ${RUNTIME_TOKEN}` }
   : {};
 
-const senda = createOpenAICompatible({
-  name: "senda",
-  baseURL: RUNTIME_URL,
-  headers: runtimeHeaders,
-  // v0.66.43 marketplace metrics: the runtime backend proxy can only
-  // record a per-model TPS/TTFT sample when the upstream llama-server
-  // response carries `usage.completion_tokens`. For non-streaming
-  // responses that's always there. For streaming (SSE) responses, the
-  // OpenAI spec requires the client to opt in via
-  // `stream_options.include_usage: true` — without that flag the
-  // final chunk omits `usage`, the runtime parses `None`, and the
-  // catalog stays empty. Setting this here on the provider applies
-  // to every `streamText({ model: senda.chatModel(...) })` call.
-  includeUsage: true,
-});
+type ServingPeerAttribution = {
+  /** Short peer id from `x-senda-serving-peer`, if the runtime echoed it. */
+  peerId: string | null;
+};
+
+/**
+ * Per-request provider so concurrent chats don't race on attribution.
+ * Captures the serving-host header from the entry/runtime response.
+ */
+function createSendaProvider(attribution: ServingPeerAttribution) {
+  return createOpenAICompatible({
+    name: "senda",
+    baseURL: RUNTIME_URL,
+    headers: runtimeHeaders,
+    // v0.66.43 marketplace metrics: the runtime backend proxy can only
+    // record a per-model TPS/TTFT sample when the upstream llama-server
+    // response carries `usage.completion_tokens`. For non-streaming
+    // responses that's always there. For streaming (SSE) responses, the
+    // OpenAI spec requires the client to opt in via
+    // `stream_options.include_usage: true` — without that flag the
+    // final chunk omits `usage`, the runtime parses `None`, and the
+    // catalog stays empty. Setting this here on the provider applies
+    // to every `streamText({ model: senda.chatModel(...) })` call.
+    includeUsage: true,
+    fetch: async (input, init) => {
+      const res = await fetch(input, init);
+      const peer = res.headers.get("x-senda-serving-peer")?.trim();
+      if (peer) attribution.peerId = peer;
+      return res;
+    },
+  });
+}
 
 async function pickDefaultModel(): Promise<string> {
   try {
@@ -377,7 +395,15 @@ export async function POST(req: Request) {
     }
   }
 
-  const creditOnFinish = meshCreditOnFinish(meshCredits, sla, modelId);
+  // Phase 5.A — capture serving-host peer id from the runtime response.
+  const servingAttribution: ServingPeerAttribution = { peerId: null };
+  const senda = createSendaProvider(servingAttribution);
+  const creditOnFinish = meshCreditOnFinish(
+    meshCredits,
+    sla,
+    modelId,
+    servingAttribution,
+  );
 
   // Both branches use the same `streamText` protocol, so the AI SDK
   // chunk format is identical to the caller. The chat UI does not
@@ -402,7 +428,7 @@ export async function POST(req: Request) {
         system: SYSTEM_PROMPT,
         messages: convertToModelMessages(parsed.body.messages),
         maxRetries: 0,
-        ...meshCreditOnFinish(meshCredits, sla, modelId),
+        ...meshCreditOnFinish(meshCredits, sla, modelId, servingAttribution),
       });
     } else {
       result = streamText({
@@ -475,19 +501,33 @@ function meshCreditOnFinish(
   meshCredits: boolean,
   sla: SlaEvaluation,
   modelId: string,
+  serving: ServingPeerAttribution,
 ) {
   if (!meshCredits) return {};
   return {
     onFinish: async (event: {
-      totalUsage?: { outputTokens?: number };
+      totalUsage?: { outputTokens?: number; inputTokens?: number };
     }) => {
       const tokens = event.totalUsage?.outputTokens ?? 0;
-      if (tokens <= 0 || !sla.creditPeerId) return;
+      if (tokens <= 0) return;
+      // Prefer the host that actually answered; SLA ranking is heuristic.
+      const servingPeer = serving.peerId?.trim() || null;
+      const peerId = servingPeer || sla.creditPeerId;
+      if (!peerId) return;
+      const attribution = servingPeer ? "serving-peer" : "sla-heuristic";
       void recordMeshCredits({
-        peerId: sla.creditPeerId,
+        peerId,
         modelId,
         completionTokens: tokens,
         tier: sla.tier,
+      });
+      void appendSessionReceipt({
+        peerId,
+        modelId,
+        completionTokens: tokens,
+        promptTokens: event.totalUsage?.inputTokens ?? null,
+        tier: sla.tier,
+        attribution,
       });
     },
   };
