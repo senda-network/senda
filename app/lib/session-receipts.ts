@@ -8,9 +8,14 @@
  */
 
 import { createHmac, randomUUID } from "node:crypto";
+import {
+  applyCreditMultiplier,
+  type CreditAttribution,
+} from "./credit-multiplier";
 import { getModelTier, type ModelTier } from "./model-tiers";
 import { tokensToCredits } from "./credits-ledger";
 import { getRedis } from "./redis";
+import { shortPeerId } from "./verification-receipts";
 
 const RECEIPTS_RECENT_KEY = "senda:receipts:recent";
 const RECEIPTS_BY_PEER_PREFIX = "senda:receipts:by-peer";
@@ -18,7 +23,7 @@ const RECEIPTS_TTL_SEC = 120 * 24 * 3600;
 const RECENT_CAP = 500;
 const PEER_CAP = 200;
 
-export type CreditAttribution = "serving-peer" | "sla-heuristic";
+export type { CreditAttribution };
 
 export type SessionReceipt = {
   id: string;
@@ -41,6 +46,11 @@ export type SessionReceiptInput = {
   promptTokens?: number | null;
   tier?: ModelTier;
   attribution: CreditAttribution;
+  /**
+   * Optional 5.B reputation multiplier (0–1). Defaults to 1 so receipts stay
+   * aligned with {@link recordMeshCredits} when the caller passes the same value.
+   */
+  multiplier?: number;
   /** Override clock in tests. */
   now?: Date;
   /** Override id in tests. */
@@ -93,10 +103,15 @@ export function verifyReceiptSignature(receipt: SessionReceipt): boolean {
  */
 export function buildSessionReceipt(input: SessionReceiptInput): SessionReceipt {
   const tier = input.tier ?? getModelTier(input.modelId);
-  const credits = tokensToCredits(input.completionTokens, tier);
+  const baseCredits = tokensToCredits(input.completionTokens, tier);
+  const multiplier =
+    typeof input.multiplier === "number" && Number.isFinite(input.multiplier)
+      ? input.multiplier
+      : 1;
+  const credits = applyCreditMultiplier(baseCredits, multiplier);
   const base: Omit<SessionReceipt, "sig"> = {
     id: input.id ?? randomUUID(),
-    peerId: input.peerId.trim(),
+    peerId: shortPeerId(input.peerId),
     modelId: input.modelId,
     completionTokens: input.completionTokens,
     promptTokens:
@@ -122,7 +137,7 @@ export function buildSessionReceipt(input: SessionReceiptInput): SessionReceipt 
 export async function appendSessionReceipt(
   input: SessionReceiptInput,
 ): Promise<SessionReceipt | null> {
-  const peerId = input.peerId.trim();
+  const peerId = shortPeerId(input.peerId);
   if (!peerId || input.completionTokens <= 0) return null;
   const receipt = buildSessionReceipt({ ...input, peerId });
   if (receipt.credits <= 0) return null;

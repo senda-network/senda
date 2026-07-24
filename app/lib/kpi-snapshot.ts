@@ -72,6 +72,31 @@ export type MeshRuntimePeer = {
   models?: string[];
   measured_tps_p50_by_model?: Record<string, number>;
   measured_ttft_ms_p50_by_model?: Record<string, number>;
+  /** Phase 3.2 / 5.B — latest synthetic-probe verdicts (observe-mode). */
+  verify_by_model?: Record<
+    string,
+    {
+      verdict?: string;
+      agreement?: number;
+      compared_tokens?: number;
+      mode?: string;
+      reason?: string | null;
+      checked_at_unix_secs?: number;
+    }
+  >;
+  /** Phase 3.2 / 5.B — EWMA reputation grades for credit multiplier cache. */
+  reputation_by_model?: Record<
+    string,
+    {
+      grade?: string;
+      score?: number;
+      samples?: number;
+      matches?: number;
+      mismatches?: number;
+      last_verdict?: string;
+      updated_at_unix_secs?: number;
+    }
+  >;
   capability?: {
     backend?: string;
     vram_total_mb?: number;

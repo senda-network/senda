@@ -14,7 +14,10 @@ import {
 import { isVisionModel } from "../../lib/model-catalog";
 import { resolveCatalog } from "../../lib/resolve-catalog";
 import { recordServedByDecision } from "../../lib/mesh-share";
-import { recordMeshCredits } from "../../lib/credits-ledger";
+import {
+  recordMeshCredits,
+  resolveCreditMultiplier,
+} from "../../lib/credits-ledger";
 import { appendSessionReceipt } from "../../lib/session-receipts";
 import type { SlaEvaluation } from "../../lib/routing-sla";
 
@@ -515,11 +518,20 @@ function meshCreditOnFinish(
       const peerId = servingPeer || sla.creditPeerId;
       if (!peerId) return;
       const attribution = servingPeer ? "serving-peer" : "sla-heuristic";
+      // 5.B: resolve once so ledger + receipt stay aligned. Default 1.0 until
+      // SENDA_CREDIT_SLASH is enabled after the L1 oracle gate.
+      const multiplier = await resolveCreditMultiplier(
+        peerId,
+        modelId,
+        attribution,
+      );
       void recordMeshCredits({
         peerId,
         modelId,
         completionTokens: tokens,
         tier: sla.tier,
+        attribution,
+        multiplier,
       });
       void appendSessionReceipt({
         peerId,
@@ -528,6 +540,7 @@ function meshCreditOnFinish(
         promptTokens: event.totalUsage?.inputTokens ?? null,
         tier: sla.tier,
         attribution,
+        multiplier,
       });
     },
   };

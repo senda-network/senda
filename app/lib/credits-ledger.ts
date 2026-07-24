@@ -7,14 +7,24 @@
  * on-chain — instrumented contribution until payout rails ship.
  *
  * Prefer runtime `x-senda-serving-peer`; fall back to SLA `creditPeerId`.
+ *
+ * Phase 5.B: optional reputation multiplier on *future* accruals only
+ * (see {@link credit-multiplier}). Default multiplier is 1.0 until
+ * `SENDA_CREDIT_SLASH` is enabled after the L1 oracle gate.
  */
 
+import {
+  applyCreditMultiplier,
+  creditMultiplierForAttribution,
+  type CreditAttribution,
+} from "./credit-multiplier";
 import {
   getModelTier,
   TIER_WEIGHT,
   type ModelTier,
 } from "./model-tiers";
 import { getRedis } from "./redis";
+import { getCachedReputationGrade, shortPeerId } from "./verification-receipts";
 
 const BALANCE_PREFIX = "senda:credits:balance";
 const TOKENS_PREFIX = "senda:credits:tokens";
@@ -32,7 +42,28 @@ export type CreditRecordInput = {
   modelId: string;
   completionTokens: number;
   tier?: ModelTier;
+  /** When set, may scale credits via reputation (serving-peer only). */
+  attribution?: CreditAttribution;
+  /**
+   * Precomputed multiplier (0–1). When omitted, resolved from Redis grade
+   * cache + `SENDA_CREDIT_SLASH` (defaults to 1).
+   */
+  multiplier?: number;
 };
+
+/**
+ * Resolve the credit multiplier for a mesh serve. Pure policy + Redis grade
+ * lookup; safe to call from the chat hot path (failures → 1.0).
+ */
+export async function resolveCreditMultiplier(
+  peerId: string,
+  modelId: string,
+  attribution: CreditAttribution | null | undefined,
+): Promise<number> {
+  if (attribution !== "serving-peer") return 1;
+  const grade = await getCachedReputationGrade(peerId, modelId);
+  return creditMultiplierForAttribution(grade, attribution);
+}
 
 /**
  * Fire-and-forget credit increment. Never throws to callers on the chat
@@ -43,10 +74,15 @@ export async function recordMeshCredits(
 ): Promise<void> {
   const redis = getRedis();
   if (!redis) return;
-  const peerId = input.peerId.trim();
+  const peerId = shortPeerId(input.peerId);
   if (!peerId) return;
   const tier = input.tier ?? getModelTier(input.modelId);
-  const credits = tokensToCredits(input.completionTokens, tier);
+  const base = tokensToCredits(input.completionTokens, tier);
+  const multiplier =
+    typeof input.multiplier === "number"
+      ? input.multiplier
+      : await resolveCreditMultiplier(peerId, input.modelId, input.attribution);
+  const credits = applyCreditMultiplier(base, multiplier);
   if (credits <= 0) return;
 
   const balanceKey = `${BALANCE_PREFIX}:${peerId}`;

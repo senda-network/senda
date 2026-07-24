@@ -3,6 +3,7 @@ import {
   tokensToCredits,
   parseLeaderboardFlat,
   normalizeTokenMap,
+  resolveCreditMultiplier,
 } from "./credits-ledger";
 import { TIER_WEIGHT } from "./model-tiers";
 
@@ -64,5 +65,13 @@ describe("normalizeTokenMap", () => {
   it("returns empty for null/undefined", () => {
     expect(normalizeTokenMap(null)).toEqual({});
     expect(normalizeTokenMap(undefined)).toEqual({});
+  });
+});
+
+describe("resolveCreditMultiplier", () => {
+  it("returns 1 for sla-heuristic without touching Redis", async () => {
+    await expect(
+      resolveCreditMultiplier("abc", "Qwen3-8B-Q4_K_M", "sla-heuristic"),
+    ).resolves.toBe(1);
   });
 });

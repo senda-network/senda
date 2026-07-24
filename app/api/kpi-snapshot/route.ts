@@ -25,6 +25,7 @@ import {
   kpiStoreReady,
   saveKpiSnapshot,
 } from "../../lib/kpi-store";
+import { ingestVerificationFromPeers } from "../../lib/verification-receipts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,7 @@ async function fetchMeshKpiInput(): Promise<{
   statusUrl: string;
   routableModels: string[];
   hostHostname: string | null;
+  raw: MeshRuntimeStatus;
 }> {
   const base = meshBaseUrl();
   const statusUrl = `${base}/api/status`;
@@ -97,11 +99,12 @@ async function fetchMeshKpiInput(): Promise<{
     statusUrl,
     routableModels,
     hostHostname: host?.hostname ?? null,
+    raw: body,
   };
 }
 
 async function captureSnapshot(flagshipParam?: string | null) {
-  const { status, statusUrl, routableModels, hostHostname } =
+  const { status, statusUrl, routableModels, hostHostname, raw } =
     await fetchMeshKpiInput();
   const flagship = pickFlagshipModel(
     status.nodes,
@@ -117,7 +120,14 @@ async function captureSnapshot(flagshipParam?: string | null) {
     routableModels,
   );
   const saved = await saveKpiSnapshot(snapshot, new Date(), { hostHostname });
-  return { snapshot, saved, storeReady: kpiStoreReady() };
+  // Phase 5.B observe: persist synthetic-probe verdicts + reputation grades.
+  const verifyIngest = await ingestVerificationFromPeers(raw.peers ?? []);
+  return {
+    snapshot,
+    saved,
+    storeReady: kpiStoreReady(),
+    verifyIngest,
+  };
 }
 
 export async function GET(req: Request) {
