@@ -1319,6 +1319,17 @@ fn spawn_self_heal_retry_loop(bin: PathBuf) {
 }
 
 pub fn start_service() {
+    // App launch must start the runtime even when login autostart is off.
+    // Clear any sticky launchd "disabled" flag first (bootstrap EIO otherwise).
+    #[cfg(target_os = "macos")]
+    {
+        let uid = current_uid();
+        let label_target = format!("gui/{uid}/{SERVICE_LABEL}");
+        let _ = Command::new("launchctl")
+            .args(["enable", &label_target])
+            .hide_console()
+            .output();
+    }
     run_cli(&["service", "start"]);
     // `senda service start` only bootstraps the LaunchAgent. When
     // RunAtLoad is false (app-scoped mode), bootstrap loads the job
@@ -2873,20 +2884,30 @@ fn xml_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// `launchctl bootout` (idempotent — succeeds whether or not the agent is
-/// loaded) followed by `launchctl bootstrap` to pick up the rewritten plist.
+/// `launchctl enable` + `bootout` + `bootstrap` (+ `kickstart` when
+/// app-scoped) so opening the desktop app always brings the runtime up.
 ///
-/// If `bootstrap` fails we call `start_service()` as a last-resort fallback
-/// so that a failed launchd registration does not leave the node dead. The
-/// most common cause on macOS is a transient I/O error (exit code 5) from
-/// launchd when the log directory or the plist hasn't flushed to disk yet;
-/// `start_service()` retries the same codepath and usually succeeds on the
-/// second attempt.
+/// App-scoped mode sets `RunAtLoad=false` so login does not start the
+/// node — that is intentional. It must still start when the user opens
+/// Senda. A label left in launchd's **disabled** list (survives plist
+/// delete / bootout) makes every `bootstrap` fail with EIO (exit 5);
+/// we `enable` first so app launch recovers that state. Then kickstart
+/// because `RunAtLoad=false` only loads the job without executing it.
+///
+/// If `bootstrap` still fails we call `start_service()` as a last-resort
+/// fallback (same enable+bootstrap path in the CLI).
 #[cfg(target_os = "macos")]
 fn bounce_launchd_agent(plist_path: &std::path::Path) {
     let uid = current_uid();
     let target = format!("gui/{uid}");
     let label_target = format!("{target}/{SERVICE_LABEL}");
+
+    // Must run before bootstrap: a disabled label fails bootstrap with
+    // EIO forever, which looks like "model won't load" in the UI.
+    let _ = Command::new("launchctl")
+        .args(["enable", &label_target])
+        .hide_console()
+        .output();
 
     let _ = Command::new("launchctl")
         .args(["bootout", &label_target])
@@ -2932,6 +2953,12 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
         if !wait.is_zero() {
             std::thread::sleep(*wait);
         }
+        // Re-enable each attempt: bootout/races can leave the label
+        // disabled again on some macOS versions.
+        let _ = Command::new("launchctl")
+            .args(["enable", &label_target])
+            .hide_console()
+            .output();
         let bootstrap = Command::new("launchctl")
             .args(["bootstrap", &target, &plist_str])
             .hide_console()
@@ -2944,7 +2971,8 @@ fn bounce_launchd_agent(plist_path: &std::path::Path) {
                 );
                 // With RunAtLoad=false, bootstrap only loads the job —
                 // kickstart it so the runtime actually comes up for this
-                // app session.
+                // app session. Always kickstart on app-scoped mode; with
+                // always-on, RunAtLoad already started (or will start) it.
                 if !keep_running_after_quit() {
                     let kick = Command::new("launchctl")
                         .args(["kickstart", "-k", &label_target])
